@@ -11,6 +11,19 @@ import requests
 
 import market_report as m
 
+MINI_DAYS = 250      # 시그널 카드 소형 차트 기간(거래일). 큰 차트·코스피와 같게 맞춤
+render_errors = []
+
+
+def guard(label, fn, *args, default=""):
+    """한 부분이 실패해도 리포트 전체는 계속 만든다. 실패 내용은 페이지 하단에 표시"""
+    try:
+        return fn(*args)
+    except Exception as e:
+        render_errors.append(f"{label} 실패: {type(e).__name__}: {e}")
+        return default
+
+
 
 def load_tickers():
     raw = os.environ.get("TICKERS_JSON", "").strip()
@@ -52,12 +65,12 @@ for t in tickers:
     except Exception as e:
         failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
 
-snap = m.market_snapshot()
-msig = m.market_signals(snap, results)
-head = m.market_text(snap)
-sigs = m.signals_text(results, msig)
-summary = m.summary_text(results)
-detail = m.detail_section(results)
+snap = guard("시장 지표 수집", m.market_snapshot,
+             default={"ks": None, "vix": None, "y10": None, "y30": None, "err": ["시장 지표 수집 실패"]})
+msig = guard("위험·바닥 지표 계산", m.market_signals, snap, results,
+             default={"risk": {"items": [], "score": 0, "total": 0, "label": "계산 실패", "cls": "lv0"}, "bottom": {"items": [], "score": 0, "total": 0, "label": "계산 실패", "cls": "lv0"}})
+head = guard("시장 지표 문구", m.market_text, snap)
+sigs = guard("시그널 문구", m.signals_text, results, msig)
 
 notes = ""
 if failed:
@@ -114,7 +127,7 @@ def disp_cls(v):
     return ("h2" if v >= 120 else "h1" if v >= 110 else "n" if v > 95 else "l1" if v > 90 else "l2")
 
 
-def metrics_html(r, side, lv):
+def _metrics_html(r, side, lv):
     """종목 한 줄 요약 태그. 조건에 걸린 태그는 테두리, 트리거에 걸린 태그는 채움으로 강조"""
     keys = r["sig"]["buy_k" if side == "buy" else "sell_k"]
 
@@ -152,6 +165,12 @@ def metrics_html(r, side, lv):
     g = (r["close"] / r["ma10"] - 1) * 100
     out.append(tag("", f"10일 {abs(g):.1f}% {'▲' if g >= 0 else '▼'}" + (f" · 이탈선 {m.fmt_price(r['ma10'])}" if lv == "과열" else ""),
                    "up" if g >= 0 else "dn"))
+    for lab, k in (("150일", "ma150"), ("300일", "ma300")):
+        mv = r["chart"][k][-1] if r.get("chart") else None
+        if mv:
+            gp = (r["close"] / mv - 1) * 100
+            out.append(tag("", f"{lab} {abs(gp):.0f}% {'▲' if gp >= 0 else '▼'}", "up" if gp >= 0 else "dn",
+                           f"종가가 {lab}선보다 {abs(gp):.1f}% {'위' if gp >= 0 else '아래 (위쪽 저항 가능)'}"))
     out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else "n"))
     out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
     out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "n"))
@@ -169,17 +188,17 @@ def _path(vals, x, y):
     return "".join(d)
 
 
-def svg_chart(ch, mini=False):
+def _svg_chart(ch, mini=False):
     """인라인 SVG: 종가 + 5/10/50일선 (+ RSI 패널). mini는 최근 60일 소형 차트"""
     if not ch or len(ch["close"]) < 5:
         return ""
-    sl = slice(-60, None) if mini else slice(None)
+    sl = slice(-MINI_DAYS, None) if mini else slice(None)
     g = lambda k: ch[k][sl]
     keys = ("close", "ma5", "ma20", "ma30", "ma150", "ma300")
     close = g("close")
     n = len(close)
     W = 320 if mini else 640
-    PH = 56 if mini else 170
+    PH = 64 if mini else 170
     RH = 0 if (mini or not ch.get("rsi")) else 54
     gap = 10 if RH else 0
     pl, pr = 4, (4 if mini else 50)
@@ -226,6 +245,22 @@ def svg_chart(ch, mini=False):
     return "".join(o)
 
 
+def svg_chart(ch, mini=False):
+    try:
+        return _svg_chart(ch, mini)
+    except Exception as e:
+        render_errors.append(f"차트 생성 실패: {type(e).__name__}: {e}")
+        return ""
+
+
+def metrics_html(r, side, lv):
+    try:
+        return _metrics_html(r, side, lv)
+    except Exception as e:
+        render_errors.append(f"{r.get('name')} 지표 태그 실패: {type(e).__name__}: {e}")
+        return ""
+
+
 def sig_block(head_txt, side, lv, cls):
     hit = [r for r in results if r["sig"][side] == lv]
     items = ""
@@ -245,19 +280,21 @@ sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong")
             + sig_block("비중 축소 검토 <small>(과열 + 일·주봉 중 역배열)</small>", "sell", "관심", "sell"))
 
 screen_html = ""
-for h, n, lines in m.summary_sections(results):
+for h, n, lines in guard("스크리닝", m.summary_sections, results, default=[]):
     body = E("\n".join(lines)) if n else "해당 종목 없음"
     screen_html += f'<details><summary>{E(h)} <small>{n}</small></summary><pre>{body}</pre></details>'
 
 detail_html = ""
 for r in results:
-    fl = m.flags(r)
+    fl = guard(f"{r['name']} 태그", m.flags, r, default=[])
     chips = "".join(chip(f, "buy" if f.startswith("매수") else "sell" if f.startswith("매도") else "flag") for f in fl)
     rc = "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else ""
     detail_html += (f'<details><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
                     f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
-                    f'<div class="chwrap">{svg_chart(r["chart"])}</div><pre>{E(m.detail_text(r))}</pre></details>')
+                    f'<div class="chwrap">{svg_chart(r["chart"])}</div><pre>{E(guard(r['name'] + " 세부내용", m.detail_text, r))}</pre></details>')
 
+if render_errors:
+    notes += "\n\n[화면 생성 중 오류]\n" + "\n".join(sorted(set(render_errors)))
 extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 
 page = f"""<!doctype html>
@@ -315,12 +352,20 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chart {{ width:100%; height:auto; display:block; }} .chwrap {{ padding:0 10px 6px; }} .chwrap.kospi {{ background:var(--card); border:1px solid var(--line); border-radius:12px; margin-top:8px; padding:8px 10px; }}
 .chart.mini {{ margin-top:6px; }}
 .ch-bg {{ fill:none; stroke:var(--line); }} .ch-grid {{ stroke:var(--mut); stroke-dasharray:3 3; opacity:.5; }}
-.chart path {{ fill:none; stroke-linejoin:round; stroke-linecap:round; }}
+.chart path {{ fill:none; stroke-linejoin:round; stroke-linecap:round; stroke-width:1px; vector-effect:non-scaling-stroke; }}
+.chart line {{ vector-effect:non-scaling-stroke; stroke-width:1px; }}
 .ch-close {{ stroke:var(--fg); stroke-width:1; }} .ch-ma5 {{ stroke:var(--c5); stroke-width:1; }}
 .ch-ma20 {{ stroke:var(--c20); stroke-width:1; }} .ch-ma30 {{ stroke:var(--c30); stroke-width:1; }}
 .ch-ma150 {{ stroke:var(--c150); stroke-width:1; }} .ch-ma300 {{ stroke:var(--c300); stroke-width:1; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1; }}
 .ch-dot {{ fill:var(--fg); }} .ch-t {{ fill:var(--mut); font-size:9px; }} .ch-last {{ fill:var(--fg); font-size:9.5px; font-weight:700; }}
 .ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma20 {{ fill:var(--c20); }} .ch-lma30 {{ fill:var(--c30); }} .ch-lma150 {{ fill:var(--c150); }} .ch-lma300 {{ fill:var(--c300); }}
+@media (min-width: 900px) {{
+  body {{ max-width:1180px; }}
+  .cards {{ grid-template-columns:repeat(4,1fr); }}
+  .gauges {{ grid-template-columns:1fr 1fr; align-items:start; }}
+  .sgrid, .dgrid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }}
+  .sgrid .sg, .dgrid details {{ margin-bottom:0; }}
+}}
 .none {{ color:var(--mut); font-size:.85rem; }}
 .chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
@@ -346,14 +391,14 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <h2>오늘의 매수 · 매도 시그널</h2>
-{sig_html}
+<div class="sgrid">{sig_html}</div>
 <div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 저평가·매도 관심 = 조건만 충족(방향 확인 전) / 하락 진행 중 = 싸 보이지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 일부 익절 = 과열 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있음(전량 매도보다 분할 익절을 검토하는 구간, 월봉은 참고). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하.</div>
 
 <h2>종목 스크리닝</h2>
-{screen_html}
+<div class="dgrid">{screen_html}</div>
 
 <h2>종목별 세부내용</h2>
-{detail_html}
+<div class="dgrid">{detail_html}</div>
 {extra}
 </body></html>"""
 
@@ -368,9 +413,12 @@ chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 if token and chat_id:
     text = f"장 마감 리포트 {stamp}\n\n{short_report}"
     for i in range(0, len(text), 3800):  # 텔레그램 글자 제한(4096) 대비 분할
-        r = requests.post(
-            f"https://api.telegram.org/bot{token}/sendMessage",
-            data={"chat_id": chat_id, "text": text[i:i + 3800]},
-            timeout=15,
-        )
-        print("텔레그램 전송:", r.status_code)
+        try:
+            r = requests.post(
+                f"https://api.telegram.org/bot{token}/sendMessage",
+                data={"chat_id": chat_id, "text": text[i:i + 3800]},
+                timeout=15,
+            )
+            print("텔레그램 전송:", r.status_code, "" if r.ok else r.text[:200])
+        except Exception as e:
+            print("텔레그램 전송 실패:", type(e).__name__, e)
