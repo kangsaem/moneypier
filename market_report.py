@@ -22,6 +22,7 @@ NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 포
 NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 포함
 ADD_DISP_MAX = 90   # 불타기: 50일 이격도가 과거 최대 대비 이 % 미만이어야 "과열 아님" (매도 쪽 상단 기준과 동일)
 ADD_RSI_MAX = 70    # 불타기: RSI가 이 값 미만이어야 '과열 아님'
+CHART_DAYS = 90     # 차트에 보여줄 기간(거래일). 큰 차트·소형 차트·코스피 공통
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
 
@@ -80,12 +81,25 @@ def cross_state(close, short=5, long=10):
     return out
 
 
-def chart_data(c, rs=None, n=250):
-    """차트용 최근 n거래일 데이터: 종가, 5/10/50일선(전체 기간으로 계산 후 자름), RSI"""
-    t = c.tail(n)
+def bar_ma(c, n, rule):
+    """일봉 위에 그리는 주봉/월봉 이동평균. 증권사 앱의 주봉·월봉 차트처럼 각 주(월)의 마지막 거래일에
+    n봉 이평값을 찍고 그 사이를 직선으로 잇는다(계단 없음). 마지막 점은 진행 중인 봉 = 오늘 값이라
+    cross_state의 주/월 배열 판정과 일치한다."""
+    ma = make_bars(c, rule).rolling(n).mean().dropna()
+    s = pd.Series(float("nan"), index=c.index)
+    s.loc[ma.index] = ma.values
+    return s.interpolate(limit_area="inside")
+
+
+def chart_data(c, rs=None, n=None):
+    """차트용 최근 n거래일 데이터: 종가, 5/20일선, 5/10주선, 5/10월선(전체 기간으로 계산 후 자름), RSI.
+    ma30/ma150/ma300은 차트에 그리지 않지만 신호 로직(불타기 추세 판단)에서 아직 쓰므로 함께 넘긴다."""
+    t = c.tail(n or CHART_DAYS)
     def lst(x):
         return [None if pd.isna(v) else float(v) for v in x.reindex(t.index)]
     return {"dates": [d.strftime("%y.%m.%d") for d in t.index], "close": [float(v) for v in t],
+            "w5": lst(bar_ma(c, 5, "W-FRI")), "w10": lst(bar_ma(c, 10, "W-FRI")),
+            "m5": lst(bar_ma(c, 5, "ME")), "m10": lst(bar_ma(c, 10, "ME")),
             "ma5": lst(c.rolling(5).mean()), "ma20": lst(c.rolling(20).mean()), "ma30": lst(c.rolling(30).mean()),
             "ma150": lst(c.rolling(150).mean()), "ma300": lst(c.rolling(300).mean()),
             "rsi": lst(rs) if rs is not None else None}

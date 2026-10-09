@@ -11,7 +11,7 @@ import requests
 
 import market_report as m
 
-MINI_DAYS = 250      # 시그널 카드 소형 차트 기간(거래일). 큰 차트·코스피와 같게 맞춤
+MINI_DAYS = m.CHART_DAYS   # 시그널 카드 소형 차트 기간. 기간은 market_report.py의 CHART_DAYS에서 바꾼다
 render_errors = []
 
 
@@ -170,7 +170,7 @@ def _metrics_html(r, side, lv):
                        "눌림 기준선(20일선) 대비 종가 위치"))
     out.append(tag("", f"10일 {abs(g):.1f}% {'▲' if g >= 0 else '▼'}" + (f" · 이탈선 {m.fmt_price(r['ma10'])}" if lv == "과열" else ""),
                    "up" if g >= 0 else "dn"))
-    for lab, k in (("150일", "ma150"), ("300일", "ma300")):
+    for lab, k in (("10주", "w10"), ("10월", "m10")):
         mv = r["chart"][k][-1] if r.get("chart") else None
         if mv:
             gp = (r["close"] / mv - 1) * 100
@@ -194,12 +194,12 @@ def _path(vals, x, y):
 
 
 def _svg_chart(ch, mini=False):
-    """인라인 SVG: 종가 + 5/10/50일선 (+ RSI 패널). mini는 최근 60일 소형 차트"""
+    """인라인 SVG: 이평선(5·20일, 5·10주, 5·10월) + 오늘 종가 점 (+ RSI 패널). 종가 선은 그리지 않는다"""
     if not ch or len(ch["close"]) < 5:
         return ""
     sl = slice(-MINI_DAYS, None) if mini else slice(None)
     g = lambda k: ch[k][sl]
-    keys = ("close", "ma5", "ma20", "ma30", "ma150", "ma300")
+    keys = ("ma5", "ma20", "w5", "w10", "m5", "m10")
     close = g("close")
     n = len(close)
     W = 320 if mini else 640
@@ -209,7 +209,7 @@ def _svg_chart(ch, mini=False):
     pl, pr = 4, (4 if mini else 50)
     pt, pb = (4 if mini else 18), (0 if mini else 16)
     H = pt + PH + gap + RH + pb
-    vals = [v for k in keys for v in g(k) if v is not None]
+    vals = [v for k in keys for v in g(k) if v is not None] + [close[-1]]   # 오늘 종가 점이 범위 안에 들도록
     lo, hi = min(vals), max(vals)
     if hi == lo:
         hi = lo + 1
@@ -222,15 +222,15 @@ def _svg_chart(ch, mini=False):
     for k in keys[::-1]:
         o.append(f'<path class="ch-{k}" d="{_path(g(k), x, y)}"/>')
     ly = y(close[-1])
-    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="2"/>')
+    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="{2.5 if mini else 3}"/>')
     if not mini:
         for v, ypos in ((hi - m_, y(hi - m_)), (lo + m_, y(lo + m_))):
             if abs(ypos - ly) < 10:      # 현재가 라벨과 겹치면 최고·최저 라벨은 생략
                 continue
             o.append(f'<text class="ch-t" x="{W - pr + 4}" y="{ypos + 3:.1f}">{m.fmt_price(v)}</text>')
         o.append(f'<text class="ch-last" x="{W - pr + 4}" y="{ly + 3:.1f}">{m.fmt_price(close[-1])}</text>')
-        for i, (lab, cls) in enumerate((("종가", "close"), ("5일", "ma5"), ("20일", "ma20"), ("30일", "ma30"), ("150일", "ma150"), ("300일", "ma300"))):
-            o.append(f'<text class="ch-lg ch-l{cls}" x="{pl + 2 + i * 54}" y="11">● {lab}</text>')
+        for i, (lab, cls) in enumerate((("오늘 종가", "close"), ("5일", "ma5"), ("20일", "ma20"), ("5주", "w5"), ("10주", "w10"), ("5월", "m5"), ("10월", "m10"))):
+            o.append(f'<text class="ch-lg ch-l{cls}" x="{pl + 2 + i * 50 + (14 if i else 0)}" y="11">● {lab}</text>')
         o.append(f'<text class="ch-t" x="{pl}" y="{H - 3}">{ch["dates"][sl][0]}</text>')
         o.append(f'<text class="ch-t" x="{W - pr}" y="{H - 3}" text-anchor="end">{ch["dates"][sl][-1]}</text>')
         if RH:
@@ -309,9 +309,9 @@ page = f"""<!doctype html>
 <title>장 마감 리포트</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
-  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#e08a00; --c30:#16a34a; --c150:#2563eb; --c300:#7c3aed; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1; }}
+  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#dc2626; --cw5:#84cc16; --cw10:#15803d; --cm5:#2563eb; --cm10:#1e3a8a; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#f472b6; --c20:#fbbf24; --c30:#4ade80; --c150:#60a5fa; --c300:#c4a1ff; --sky:#38bdf8; --skybg:#0c2a3d; --skyfg:#7dd3fc; }} }}
+  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#f472b6; --c20:#f87171; --cw5:#a3e635; --cw10:#22c55e; --cm5:#60a5fa; --cm10:#818cf8; --sky:#38bdf8; --skybg:#0c2a3d; --skyfg:#7dd3fc; }} }}
 * {{ box-sizing:border-box; }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0; padding:14px; line-height:1.5; max-width:760px; margin-inline:auto; }}
 h1 {{ font-size:1.3rem; margin:4px 0 2px; }}
@@ -362,10 +362,10 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chart path {{ fill:none; stroke-linejoin:round; stroke-linecap:round; stroke-width:1px; vector-effect:non-scaling-stroke; }}
 .chart line {{ vector-effect:non-scaling-stroke; stroke-width:1px; }}
 .ch-close {{ stroke:var(--fg); stroke-width:1; }} .ch-ma5 {{ stroke:var(--c5); stroke-width:1; }}
-.ch-ma20 {{ stroke:var(--c20); stroke-width:1; }} .ch-ma30 {{ stroke:var(--c30); stroke-width:1; }}
-.ch-ma150 {{ stroke:var(--c150); stroke-width:1; }} .ch-ma300 {{ stroke:var(--c300); stroke-width:1; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1; }}
+.ch-ma20 {{ stroke:var(--c20); stroke-width:1; }} .ch-w5 {{ stroke:var(--cw5); stroke-width:1; }} .ch-w10 {{ stroke:var(--cw10); stroke-width:1; }}
+.ch-m5 {{ stroke:var(--cm5); stroke-width:1; }} .ch-m10 {{ stroke:var(--cm10); stroke-width:1; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1; }}
 .ch-dot {{ fill:var(--fg); }} .ch-t {{ fill:var(--mut); font-size:9px; }} .ch-last {{ fill:var(--fg); font-size:9.5px; font-weight:700; }}
-.ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma20 {{ fill:var(--c20); }} .ch-lma30 {{ fill:var(--c30); }} .ch-lma150 {{ fill:var(--c150); }} .ch-lma300 {{ fill:var(--c300); }}
+.ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma20 {{ fill:var(--c20); }} .ch-lw5 {{ fill:var(--cw5); }} .ch-lw10 {{ fill:var(--cw10); }} .ch-lm5 {{ fill:var(--cm5); }} .ch-lm10 {{ fill:var(--cm10); }}
 @media (min-width: 900px) {{
   body {{ max-width:1180px; }}
   .cards {{ grid-template-columns:repeat(4,1fr); }}
@@ -392,7 +392,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>시장 현황</h2>
 <div class="cards">{"".join(cards)}</div>
-{('<div class="chwrap kospi"><div class="cl">코스피 최근 1년</div>' + svg_chart(ks["chart"]) + '</div>') if ks and ks.get("chart") else ""}
+{('<div class="chwrap kospi"><div class="cl">코스피 최근 ' + str(m.CHART_DAYS) + '거래일</div>' + svg_chart(ks["chart"]) + '</div>') if ks and ks.get("chart") else ""}
 
 <h2>시장 위험 · 바닥 지표</h2>
 <div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
