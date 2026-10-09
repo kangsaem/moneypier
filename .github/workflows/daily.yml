@@ -2,7 +2,8 @@ name: daily-report
 
 on:
   schedule:
-    - cron: "30 7 * * 1-5"   # UTC 07:30 = 한국시간 평일 16:30
+    - cron: "30 7 * * 1-5"   # UTC 07:30 = 한국시간 평일 16:30 (한국장 마감 후)
+    - cron: "10 22 * * 1-5"  # UTC 22:10 = 한국시간 화~토 07:10 (미국장 마감 후, 서머타임 여부와 무관)
   push:
     paths: ["tickers.json"]   # 북마클릿으로 종목이 갱신되면 즉시 실행
   workflow_dispatch:          # 수동 실행 버튼
