@@ -84,7 +84,7 @@ def analyze(code, name):
     rs = rsi(c)
     r = {"code": code, "name": name, "last": c.index[-1], "close": float(c.iloc[-1]),
          "rsi": float(rs.iloc[-1]), "rsi_prev": float(rs.iloc[-2]),
-         "rsi_min5": float(rs.tail(5).min()), "rsi_max5": float(rs.tail(5).max()),
+         "ma10": float(c.rolling(10).mean().iloc[-1]), "rsi_min5": float(rs.tail(5).min()), "rsi_max5": float(rs.tail(5).max()),
          "day": cross_state(c), "week": cross_state(make_bars(c, "W-FRI")),
          "month": cross_state(make_bars(c, "ME"))}
 
@@ -141,8 +141,14 @@ def stock_signals(r):
     def level(c, t):
         return "타점" if (len(c) >= 2 and t) else ("관심" if len(c) >= 2 else None)
 
+    # 추세 판단: 일봉·주봉이 모두 정배열(월봉은 계산 가능할 때만 확인)이면 '강한 상승추세'
+    wk, mo = r["week"], r["month"]
+    strong_up = bool(dy["ok"] and dy["above"] and wk["ok"] and wk["above"] and (not mo["ok"] or mo["above"]))
+    sell = level(sell_c, sell_t)
+    if sell == "관심" and strong_up:
+        sell = "과열"          # 과열이지만 추세는 살아 있음 → 매도 신호가 아니라 '이익 보호' 구간
     return {"buy": level(buy_c, buy_t), "buy_c": buy_c, "buy_t": buy_t,
-            "sell": level(sell_c, sell_t), "sell_c": sell_c, "sell_t": sell_t}
+            "sell": sell, "sell_c": sell_c, "sell_t": sell_t, "strong_up": strong_up}
 
 
 # ---------------------------------------------------------------- 분류
@@ -283,13 +289,30 @@ def market_text(snap):
     return "\n".join(L)
 
 
+def extra_line(r, lv=None):
+    """시그널 카드 하단: 이격도 현재/최대/최소 + 배열 상태 + (과열이면) 이탈 기준"""
+    d = r["disp"]
+    parts = []
+    if d:
+        parts.append(f"50일 이격도 현재 {d['cur']:.1f} (최대 {d['max']:.1f} / 최소 {d['min']:.1f})")
+    st = []
+    for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
+        x = r[k]
+        st.append(f"{lb}{'정' if x['above'] else '역'}" if x["ok"] else f"{lb}-")
+    parts.append("배열 " + "/".join(st))
+    if lv == "과열":
+        parts.append(f"추세 이탈 기준: 10일선 {fmt_price(r['ma10'])} (종가 {r['close'] / r['ma10'] * 100 - 100:+.1f}% 위)")
+    return " · ".join(parts)
+
+
 def signals_text(results, msig):
     L = ["■ 0. 오늘의 시그널 (참고용 규칙 기반 신호)"]
     for key, nm in (("risk", "시장 위험"), ("bottom", "시장 바닥")):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
-    groups = (("매수 타점", "buy", "타점"), ("매수 관심", "buy", "관심"), ("매도 타점", "sell", "타점"), ("매도 관심", "sell", "관심"))
+    groups = (("매수 타점", "buy", "타점"), ("매수 관심", "buy", "관심"), ("매도 타점", "sell", "타점"),
+              ("과열 · 추세 유지 (매도 아님, 이익 보호 구간)", "sell", "과열"), ("매도 관심 (추세 약화)", "sell", "관심"))
     for head, side, lv in groups:
         hit = [r for r in results if r["sig"][side] == lv]
         L.append(f"\n▶ {head} [{len(hit)}]")
@@ -299,6 +322,7 @@ def signals_text(results, msig):
             sg = r["sig"]
             L.append(f"• {tl(r)}")
             L.append("    조건: " + ", ".join(sg[side + "_c"]) + (" | 트리거: " + ", ".join(sg[side + "_t"]) if sg[side + "_t"] else ""))
+            L.append("    " + extra_line(r, lv))
     return "\n".join(L)
 
 

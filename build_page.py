@@ -116,13 +116,16 @@ def sig_block(head_txt, side, lv, cls):
         sg = r["sig"]
         why = "".join(chip(c, "cond") for c in sg[side + "_c"]) + "".join(chip(t, "trig") for t in sg[side + "_t"])
         items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
-                  f'<em>RSI {r["rsi"]:.0f}</em></div><div class="why">{why}</div></div>')
+                  f'<em>RSI {r["rsi"]:.0f}</em></div><div class="why">{why}</div>'
+                  f'<div class="ex">{E(m.extra_line(r, lv))}</div></div>')
     body = items or '<div class="none">해당 종목 없음</div>'
     return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
 
 
 sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong") + sig_block("매수 관심", "buy", "관심", "buy")
-            + sig_block("매도 타점", "sell", "타점", "sell strong") + sig_block("매도 관심", "sell", "관심", "sell"))
+            + sig_block("매도 타점", "sell", "타점", "sell strong")
+            + sig_block("과열 · 추세 유지 <small>(매도 아님, 이익 보호 구간)</small>", "sell", "과열", "hot")
+            + sig_block("매도 관심 <small>(추세 약화)</small>", "sell", "관심", "sell"))
 
 screen_html = ""
 for h, n, lines in m.summary_sections(results):
@@ -179,6 +182,8 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .sg.buy h3 {{ color:var(--buy); }} .sg.sell h3 {{ color:var(--sell); }}
 .sig {{ padding:7px 0; border-top:1px solid var(--line); }} .sig:first-of-type {{ border-top:0; }}
 .sh {{ display:flex; gap:8px; align-items:baseline; }} .sh span {{ color:var(--mut); font-size:.75rem; }} .sh em {{ margin-left:auto; font-style:normal; font-size:.8rem; }}
+.ex {{ font-size:.75rem; color:var(--mut); margin-top:2px; }}
+.sg.hot {{ border-left-color:var(--warn); }} .sg.hot h3 {{ color:var(--warn); }}
 .none {{ color:var(--mut); font-size:.85rem; }}
 .chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
@@ -204,7 +209,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>오늘의 매수 · 매도 시그널</h2>
 {sig_html}
-<div class="legend">타점 = 조건(싸다/과열) 2개 이상 + 트리거(크로스·RSI 방향전환) 1개 이상 / 관심 = 조건만 충족. 한국 관례대로 매수=빨강, 매도=파랑.</div>
+<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 관심 = 조건만 충족 / 과열 = 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있는 종목. 한국 관례대로 매수=빨강, 매도=파랑.</div>
 
 <h2>종목 스크리닝</h2>
 {screen_html}
