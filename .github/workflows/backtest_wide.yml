@@ -1,12 +1,17 @@
 name: backtest-wide
 
-# 넓은 백테스트: 코스피 시가총액 상위 종목 · 최근 약 5년 (30~60분 걸려서 매일 돌리지 않고 필요할 때만 수동 실행)
-# 결과는 results/backtest_wide.html 로 저장소에 커밋되고, 끝나면 daily-report를 다시 돌려 페이지에 올린다.
+# 넓은 백테스트: 코스피 시가총액 상위 또는 나스닥 대형주 · 최근 약 5년 (30~60분 걸려서 필요할 때만 수동 실행)
+# 결과는 results/backtest_wide.html(코스피) / results/backtest_nasdaq.html(나스닥)로 커밋되고, 끝나면 daily-report를 다시 돌려 페이지에 올린다.
 on:
   workflow_dispatch:
     inputs:
+      market:
+        description: "시장"
+        type: choice
+        options: [kospi, nasdaq]
+        default: kospi
       top:
-        description: "코스피 시가총액 상위 몇 개"
+        description: "상위 몇 개 (나스닥은 최대 50)"
         default: "50"
       days:
         description: "기간(거래일, 1260 ≈ 5년)"
@@ -28,16 +33,17 @@ jobs:
       - run: pip install -r requirements.txt
       - run: python backtest.py
         env:
-          BT_UNIVERSE: kospi
+          BT_UNIVERSE: ${{ inputs.market }}
           BT_TOP: ${{ inputs.top }}
           BT_DAYS: ${{ inputs.days }}
-          BT_OUT: results/backtest_wide
+          BT_OUT: ${{ inputs.market == 'nasdaq' && 'results/backtest_nasdaq' || 'results/backtest_wide' }}
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add results/
-          git commit -m "넓은 백테스트 결과 갱신" || exit 0
+          git commit -m "넓은 백테스트 결과 갱신 (${{ inputs.market }})" || exit 0
+          git pull --rebase origin ${{ github.ref_name }}   # 실행 중에 다른 파일이 올라왔어도 저장되도록
           git push
       - name: 리포트 다시 배포
         run: gh workflow run daily.yml --ref ${{ github.ref_name }}
