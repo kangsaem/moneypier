@@ -350,9 +350,11 @@ SG_CLS = {"매수": "buy strong", "매도": "sell strong", "불타기": "add", "
 sig_html = "".join(sig_block(nm, side, lv, SG_CLS[nm]) for nm, side, lv, _ in m.SIGNAL_GROUPS)
 
 screen_html = ""
-for h, n, lines in guard("스크리닝", m.summary_sections, results, default=[]):
+for h, n, lines, tone in guard("스크리닝", m.summary_sections, results, default=[]):
     body = E("\n".join(lines)) if n else "해당 종목 없음"
-    screen_html += f'<details><summary>{E(h)} <small>{n}</small></summary><pre>{body}</pre></details>'
+    # 종목이 있는 탭만 색: 골든·이격도 최소권=분홍, 데드·이격도 최대권=하늘, 과열=노랑
+    tcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"', "hot": ' class="dhot"'}.get(tone, "") if n else ""
+    screen_html += f'<details{tcls}><summary>{E(h)} <small>{n}</small></summary><pre>{body}</pre></details>'
 
 detail_html = ""
 for r in results:
@@ -459,7 +461,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chip.buy {{ background:var(--buybg); color:var(--buy); border-color:var(--buy); font-weight:600; }}
 .chip.sell {{ background:var(--sellbg); color:var(--sell); border-color:var(--sell); font-weight:600; }}
 .chip.flag {{ color:var(--mut); }} .chip.flag.watch {{ color:var(--fg); border-color:var(--mut); }}
-details.dbuy {{ background:var(--buybg); }} details.dsell {{ background:var(--sellbg); }}
+details.dbuy {{ background:var(--buybg); }} details.dsell {{ background:var(--sellbg); }} details.dhot {{ background:var(--warnbg); }}
 details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; }}
 summary {{ cursor:pointer; padding:10px 12px; font-size:.9rem; }} .code {{ color:var(--mut); font-size:.75rem; }}
 .rsi {{ font-size:.75rem; padding:1px 6px; border-radius:6px; background:var(--line); }}

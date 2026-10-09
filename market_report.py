@@ -514,11 +514,12 @@ def signals_text(results, msig):
 
 
 # ---------------------------------------------------------------- 2. 스크리닝
-def section(head, items, lines_fn):
+def section(head, items, lines_fn, tone=""):
+    """(제목, 종목수, 줄목록, 색) — 색: buy=분홍, sell=하늘, hot=노랑, ''=없음 (종목이 있을 때만 칠함)"""
     lines = []
     for r in items:
         lines.extend(lines_fn(r))
-    return (head, len(items), lines)
+    return (head, len(items), lines, tone)
 
 
 def summary_sections(results):
@@ -530,11 +531,18 @@ def summary_sections(results):
         hit = [r for r in results if cross_count(r, golden) == k]
         nm = "골든" if golden else "데드"
         return section(f"{nm}크로스 X{k}  (최근: 일 {CROSS_WIN['day']}거래일 · 주 {CROSS_WIN['week']}주 · 월 {CROSS_WIN['month']}개월 이내)",
-                       hit, lambda r: [f"• {tl(r)}", trans_line(r)])
+                       hit, lambda r: [f"• {tl(r)}", trans_line(r)], "buy" if golden else "sell")
 
     for golden in (True, False):
         for k in (3, 2):
             S.append(xsec(golden, k))
+
+    # 과열 종목: 과열 조건(RSI·이격도·5일 급등) 2개 이상 — 매도/익절검토/비중축소 어디로 분류됐든 모아서 표시
+    hot = [r for r in results if len(r["sig"]["sell_c"]) >= 2]
+    grp = lambda r: next((nm for nm, side, lv, _ in SIGNAL_GROUPS if side == "sell" and r["sig"]["sell"] == lv), "")
+    S.append(section("과열 종목 (과열 조건 2개 이상)", hot,
+                     lambda r: [f"• {tl(r)}" + (f"  → {grp(r)}" if grp(r) else ""),
+                                "    " + ", ".join(r["sig"]["sell_c"])], "hot"))
 
     # 5일간 큰 변동
     mv = sorted([r for r in results if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT],
@@ -551,17 +559,17 @@ def summary_sections(results):
     S.append(section(f"50일 이격도가 과거 최대 × {NEAR_MAX:g} 이상", hi,
                      lambda r: [f"• {tl(r)}",
                                 f"    현재 {r['disp']['cur']:.1f} ≥ 기준 {r['disp']['max_thr']:.1f}"
-                                f" (과거 최대 {r['disp']['max']:.1f}, {r['disp']['max_date']:%y.%m.%d}){note(r)}"]))
+                                f" (과거 최대 {r['disp']['max']:.1f}, {r['disp']['max_date']:%y.%m.%d}){note(r)}"], "sell"))
     S.append(section(f"50일 이격도가 과거 최소 × {NEAR_MIN:g} 이하", lo,
                      lambda r: [f"• {tl(r)}",
                                 f"    현재 {r['disp']['cur']:.1f} ≤ 기준 {r['disp']['min_thr']:.1f}"
-                                f" (과거 최소 {r['disp']['min']:.1f}, {r['disp']['min_date']:%y.%m.%d}){note(r)}"]))
+                                f" (과거 최소 {r['disp']['min']:.1f}, {r['disp']['min_date']:%y.%m.%d}){note(r)}"], "buy"))
     return S
 
 
 def summary_text(results):
     L = ["■ 2. 종목 스크리닝", "표기: 일/주/월 = 5선·10선 기준, ▲역→정배열(골든) ▼정→역배열(데드), 괄호는 전환 후 경과"]
-    for head, n, lines in summary_sections(results):
+    for head, n, lines, _ in summary_sections(results):
         L.append(f"\n▶ {head}  [{n}]")
         L.extend(lines if n else ["  해당 종목 없음"])
     return "\n".join(L)
