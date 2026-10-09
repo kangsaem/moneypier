@@ -65,7 +65,7 @@ for t in tickers:
         failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
 
 snap = guard("시장 지표 수집", m.market_snapshot,
-             default={"ks": None, "vix": None, "y10": None, "y30": None, "err": ["시장 지표 수집 실패"]})
+             default={"ks": None, "vix": None, "y10": None, "y30": None, "idx": {}, "err": ["시장 지표 수집 실패"]})
 msig = guard("위험·바닥 지표 계산", m.market_signals, snap, results,
              default={"risk": {"items": [], "score": 0, "total": 0, "label": "계산 실패", "cls": "lv0"}, "bottom": {"items": [], "score": 0, "total": 0, "label": "계산 실패", "cls": "lv0"}})
 head = guard("시장 지표 문구", m.market_text, snap)
@@ -83,6 +83,11 @@ short_report = head + "\n\n" + sigs + notes + link          # 텔레그램용(�
 
 kst = datetime.now(timezone.utc) + timedelta(hours=9)
 stamp = f"{kst:%Y-%m-%d %H:%M} KST"
+# 시간대별 리포트 종류: 05:00~15:29 = 미장 마감 리포트(S&P500·나스닥 차트), 그 외 = 국장 마감 리포트(코스피·코스닥 차트)
+_hm = kst.hour * 100 + kst.minute
+IS_US = 500 <= _hm < 1530
+TITLE = "미장 마감 리포트" if IS_US else "국장 마감 리포트"
+CHART_IDX = ("spx", "ndx") if IS_US else ("kospi", "kosdaq")
 E = html.escape
 
 
@@ -98,16 +103,46 @@ def updown(x):
     return "up" if x > 0 else "dn" if x < 0 else ""
 
 
+def index_tags(v):
+    """지수 카드 태그: 50일 이격도 숫자(과거 최소/최대) + RSI. 색은 종목 태그와 같은 규칙"""
+    out = ""
+    d = v.get("disp")
+    if d:
+        dv = m.disp_view(d)
+        cls = ("h2" if dv["strong"] else "h1") if dv["side"] == "high" else ("l2" if dv["strong"] else "l1")
+        out += f'<span class="mt {cls}">이격도 {d["cur"]:.1f} ({m._n(d["min"])}/{m._n(d["max"])})</span>'
+    r_ = v.get("rsi")
+    if r_ is not None:
+        out += f'<span class="mt {"hot" if r_ >= 70 else "cold" if r_ <= 30 else "n"}">RSI {r_:.0f}</span>'
+    return f'<div class="mtags">{out}</div>' if out else ""
+
+
+def mcard(name, value, chg_txt, ud, extra=""):
+    return (f'<div class="mc {ud}"><span class="mn">{E(name)}</span>'
+            f'<div class="mv"><b>{E(value)}</b><span class="mg">{E(chg_txt)}</span></div>{extra}</div>')
+
+
 cards = []
 ks = snap.get("ks")
-if ks:
-    cards.append(card("코스피", f"{ks['close']:,.0f}", f"{ks['chg']:+.2f}% · 이격도 {ks['disp']:.0f} · RSI {ks['rsi']:.0f}", updown(ks["chg"])))
-for key, nm, unit in (("vix", "VIX", ""), ("y10", "미국채 10년", "%"), ("y30", "미국채 30년", "%")):
-    v = snap.get(key)
+idx = snap.get("idx") or {}
+for key in ("kospi", "kosdaq"):      # 상단 카드는 코스피·코스닥(이격도 포함)·VIX 3개만
+    v = idx.get(key)
     if v:
-        cards.append(card(nm, f"{v['last']:.2f}{unit}", f"전일 대비 {v['chg']:+.2f}", updown(v["chg"])))
+        cards.append(mcard(v["name"], f"{v['close']:,.2f}", f"{v['chg']:+.2f}%", updown(v["chg"]), index_tags(v)))
+v = snap.get("vix")
+if v:
+    prev = v["last"] - v["chg"]
+    cards.append(mcard("VIX", f"{v['last']:.2f}", f"{v['chg'] / prev * 100:+.2f}%" if prev else f"{v['chg']:+.2f}", updown(v["chg"])))
 for e in snap.get("err", []):
-    cards.append(card("실패", e, "", "bad"))
+    cards.append(f'<div class="mc bad"><span class="mn">실패</span><b>{E(e)}</b></div>')
+
+
+def index_chart(key):
+    v = idx.get(key)
+    if not v or not v.get("chart"):
+        return ""
+    return (f'<div class="chwrap kospi"><div class="cl">{E(v["name"])} 최근 {m.CHART_DAYS}거래일</div>'
+            + svg_chart(v["chart"]) + "</div>")
 
 
 def gauge(key, title):
@@ -260,9 +295,9 @@ def _svg_chart(ch, mini=False):
             o.append(f'<path class="ch-{k} ch-f" d="{_path(proj[k], xf, y)}"/>')
     ly = y(close[-1])
     o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="3"/>')
-    # 가격 숫자: 그림 영역 안쪽 오른쪽 끝
-    cy_ = min(max(ly - 5, pt + 10), pt + PH - 16)        # 현재가 라벨 위치(영역 밖으로 안 나가게)
-    o.append(f'<text class="ch-last ch-in" x="{tx}" y="{cy_:.1f}" text-anchor="end">{m.fmt_price(close[-1])}</text>')
+    # 오늘 종가: 검은 점 바로 오른쪽, 카드 숫자와 같은 크기(HTML로 겹쳐 그려 화면 폭과 무관하게 크기 유지)
+    lbl = (f'<span class="lastlbl" style="left:{(x(n - 1) + 6) / W * 100:.2f}%;top:{ly / H * 100:.2f}%">'
+           f'{m.fmt_price(close[-1])}</span>')
     o.append(f'<text class="ch-t" x="{pl}" y="{H - 3}">{ch["dates"][0]}</text>')
     o.append(f'<text class="ch-t" x="{x(n - 1):.1f}" y="{H - 3}" text-anchor="middle">{ch["dates"][-1]}</text>')
     if RH:
@@ -279,7 +314,7 @@ def _svg_chart(ch, mini=False):
         if last is not None:
             o.append(f'<text class="ch-last ch-in" x="{tx}" y="{y2(last) + 3:.1f}" text-anchor="end">RSI {last:.0f}</text>')
     o.append("</svg>")
-    return legend_html(ch) + "".join(o)
+    return legend_html(ch) + '<div class="svgbox">' + "".join(o) + lbl + "</div>"
 
 
 def svg_chart(ch, mini=False):
@@ -310,13 +345,9 @@ def sig_block(head_txt, side, lv, cls):
 
 
 # 순서: 매수 / 매도 / 불타기 / 익절 검토 / 비중 축소 / 하락 진행 / 반등 대기  (market_report.SIGNAL_GROUPS와 같은 순서)
-sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong")
-            + sig_block("매도 검토 <small>(과열 + 꺾임 확인)</small>", "sell", "타점", "sell strong")
-            + sig_block("불타기 후보 <small>(추세 유지 · 과열 아님 · 20일선 눌림 후 반등)</small>", "add", "후보", "add")
-            + sig_block("일부 익절 검토 <small>(과열 · 추세는 유지)</small>", "sell", "과열", "hot")
-            + sig_block("비중 축소 검토 <small>(과열 + 일·주봉 중 역배열)</small>", "sell", "관심", "sell")
-            + sig_block("하락 진행 중 <small>(매수 보류)</small>", "buy", "보류", "hold")
-            + sig_block("저평가 · 반등 대기 <small>(방향 확인 전)</small>", "buy", "관심", "buy"))
+SG_CLS = {"매수": "buy strong", "매도": "sell strong", "불타기": "add", "익절검토": "hot",
+          "비중축소": "sell", "하락진행": "hold", "반등대기": "buy"}
+sig_html = "".join(sig_block(nm, side, lv, SG_CLS[nm]) for nm, side, lv, _ in m.SIGNAL_GROUPS)
 
 screen_html = ""
 for h, n, lines in guard("스크리닝", m.summary_sections, results, default=[]):
@@ -326,9 +357,12 @@ for h, n, lines in guard("스크리닝", m.summary_sections, results, default=[]
 detail_html = ""
 for r in results:
     fl = guard(f"{r['name']} 태그", m.flags, r, default=[])
-    chips = "".join(chip(f, "buy" if f.startswith("매수") else "sell" if f.startswith("매도") else "flag") for f in fl)
+    tone = dict(m.sig_groups(r))
+    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch"}.get(tone.get(f), "flag")) for f in fl)
+    tones = [t for _, t in m.sig_groups(r) if t != "watch"]
+    dcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"'}.get(tones[0] if tones else "", "")   # 매수 쪽 연분홍, 매도 쪽 연하늘
     rc = "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else ""
-    detail_html += (f'<details><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
+    detail_html += (f'<details{dcls}><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
                     f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
                     f'<div class="chwrap">{svg_chart(r["chart"])}</div><pre>{E(guard(r['name'] + " 세부내용", m.detail_text, r))}</pre></details>')
 
@@ -339,7 +373,7 @@ extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 page = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>장 마감 리포트</title>
+<title>{TITLE}</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
   --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#dc2626; --cw5:#84cc16; --cw10:#15803d; --cm5:#2563eb; --cm10:#1e3a8a; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1; }}
@@ -412,6 +446,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 @media (min-width: 900px) {{
   body {{ max-width:1180px; }}
   .cards {{ grid-template-columns:repeat(4,1fr); }}
+  .idxch {{ grid-template-columns:1fr 1fr; }}
   .gauges {{ grid-template-columns:1fr 1fr; align-items:start; }}
   .dgrid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }}
   .dgrid details {{ margin-bottom:0; }}
@@ -422,7 +457,8 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
 .chip.buy {{ background:var(--buybg); color:var(--buy); border-color:var(--buy); font-weight:600; }}
 .chip.sell {{ background:var(--sellbg); color:var(--sell); border-color:var(--sell); font-weight:600; }}
-.chip.flag {{ color:var(--mut); }}
+.chip.flag {{ color:var(--mut); }} .chip.flag.watch {{ color:var(--fg); border-color:var(--mut); }}
+details.dbuy {{ background:var(--buybg); }} details.dsell {{ background:var(--sellbg); }}
 details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; }}
 summary {{ cursor:pointer; padding:10px 12px; font-size:.9rem; }} .code {{ color:var(--mut); font-size:.75rem; }}
 .rsi {{ font-size:.75rem; padding:1px 6px; border-radius:6px; background:var(--line); }}
@@ -430,20 +466,26 @@ summary {{ cursor:pointer; padding:10px 12px; font-size:.9rem; }} .code {{ color
 pre {{ white-space:pre-wrap; word-break:break-all; font-size:.78rem; line-height:1.55; margin:0; padding:2px 12px 12px; font-family:ui-monospace,Menlo,Consolas,monospace; }}
 pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 .legend {{ font-size:.75rem; color:var(--mut); margin-top:6px; }}
+.sec {{ margin-top:14px; }}
+:root {{ --bignum:1.15rem; }}
+.mcards {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }}
+.mc {{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:5px 8px; display:flex; flex-direction:column; line-height:1.3; }}
+.mc .mn {{ font-size:.72rem; color:var(--mut); }} .mc .mv {{ display:flex; flex-wrap:wrap; align-items:baseline; column-gap:6px; }}
+.mc b {{ font-size:var(--bignum); }} .mc .mg {{ font-size:.75rem; }} .mc .mtags {{ display:flex; flex-wrap:wrap; gap:3px; margin-top:3px; }} .mc .mt {{ white-space:normal; }}
+.svgbox {{ position:relative; }} .lastlbl {{ position:absolute; transform:translateY(-50%); font-size:var(--bignum); font-weight:700; line-height:1; white-space:nowrap; color:var(--fg); text-shadow:0 0 3px var(--card),0 0 3px var(--card),0 0 2px var(--card); pointer-events:none; }}
+.mc.up .mg, .mc.up b {{ color:var(--buy); }} .mc.dn .mg, .mc.dn b {{ color:var(--sell); }} .mc.bad {{ background:var(--warnbg); }}
+.idxch {{ display:grid; gap:8px; }}
 </style></head><body>
-<h1>장 마감 리포트</h1>
+<h1>{TITLE}</h1>
 <div class="t">갱신 {stamp} · 규칙 기반 참고 신호이며 투자 판단 책임은 본인에게 있습니다</div>
 
-<h2>시장 현황</h2>
-<div class="cards">{"".join(cards)}</div>
-{('<div class="chwrap kospi"><div class="cl">코스피 최근 ' + str(m.CHART_DAYS) + '거래일</div>' + svg_chart(ks["chart"]) + '</div>') if ks and ks.get("chart") else ""}
+<div class="mcards">{"".join(cards)}</div>
+<div class="idxch">{"".join(index_chart(k) for k in CHART_IDX)}</div>
 
-<h2>시장 위험 · 바닥 지표</h2>
-<div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
+<div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
-<h2>오늘의 매수 · 매도 시그널</h2>
-<div class="sgrid">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 저평가·매도 관심 = 조건만 충족(방향 확인 전) / 하락 진행 중 = 싸 보이지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 일부 익절 = 과열 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있음(전량 매도보다 분할 익절을 검토하는 구간, 월봉은 참고). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하.</div>
+<div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
+<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 하락진행 = 싸지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하. 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
 
 <h2>종목 스크리닝</h2>
 <div class="dgrid">{screen_html}</div>
@@ -462,7 +504,7 @@ print("docs/index.html 생성 완료")
 token = os.environ.get("TELEGRAM_TOKEN")
 chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 if token and chat_id:
-    text = f"장 마감 리포트 {stamp}\n\n{short_report}"
+    text = f"{TITLE} {stamp}\n\n{short_report}"
     for i in range(0, len(text), 3800):  # 텔레그램 글자 제한(4096) 대비 분할
         try:
             r = requests.post(

@@ -247,6 +247,24 @@ def stock_signals(r):
 
 
 # ---------------------------------------------------------------- 분류
+# 시그널 분류: (표시 이름, 신호 쪽, 내부 단계, 성격). 화면·칩·텍스트가 모두 이 이름과 순서를 쓴다.
+# 성격: buy = 사는 쪽(세부내용 탭 연분홍), sell = 파는 쪽(연하늘), watch = 지켜보기(색 없음)
+SIGNAL_GROUPS = (
+    ("매수", "buy", "타점", "buy"),
+    ("매도", "sell", "타점", "sell"),
+    ("불타기", "add", "후보", "buy"),
+    ("익절검토", "sell", "과열", "sell"),
+    ("비중축소", "sell", "관심", "sell"),
+    ("하락진행", "buy", "보류", "watch"),
+    ("반등대기", "buy", "관심", "watch"),
+)
+
+
+def sig_groups(r):
+    """이 종목이 속한 시그널 분류 [(이름, 성격), ...]"""
+    return [(nm, tone) for nm, side, lv, tone in SIGNAL_GROUPS if r["sig"].get(side) == lv]
+
+
 def flags(r):
     f = []
     d = r["day"]
@@ -258,13 +276,7 @@ def flags(r):
         f.append("이격도상단")
     if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
         f.append("이격도하단")
-    if r["sig"].get("add"):
-        f.insert(0, "불타기후보")
-    if r["sig"]["buy"]:
-        f.insert(0, "매수" + r["sig"]["buy"])
-    if r["sig"]["sell"]:
-        f.insert(0, "매도" + r["sig"]["sell"])
-    return f
+    return [nm for nm, _ in sig_groups(r)] + f
 
 
 def fd(date, unit):
@@ -299,8 +311,42 @@ def _yf_close(sym):
     return yf.Ticker(sym).history(period="2mo")["Close"].dropna()
 
 
+INDEXES = (("kospi", "코스피", "KS11", "^KS11"), ("kosdaq", "코스닥", "KQ11", "^KQ11"),
+           ("spx", "S&P500", "US500", "^GSPC"), ("ndx", "나스닥", "IXIC", "^IXIC"))
+
+
+def _index_close(fdr_code, yf_code):
+    """지수 일봉 종가: FinanceDataReader 먼저, 실패하면 yfinance"""
+    try:
+        with contextlib.redirect_stdout(io.StringIO()):
+            s = fdr.DataReader(fdr_code, START)["Close"].dropna()
+        if len(s) > 30:
+            return s
+    except Exception:
+        pass
+    import yfinance as yf
+    s = yf.Ticker(yf_code).history(start=START)["Close"].dropna()
+    s.index = s.index.tz_localize(None)
+    return s
+
+
+def _index_info(name, s):
+    disp = (s / s.rolling(50).mean() * 100).dropna()
+    d = None
+    if len(disp):     # 종목과 같은 형식(disp_view로 '최대/최소 대비 %' 표시)
+        cur, mx, mn = float(disp.iloc[-1]), float(disp.max()), float(disp.min())
+        d = {"cur": cur, "max": mx, "min": mn, "up": cur / mx, "down": cur / mn}
+    return {"name": name, "close": float(s.iloc[-1]), "chg": float((s.iloc[-1] / s.iloc[-2] - 1) * 100),
+            "date": s.index[-1], "chart": chart_data(s), "disp": d, "rsi": float(rsi(s).iloc[-1])}
+
+
 def market_snapshot():
-    snap = {"ks": None, "vix": None, "y10": None, "y30": None, "err": []}
+    snap = {"ks": None, "vix": None, "y10": None, "y30": None, "idx": {}, "err": []}
+    for key, nm, fc, yc in INDEXES:         # 코스피·코스닥·S&P500·나스닥 (카드 + 차트용)
+        try:
+            snap["idx"][key] = _index_info(nm, _index_close(fc, yc))
+        except Exception as e:
+            snap["err"].append(f"{nm} ({type(e).__name__})")
     try:
         ks = fdr.DataReader("KS11", START)["Close"].dropna()
         disp = (ks / ks.rolling(50).mean() * 100).dropna()
@@ -378,6 +424,10 @@ def market_text(snap):
         L.append(f"코스피 {ks['close']:,.2f} ({ks['chg']:+.2f}%, {ks['date']:%m-%d})")
         L.append(f"  50일 이격도 {ks['disp']:.1f} (과거 최대 {ks['disp_max']:.1f} / 최소 {ks['disp_min']:.1f}) · RSI {ks['rsi']:.0f}"
                  f" · 52주 고점 대비 {ks['from_high']:+.1f}%")
+    for key in ("kosdaq",):
+        v = (snap.get("idx") or {}).get(key)
+        if v:
+            L.append(f"{v['name']} {v['close']:,.2f} ({v['chg']:+.2f}%, {v['date']:%m-%d})")
     for key, nm, unit in (("vix", "미국 VIX", ""), ("y10", "미국채 10년물", "%"), ("y30", "미국채 30년물", "%")):
         v = snap.get(key)
         if v:
@@ -424,11 +474,7 @@ def signals_text(results, msig):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
-    groups = (("매수 타점", "buy", "타점"), ("매도 검토 (과열 + 꺾임 확인)", "sell", "타점"),
-              ("불타기 후보 (추세 유지 · 과열 아님 · 20일선 눌림 후 반등)", "add", "후보"),
-              ("일부 익절 검토 (과열 · 추세는 유지)", "sell", "과열"), ("비중 축소 검토 (과열 + 추세 약화)", "sell", "관심"),
-              ("하락 진행 중 · 매수 보류", "buy", "보류"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"))
-    for head, side, lv in groups:
+    for head, side, lv, _ in SIGNAL_GROUPS:
         hit = [r for r in results if r["sig"][side] == lv]
         if not hit:            # 해당 종목이 없는 분류는 생략
             continue
