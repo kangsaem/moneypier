@@ -210,10 +210,13 @@ def market_snapshot():
         ks = fdr.DataReader("KS11", START)["Close"].dropna()
         disp = (ks / ks.rolling(50).mean() * 100).dropna()
         hi250 = ks.rolling(250, min_periods=1).max().iloc[-1]
+        win = ks.tail(250)
+        days_since_low = len(win.loc[win.idxmin():]) - 1   # 52주 최저 종가가 몇 거래일 전인지
         snap["ks"] = {"close": float(ks.iloc[-1]), "chg": float((ks.iloc[-1] / ks.iloc[-2] - 1) * 100),
                       "date": ks.index[-1], "disp": float(disp.iloc[-1]), "disp_max": float(disp.max()),
                       "disp_min": float(disp.min()), "rsi": float(rsi(ks).iloc[-1]),
-                      "from_high": float((ks.iloc[-1] / hi250 - 1) * 100), "cross": cross_state(ks)}
+                      "from_high": float((ks.iloc[-1] / hi250 - 1) * 100), "cross": cross_state(ks),
+                      "days_since_low": int(days_since_low)}
     except Exception as e:
         snap["err"].append(f"코스피 ({type(e).__name__})")
     for key, sym, nm in (("vix", "^VIX", "VIX"), ("y10", "^TNX", "미국채 10년"), ("y30", "^TYX", "미국채 30년")):
@@ -228,10 +231,12 @@ def market_snapshot():
     return snap
 
 
-def _level(score, kind):
+def _level(score, total, kind):
+    ratio = score / total if total else 0
+    hi, mid = ratio >= 0.6, ratio >= 0.3      # 항목 5개 기준: 3개 이상 / 2개 이상
     if kind == "risk":
-        return ("경고", "lv2") if score >= 4 else ("주의", "lv1") if score >= 2 else ("낮음", "lv0")
-    return ("바닥권 신호 다수", "lv2") if score >= 4 else ("바닥 형성 가능성", "lv1") if score >= 2 else ("신호 약함", "lv0")
+        return ("경고", "lv2") if hi else ("주의", "lv1") if mid else ("낮음", "lv0")
+    return ("바닥권 신호 다수", "lv2") if hi else ("바닥 형성 가능성", "lv1") if mid else ("신호 약함", "lv0")
 
 
 def market_signals(snap, results):
@@ -240,14 +245,10 @@ def market_signals(snap, results):
     n = len(results)
     bear = sum(1 for r in results if r["day"]["ok"] and not r["day"]["above"]) / n if n else None
     weak = sum(1 for r in results if r["rsi"] <= 35) / n if n else None
-    kc = ks["cross"] if ks else None
-    k_recent_gold = bool(kc and kc["ok"] and kc["cross"] and kc["cross"]["golden"] and kc["cross"]["ago"] < CROSS_DAYS)
 
     risk = [
         ("코스피 50일 이격도 120 이상 (과열)", f"{ks['disp']:.1f}" if ks else "-", ks["disp"] >= 120 if ks else None),
         ("코스피 RSI 70 이상", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] >= 70 if ks else None),
-        ("코스피 5일선이 10일선 아래 (단기 추세 약화)", f"이격 {kc['gap']:+.2f}%" if kc and kc["ok"] else "-",
-         (not kc["above"]) if kc and kc["ok"] else None),
         ("VIX 25 이상 또는 10일간 30% 이상 급등", f"{vix['last']:.1f}" if vix else "-",
          (vix["last"] >= 25 or (vix["pct10"] is not None and vix["pct10"] >= 30)) if vix else None),
         ("미국 10년물 금리 10일간 0.3%p 이상 상승", f"{y10['chg10']:+.2f}%p" if y10 and y10["chg10"] is not None else "-",
@@ -259,18 +260,18 @@ def market_signals(snap, results):
         ("코스피 50일 이격도 90 이하 또는 과거 최소권", f"{ks['disp']:.1f}" if ks else "-",
          (ks["disp"] <= 90 or ks["disp"] <= ks["disp_min"] * NEAR_MIN) if ks else None),
         ("코스피 RSI 35 이하", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] <= 35 if ks else None),
-        ("코스피 52주 고점 대비 -20% 이하", f"{ks['from_high']:.1f}%" if ks else "-", ks["from_high"] <= -20 if ks else None),
+        ("코스피 52주 고점 대비 -20% 이하 + 최근 20거래일 신저점 없음",
+         f"{ks['from_high']:.1f}% · 저점 {ks['days_since_low']}일 전" if ks else "-",
+         (ks["from_high"] <= -20 and ks["days_since_low"] >= 20) if ks else None),
         ("VIX 30 이상 (공포 극단)", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
         ("내 종목 30% 이상이 RSI 35 이하", f"{weak:.0%}" if weak is not None else "-",
          (weak >= 0.3) if weak is not None else None),
-        ("코스피 5일선이 10일선 상향돌파 (최근 5일, 반등 확인)", "있음" if k_recent_gold else "없음",
-         k_recent_gold if kc and kc["ok"] else None),
     ]
     out = {}
     for key, items in (("risk", risk), ("bottom", bottom)):
         score = sum(1 for _, _, st in items if st)
         total = sum(1 for _, _, st in items if st is not None)
-        label, cls = _level(score, key)
+        label, cls = _level(score, len(items), key)   # 데이터가 없는 항목도 분모에 포함(과대평가 방지)
         out[key] = {"items": items, "score": score, "total": total, "label": label, "cls": cls}
     return out
 
