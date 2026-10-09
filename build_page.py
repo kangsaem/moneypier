@@ -317,7 +317,7 @@ def sig_block(head_txt, side, lv, cls):
 
 # 순서: 매수 / 매도 / 불타기 / 익절 검토 / 비중 축소 / 하락 진행 / 반등 대기  (market_report.SIGNAL_GROUPS와 같은 순서)
 SG_CLS = {"매수": "buy strong", "매도": "sell strong", "불타기": "add", "익절검토": "tp",
-          "비중축소": "sell", "하락진행": "hold", "반등대기": "buy"}
+          "비중축소": "sell", "눌림진행": "buy", "하락진행": "hold", "반등대기": "buy"}
 sig_html = "".join(sig_block(nm, side, lv, SG_CLS[nm]) for nm, side, lv, _ in m.SIGNAL_GROUPS)
 
 screen_html = ""
@@ -342,6 +342,9 @@ for r in results:
 if render_errors:
     notes += "\n\n[화면 생성 중 오류]\n" + "\n".join(sorted(set(render_errors)))
 extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
+
+wide_link = (' &nbsp;·&nbsp; <a href="backtest_wide.html">코스피 시총 상위 · 5년 →</a>'
+             if os.path.exists("results/backtest_wide.html") else "")
 
 page = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -459,14 +462,14 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 하락진행 = 싸지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하. 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
+<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 눌림진행 = 싸고 아직 떨어지는 중(5일 -5% 이하 또는 20일 신저가)이지만 장기 추세는 상승(월봉 정배열 또는 10월선 위) — 곧 매수 후보 / 하락진행 = 같은 상황인데 장기 추세도 하락 — 반등 확인 전까지 보류 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하. 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
 
 <h2>종목 스크리닝</h2>
 <div class="dgrid">{screen_html}</div>
 
 <h2>종목별 세부내용</h2>
 <div class="dgrid">{detail_html}</div>
-<div class="legend" style="margin-top:14px"><a href="backtest.html">시그널 백테스트 결과 (최근 12개월) →</a></div>
+<div class="legend" style="margin-top:14px"><a href="backtest.html">시그널 백테스트 · 내 종목 12개월 →</a>{wide_link}</div>
 {extra}
 </body></html>"""
 

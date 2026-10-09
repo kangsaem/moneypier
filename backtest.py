@@ -4,6 +4,8 @@
 - 각 날짜는 그날까지의 데이터만 사용(이격도 과거 최대·최소, 52주 고점 등 모두 그 시점 기준) → 미래 데이터 누수 없음
 - 결과: docs/backtest.html (요약 표 + 신호 목록), docs/backtest.csv (신호별 기록)
 사용: python backtest.py   (build_page.py 다음에 실행. docs/ 폴더에 같이 저장됨)
+넓은 검증: BT_UNIVERSE=kospi BT_TOP=50 BT_DAYS=1260 BT_OUT=results/backtest_wide python backtest.py
+  (코스피 시가총액 상위 50개 · 최근 약 5년. backtest_wide.yml이 수동 실행으로 돌림)
 """
 import html
 import os
@@ -14,7 +16,10 @@ import pandas as pd
 
 import market_report as m
 
-BT_DAYS = 252          # 백테스트 기간(거래일) ≈ 12개월
+BT_DAYS = int(os.environ.get("BT_DAYS", 252))         # 백테스트 기간(거래일). 252 ≈ 12개월, 1260 ≈ 5년
+UNIVERSE = os.environ.get("BT_UNIVERSE", "tickers")    # tickers = 내 종목 / kospi = 코스피 시가총액 상위
+TOP = int(os.environ.get("BT_TOP", 50))               # kospi일 때 몇 개
+OUT = os.environ.get("BT_OUT", "docs/backtest")       # 결과 파일 경로(확장자 제외) → .html, .csv
 HORIZONS = (5, 20, 60) # 신호 뒤 수익률을 볼 기간(거래일)
 MIN_N = 5              # 이보다 적으면 '표본 부족'
 COOLDOWN = 5           # 신호가 꺼진 뒤 이 거래일 수 이상 지나야 다시 '처음 뜬 날'로 셈(깜빡이는 신호 중복 방지)
@@ -28,7 +33,7 @@ CATEGORIES = [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") f
 # ---- 비교용 '새 규칙 후보' (리포트 규칙은 바꾸지 않고 백테스트에서만 나란히 계산)
 SHORT_WIN = {"day": 3, "week": 2, "month": 1}   # 골든·데드 '최근' 기간을 짧게: 일 3거래일 · 주 2주 · 월 이번 달
 VARIANTS = [("골든X3·짧게", "up"), ("골든X2·짧게", "up"), ("데드X3·짧게", "down"), ("데드X2·짧게", "down"),
-            ("매수·추세O", "up"), ("매수·추세X", "up"), ("눌림진행", "up"), ("하락진행·추세X", "down")]
+            ("매수·추세O", "up"), ("매수·추세X", "up")]
 # 비교 표: (제목, 설명, [현재 분류, 후보 분류들])
 COMPARE = [
     ("골든크로스 기간", "현재 일 5거래일·주 4주·월 2개월 → 짧게 일 3거래일·주 2주·월 이번 달",
@@ -36,16 +41,7 @@ COMPARE = [
     ("데드크로스 기간", "같은 방식", ["데드X3", "데드X3·짧게", "데드X2", "데드X2·짧게"]),
     ("매수 + 장기 추세", "추세O = 월봉 정배열 또는 종가가 10월선 위 / 추세X = 그 반대(지금 매수에서 빼고 반등대기로 보낼 후보)",
      ["매수", "매수·추세O", "매수·추세X"]),
-    ("하락진행 나누기", "눌림진행 = 하락 중이지만 장기 추세 상승(곧 매수 후보) / 하락진행·추세X = 장기 추세도 하락",
-     ["하락진행", "눌림진행", "하락진행·추세X"]),
 ]
-
-
-def long_up(r):
-    """장기 추세 상승: 월봉 정배열(5월>10월) 또는 종가가 10월선 위"""
-    mo = r["month"]
-    m10 = r["chart"]["m10"][-1] if r.get("chart") else None
-    return bool((mo.get("ok") and mo.get("above")) or (m10 is not None and r["close"] >= m10))
 
 
 def categories_of(r):
@@ -60,11 +56,8 @@ def categories_of(r):
             on.add(f"{nm}X{k2}·짧게")
     if len(r["sig"]["sell_c"]) >= 2:
         on.add("과열")
-    up = long_up(r)
     if "매수" in on:
-        on.add("매수·추세O" if up else "매수·추세X")
-    if "하락진행" in on:
-        on.add("눌림진행" if up else "하락진행·추세X")
+        on.add("매수·추세O" if m.long_up(r) else "매수·추세X")
     return on
 
 
@@ -95,6 +88,17 @@ def run_stock(code, name):
     return events, base
 
 
+def load_universe():
+    """백테스트 대상: 내 종목(tickers.json) 또는 코스피 시가총액 상위 TOP개"""
+    if UNIVERSE == "kospi":
+        lst = m.fdr.StockListing("KOSPI")
+        cap = "Marcap" if "Marcap" in lst.columns else next(c for c in lst.columns if "cap" in c.lower())
+        code = "Code" if "Code" in lst.columns else "Symbol"
+        lst = lst.sort_values(cap, ascending=False).head(TOP)
+        return [{"code": str(c), "name": n} for c, n in zip(lst[code], lst["Name"])]
+    return [t for t in m.resolve_codes(m.load_tickers()) if t.get("code")]
+
+
 def stats(vals):
     v = [x for x in vals if x is not None]
     if not v:
@@ -105,8 +109,7 @@ def stats(vals):
 
 def main():
     t0 = time.time()
-    tickers = m.resolve_codes(m.load_tickers())
-    tickers = [t for t in tickers if t.get("code")]
+    tickers = load_universe()
     events, base, failed = [], [], []
     for i, t in enumerate(tickers, 1):
         try:
@@ -134,16 +137,16 @@ def main():
                 verdict[h] = word + f" ({diff:+.1f}%p)"
         rows.append({"cat": cat, "way": way, "n": len(ev), "S": S, "verdict": verdict, "events": ev})
 
-    os.makedirs("docs", exist_ok=True)
+    os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
     if events:
         pd.DataFrame(events).assign(date=lambda d: d["date"].dt.strftime("%Y-%m-%d")).to_csv(
-            "docs/backtest.csv", index=False, encoding="utf-8-sig")
+            OUT + ".csv", index=False, encoding="utf-8-sig")
     period = ""
     if events or base:
         ds = [e["date"] for e in events]
         period = f"{min(ds):%Y-%m-%d} ~ {max(ds):%Y-%m-%d}" if ds else ""
     write_html(rows, B, len(tickers) - len(failed), failed, period, time.time() - t0)
-    print(f"docs/backtest.html 생성 완료 ({time.time() - t0:.0f}초, 신호 {len(events)}건)")
+    print(f"{OUT}.html 생성 완료 ({time.time() - t0:.0f}초, 신호 {len(events)}건)")
 
 
 def fmt(s, key, unit="%"):
@@ -161,6 +164,9 @@ def ret_td(v):
 
 def write_html(rows, B, n_stocks, failed, period, secs):
     E = html.escape
+    years = BT_DAYS / 252
+    label = ("시그널 백테스트 · 내 종목" if UNIVERSE == "tickers" else f"시그널 백테스트 · 코스피 시총 상위 {TOP}") + \
+        (f" · {years:.0f}년" if years >= 1.5 else f" · {BT_DAYS / 21:.0f}개월")
     kst = datetime.now(timezone.utc) + timedelta(hours=9)
     vcls = lambda v: "ok" if v.startswith("맞음") else "bad" if v.startswith("틀림") else "mut"
     byname = {r["cat"]: r for r in rows}
@@ -201,7 +207,7 @@ def write_html(rows, B, n_stocks, failed, period, secs):
                   + "".join(f"<th>{h}일 뒤</th>" for h in HORIZONS) + f'</tr>{li}</table></div></details>')
     fail = f'<pre class="warn">{E(chr(10).join(failed))}</pre>' if failed else ""
     page = f"""<!doctype html><html lang="ko"><head><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>백테스트</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>{E(label)}</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb; --buy:#d92d20; --sell:#1d5fd1; --okbg:#d9f2ee; --ok:#0f766e; --badbg:#fdecea; --warnbg:#fef3c7; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38; --buy:#ff6b5e; --sell:#6ea2ff; --okbg:#10302c; --ok:#4fd1c0; --badbg:#3a1d1a; --warnbg:#3a2e0e; }} }}
@@ -218,17 +224,17 @@ table.ev td:nth-child(2), table.ev th:nth-child(2) {{ text-align:left; }}
 .note {{ font-size:.78rem; color:var(--mut); }} pre.warn {{ background:var(--warnbg); padding:10px; border-radius:10px; white-space:pre-wrap; font-size:.78rem; }}
 a {{ color:inherit; }}
 </style></head><body>
-<h1>시그널 백테스트</h1>
+<h1>{E(label)}</h1>
 <div class="t">{E(period)} · 종목 {n_stocks}개 · 신호가 처음 뜬 날 종가 기준 · 계산 {kst:%Y-%m-%d %H:%M} KST ({secs:.0f}초) · <a href="./">리포트로</a></div>
 <div class="base"><b>기준선</b> (같은 기간 아무 날이나 샀을 때) — {base}</div>
 <div class="wrap"><table>
 <tr><th class="c" rowspan="2">분류</th><th rowspan="2">신호</th>{head1}</tr>
 <tr>{head2}</tr>
 {trs}</table></div>
-<p class="note">▲ = 신호 뒤 오르면 맞는 분류(매수·불타기·반등대기·골든), ▼ = 내리거나 덜 오르면 맞는 분류(매도·익절검토·비중축소·하락진행·데드·과열).
+<p class="note">▲ = 신호 뒤 오르면 맞는 분류(매수·불타기·눌림진행·반등대기·골든), ▼ = 내리거나 덜 오르면 맞는 분류(매도·익절검토·비중축소·하락진행·데드·과열).
 판정은 분류 평균과 기준선 평균의 차이(%p)로 봄({neutral} 안이면 '차이 없음'). {MIN_N}건 미만은 '표본 부족'. 플러스 = 수익률이 0보다 큰 비율.
 같은 종목에서 같은 신호가 {COOLDOWN}거래일 안에 다시 뜨면 이어진 신호로 보고 한 번만 셈. 최근 신호는 아직 시간이 안 지나 긴 기간(20·60일) 결과가 없으므로, 기간별 건수가 다름.
-한계: 지금 보유·관심 종목만 대상(최근에 괜찮았던 종목 위주라 결과가 좋게 나오기 쉬움), 12개월 한 장세만 반영, 거래비용 미반영.</p>
+한계: {"지금 보유·관심 종목만 대상(최근에 괜찮았던 종목 위주라 결과가 좋게 나오기 쉬움)" if UNIVERSE == "tickers" else "지금 시총 상위 종목 기준(과거에 상위였다 빠진 종목은 없음 — 결과가 다소 좋게 나오기 쉬움)"}, {"한 장세만 반영" if BT_DAYS < 500 else "여러 장세 포함"}, 거래비용 미반영.</p>
 <h2 style="font-size:1rem">새 규칙 후보 비교</h2>
 <p class="note">리포트 규칙은 바꾸지 않고, 같은 기간·같은 종목에서 후보 규칙을 나란히 계산한 결과. 후보가 '현재'보다 기준선 대비 차이가 크게(기대 방향으로) 나오고 건수도 충분하면 리포트에 반영할 만함.</p>
 <div class="wrap"><table>
@@ -238,7 +244,7 @@ a {{ color:inherit; }}
 <h2 style="font-size:1rem">분류별 신호 목록</h2>{lists or '<div class="note">신호 없음</div>'}
 {fail}
 </body></html>"""
-    with open("docs/backtest.html", "w", encoding="utf-8") as f:
+    with open(OUT + ".html", "w", encoding="utf-8") as f:
         f.write(page)
 
 

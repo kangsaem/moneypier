@@ -1,0 +1,45 @@
+name: backtest-wide
+
+# 넓은 백테스트: 코스피 시가총액 상위 종목 · 최근 약 5년 (30~60분 걸려서 매일 돌리지 않고 필요할 때만 수동 실행)
+# 결과는 results/backtest_wide.html 로 저장소에 커밋되고, 끝나면 daily-report를 다시 돌려 페이지에 올린다.
+on:
+  workflow_dispatch:
+    inputs:
+      top:
+        description: "코스피 시가총액 상위 몇 개"
+        default: "50"
+      days:
+        description: "기간(거래일, 1260 ≈ 5년)"
+        default: "1260"
+
+permissions:
+  contents: write    # 결과 파일 커밋
+  actions: write     # 끝난 뒤 daily-report 다시 실행
+
+jobs:
+  backtest:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python backtest.py
+        env:
+          BT_UNIVERSE: kospi
+          BT_TOP: ${{ inputs.top }}
+          BT_DAYS: ${{ inputs.days }}
+          BT_OUT: results/backtest_wide
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add results/
+          git commit -m "넓은 백테스트 결과 갱신" || exit 0
+          git push
+      - name: 리포트 다시 배포
+        run: gh workflow run daily.yml --ref ${{ github.ref_name }}
+        env:
+          GH_TOKEN: ${{ github.token }}

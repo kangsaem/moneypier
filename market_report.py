@@ -209,6 +209,13 @@ def resolve_codes(items):
     return items
 
 
+def long_up(r):
+    """장기 추세 상승: 월봉 정배열(5월>10월) 또는 종가가 10월선 위"""
+    mo = r["month"]
+    m10 = r["chart"]["m10"][-1] if r.get("chart") else None
+    return bool((mo.get("ok") and mo.get("above")) or (m10 is not None and r["close"] >= m10))
+
+
 # ---------------------------------------------------------------- 종목 시그널
 def stock_signals(r):
     """조건(싸다/과열) 2개 이상 + 트리거(크로스·RSI 방향전환) 1개 이상 → '타점', 조건만 충족 → '관심'"""
@@ -261,7 +268,9 @@ def stock_signals(r):
         sell = "과열"          # 과열이지만 추세는 살아 있음 → 매도 신호가 아니라 '이익 보호' 구간
     buy = level(buy_c, buy_t)
     if buy == "관심" and falling:
-        buy = "보류"           # 싸 보이지만 아직 하락 진행 중 → 반등 확인 전까지 보류
+        # 싸 보이지만 아직 하락 중: 장기 추세가 상승이면 '눌림진행'(곧 매수 후보, 백테스트에서 기준선보다 나았음),
+        # 장기 추세도 하락이면 '하락진행'(반등 확인 전까지 보류)
+        buy = "눌림" if long_up(r) else "보류"
     # ---- 불타기 후보: 추세 유지 + 과열 아님 + 20일선 눌림 뒤 반등 확인 (셋 다 필요)
     ak = {}
     add, add_c, add_t = None, [], []
@@ -301,6 +310,7 @@ SIGNAL_GROUPS = (
     ("불타기", "add", "후보", "buy"),
     ("익절검토", "sell", "과열", "sell"),
     ("비중축소", "sell", "관심", "sell"),
+    ("눌림진행", "buy", "눌림", "watch"),
     ("하락진행", "buy", "보류", "watch"),
     ("반등대기", "buy", "관심", "watch"),
 )
