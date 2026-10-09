@@ -210,7 +210,7 @@ def _metrics_html(r, side, lv):
             gp = (r["close"] / mv - 1) * 100
             out.append(tag("", f"{lab} {abs(gp):.0f}% {'▲' if gp >= 0 else '▼'}", "up" if gp >= 0 else "dn",
                            f"종가가 {lab}선보다 {abs(gp):.1f}% {'위' if gp >= 0 else '아래 (위쪽 저항 가능)'}"))
-    out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else "n"))
+    out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else "n"))
     out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
     out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "n"))
     return '<div class="mrow">' + "".join(out) + "</div>"
@@ -345,7 +345,7 @@ def sig_block(head_txt, side, lv, cls):
 
 
 # 순서: 매수 / 매도 / 불타기 / 익절 검토 / 비중 축소 / 하락 진행 / 반등 대기  (market_report.SIGNAL_GROUPS와 같은 순서)
-SG_CLS = {"매수": "buy strong", "매도": "sell strong", "불타기": "add", "익절검토": "hot",
+SG_CLS = {"매수": "buy strong", "매도": "sell strong", "불타기": "add", "익절검토": "tp",
           "비중축소": "sell", "하락진행": "hold", "반등대기": "buy"}
 sig_html = "".join(sig_block(nm, side, lv, SG_CLS[nm]) for nm, side, lv, _ in m.SIGNAL_GROUPS)
 
@@ -361,7 +361,7 @@ for r in results:
     chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch"}.get(tone.get(f), "flag")) for f in fl)
     tones = [t for _, t in m.sig_groups(r) if t != "watch"]
     dcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"'}.get(tones[0] if tones else "", "")   # 매수 쪽 연분홍, 매도 쪽 연하늘
-    rc = "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else ""
+    rc = "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else ""
     detail_html += (f'<details{dcls}><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
                     f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
                     f'<div class="chwrap">{svg_chart(r["chart"])}</div><pre>{E(guard(r['name'] + " 세부내용", m.detail_text, r))}</pre></details>')
@@ -413,6 +413,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .sg.hold {{ border-left-color:var(--mut); }} .sg.hold h3 {{ color:var(--mut); }}
 .sg.add {{ border-left-color:var(--buy); background:var(--buybg); }} .sg.add h3 {{ color:var(--buy); }}
 .sg.hot {{ border-left-color:var(--warn); }} .sg.hot h3 {{ color:var(--warn); }}
+.sg.tp {{ border-left-color:var(--sky); }} .sg.tp h3 {{ color:var(--skyfg); }}
 .chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
 .chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}
 .mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}

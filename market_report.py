@@ -18,10 +18,13 @@ CROSS_DAYS = 5      # '최근 N거래일 이내' 골든/데드크로스
 MOVE_PCT = 8.0      # 최근 5거래일 누적 등락 또는 하루 등락이 이 % 이상이면 포함
 CROSS_NEAR = 0.7   # 5일선이 10일선 아래 몇 % 이내면 '골든크로스 임박'으로 볼지
 FALL_PCT = -5.0    # 최근 5일 등락이 이 값 이하이거나 20일 신저가 갱신 중이면 '하락 진행 중'
-NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 포함
-NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 포함
+NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 '높은 구간'(매도 조건). 고정값(110 등)은 쓰지 않음
+NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 '낮은 구간'(매수 조건). 고정값(95 등)은 쓰지 않음
 ADD_DISP_MAX = 90   # 불타기: 50일 이격도가 과거 최대 대비 이 % 미만이어야 "과열 아님" (매도 쪽 상단 기준과 동일)
-ADD_RSI_MAX = 70    # 불타기: RSI가 이 값 미만이어야 '과열 아님'
+RSI_HI = 70         # 매도 과열 기준 RSI (기본)
+RSI_HI_STRONG = 80  # 일·주·월 모두 정배열(정·정·정, 강한 상승)일 때의 매도 과열 기준
+RSI_LO = 35         # 매수 '싸다' 기준 RSI (기본)
+RSI_LO_WEAK = 30    # 일·주·월 모두 역배열(역·역·역, 하락 추세)일 때의 매수 기준
 CHART_DAYS = 132    # 차트에 보여줄 기간(거래일). 큰 차트·소형 차트·코스피 공통
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
@@ -112,7 +115,7 @@ def bar_ma_proj(c, n, rule, fut):
 
 def chart_data(c, rs=None, n=None):
     """차트용 최근 n거래일 데이터: 종가, 5/20일선, 5/10주선, 5/10월선(전체 기간으로 계산 후 자름), RSI.
-    ma30/ma150/ma300은 차트에 그리지 않지만 신호 로직(불타기 추세 판단)에서 아직 쓰므로 함께 넘긴다."""
+    이동평균은 5·20일, 5·10주, 5·10월만 쓴다(30·150·300일선은 쓰지 않음)."""
     t = c.tail(n or CHART_DAYS)
     def lst(x):
         return [None if pd.isna(v) else float(v) for v in x.reindex(t.index)]
@@ -127,8 +130,7 @@ def chart_data(c, rs=None, n=None):
             "fdates": [d.strftime("%y.%m.%d") for d in fut], "proj": proj,
             "w5": lst(bar_ma(c, 5, "W-FRI")), "w10": lst(bar_ma(c, 10, "W-FRI")),
             "m5": lst(bar_ma(c, 5, "ME")), "m10": lst(bar_ma(c, 10, "ME")),
-            "ma5": lst(c.rolling(5).mean()), "ma20": lst(c.rolling(20).mean()), "ma30": lst(c.rolling(30).mean()),
-            "ma150": lst(c.rolling(150).mean()), "ma300": lst(c.rolling(300).mean()),
+            "ma5": lst(c.rolling(5).mean()), "ma20": lst(c.rolling(20).mean()),
             "rsi": lst(rs) if rs is not None else None}
 
 
@@ -177,15 +179,20 @@ def stock_signals(r):
     buy_c, buy_t, sell_c, sell_t = [], [], [], []
     bk, sk = {}, {}   # 강조용: 지표키 -> "c"(조건) / "t"(트리거)
 
-    if r["rsi"] <= 35:
-        buy_c.append(f"RSI {r['rsi']:.0f} (35 이하)"); bk["rsi"] = "c"
-    if d and (d["cur"] <= 95 or d["down"] <= NEAR_MIN):
-        buy_c.append(f"50일 이격도 {d['cur']:.1f} (낮은 구간)"); bk["disp"] = "c"
+    # RSI 기준은 추세에 따라 바뀜: 정·정·정이면 과열 80, 역·역·역이면 과매도 30 (강한 추세에선 RSI가 한쪽에 오래 머묾)
+    arr = [r[k]["above"] if r[k]["ok"] else None for k in ("day", "week", "month")]
+    trend_up, trend_dn = all(a is True for a in arr), all(a is False for a in arr)
+    rsi_hi = RSI_HI_STRONG if trend_up else RSI_HI
+    rsi_lo = RSI_LO_WEAK if trend_dn else RSI_LO
+    if r["rsi"] <= rsi_lo:
+        buy_c.append(f"RSI {r['rsi']:.0f} ({rsi_lo} 이하" + (", 역·역·역" if trend_dn else "") + ")"); bk["rsi"] = "c"
+    if d and d["down"] <= NEAR_MIN:     # 종목마다 파도 크기가 달라 고정값 없이 '과거 최소 대비'로만 판단
+        buy_c.append(f"50일 이격도 {d['cur']:.1f} (과거 최소 {d['min']:.1f}의 {d['down']:.0%})"); bk["disp"] = "c"
     if r["from_high"] <= -20:
         buy_c.append(f"52주 고점 대비 {r['from_high']:.0f}%"); bk["high"] = "c"
     if recent and dy["cross"]["golden"]:
         buy_t.append("5일 내 골든크로스"); bk["day"] = "t"
-    if r["rsi_min5"] <= 35 and r["rsi"] > r["rsi_min5"] and r["rsi"] >= r["rsi_prev"]:
+    if r["rsi_min5"] <= rsi_lo and r["rsi"] > r["rsi_min5"] and r["rsi"] >= r["rsi_prev"]:
         buy_t.append("RSI 저점 찍고 반등"); bk["rsi"] = "t"
     ma5 = r["chart"]["ma5"]
     ma5_up = ma5[-1] is not None and ma5[-2] is not None and ma5[-1] > ma5[-2]
@@ -193,15 +200,15 @@ def stock_signals(r):
         buy_t.append(f"골든크로스 임박 (5일선 {dy['gap']:+.2f}%, 상승 중)"); bk["day"] = "t"
     falling = bool(r["ret5"] <= FALL_PCT or r.get("new_low3"))   # 아직 떨어지는 중이면 '싸 보여도' 보류
 
-    if r["rsi"] >= 70:
-        sell_c.append(f"RSI {r['rsi']:.0f} (70 이상)"); sk["rsi"] = "c"
-    if d and (d["cur"] >= 110 or d["up"] >= NEAR_MAX):
-        sell_c.append(f"50일 이격도 {d['cur']:.1f} (높은 구간)"); sk["disp"] = "c"
+    if r["rsi"] >= rsi_hi:
+        sell_c.append(f"RSI {r['rsi']:.0f} ({rsi_hi} 이상" + (", 정·정·정" if trend_up else "") + ")"); sk["rsi"] = "c"
+    if d and d["up"] >= NEAR_MAX:       # 고정값(110) 없이 '과거 최대 대비'로만 판단
+        sell_c.append(f"50일 이격도 {d['cur']:.1f} (과거 최대 {d['max']:.1f}의 {d['up']:.0%})"); sk["disp"] = "c"
     if r["ret5"] >= MOVE_PCT:
         sell_c.append(f"5일 {r['ret5']:+.1f}% 급등"); sk["ret5"] = "c"
     if recent and not dy["cross"]["golden"]:
         sell_t.append("5일 내 데드크로스"); sk["day"] = "t"
-    if r["rsi_max5"] >= 65 and r["rsi"] < r["rsi_max5"] and r["rsi"] <= r["rsi_prev"]:
+    if r["rsi_max5"] >= rsi_hi - 5 and r["rsi"] < r["rsi_max5"] and r["rsi"] <= r["rsi_prev"]:
         sell_t.append("RSI 고점 찍고 꺾임"); sk["rsi"] = "t"
 
     def level(c, t):
@@ -221,18 +228,19 @@ def stock_signals(r):
     ak = {}
     add, add_c, add_t = None, [], []
     ch = r["chart"]
-    cl, m20, m150 = ch["close"], ch["ma20"], ch["ma150"]
-    if len(cl) >= 6 and all(v is not None for v in m20[-5:]) and not sell and not falling:
-        # 눌림 중에는 5일선이 10일선 아래로 내려가므로 일봉 5/10 대신 '주봉 정배열 + 20일선이 30일선 위'로 추세를 본다
-        m30 = ch["ma30"]
-        trend = bool(wk["ok"] and wk["above"] and m30[-1] is not None and m20[-1] > m30[-1]
-                     and (m150[-1] is None or cl[-1] >= m150[-1]))
-        calm = r["rsi"] < ADD_RSI_MAX and (not d or d["cur"] / d["max"] * 100 < ADD_DISP_MAX and d["cur"] < 110)
+    cl, m20, mm5 = ch["close"], ch["ma20"], ch["m5"]
+    if len(cl) >= 10 and all(v is not None for v in m20[-10:]) and not sell and not falling:
+        # 눌림 중에는 5일선이 10일선 아래로 내려가므로 일봉 정/역 대신
+        # '주봉 정배열(5주>10주) + 20일선 상승 중(5거래일 전보다 높음) + 종가가 5월선 위'로 추세를 본다
+        m20_up = m20[-1] > m20[-6]
+        above_m5 = mm5[-1] is None or cl[-1] >= mm5[-1]
+        trend = bool(wk["ok"] and wk["above"] and m20_up and above_m5)
+        calm = r["rsi"] < rsi_hi and (not d or d["cur"] / d["max"] * 100 < ADD_DISP_MAX)
         gaps = [(cl[i] / m20[i] - 1) * 100 for i in range(-5, 0)]
         touched = min(gaps) <= ADD_TOUCH and gaps[-1] >= 0     # 닿았지만 종가는 20일선 위 유지
         bounce = cl[-1] > cl[-2] and gaps[-1] > min(gaps)
         if trend:
-            add_c.append("주봉 정배열 · 20일선>30일선" + (" · 150일선 위" if m150[-1] is not None else "")); ak["day"] = "c"
+            add_c.append("주봉 정배열 · 20일선 상승 중" + (" · 5월선 위" if mm5[-1] is not None else "")); ak["day"] = "c"
         if calm:
             add_c.append("과열 아님 (이격도·RSI)"); ak["disp"] = "c"
         if touched:
@@ -243,7 +251,7 @@ def stock_signals(r):
     return {"buy": buy, "falling": falling, "add": add, "add_c": add_c, "add_t": add_t, "add_k": ak,
              "buy_c": buy_c, "buy_t": buy_t,
             "sell": sell, "sell_c": sell_c, "sell_t": sell_t, "strong_up": strong_up,
-            "buy_k": bk, "sell_k": sk}
+            "buy_k": bk, "sell_k": sk, "rsi_hi": rsi_hi, "rsi_lo": rsi_lo}
 
 
 # ---------------------------------------------------------------- 분류
@@ -265,11 +273,29 @@ def sig_groups(r):
     return [(nm, tone) for nm, side, lv, tone in SIGNAL_GROUPS if r["sig"].get(side) == lv]
 
 
+CROSS_WIN = {"day": 5, "week": 4, "month": 2}   # '최근 크로스'로 보는 기간: 일 5거래일, 주 4주, 월 2개월(이번 달·지난달)
+
+
+def cross_count(r, golden):
+    """일·주·월 중 최근(CROSS_WIN 이내) 같은 방향(골든/데드) 크로스가 난 단위 수"""
+    n = 0
+    for k, win in CROSS_WIN.items():
+        st = r[k]
+        cr = st.get("cross") if st.get("ok") else None
+        if cr and cr["golden"] == golden and cr["ago"] < win:
+            n += 1
+    return n
+
+
 def flags(r):
     f = []
     d = r["day"]
-    if d["ok"] and d["cross"] and d["cross"]["ago"] < CROSS_DAYS:
-        f.append("최근골든" if d["cross"]["golden"] else "최근데드")
+    for golden, nm in ((True, "골든"), (False, "데드")):
+        k = cross_count(r, golden)
+        if k >= 2:
+            f.append(f"{nm}X{k}")
+        elif d["ok"] and d["cross"] and d["cross"]["golden"] == golden and d["cross"]["ago"] < CROSS_DAYS:
+            f.append(f"최근{nm}")
     if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT:
         f.append(f"{MOVE_PCT:g}%↑변동")
     if r["disp"] and r["disp"]["up"] >= NEAR_MAX:
@@ -499,31 +525,16 @@ def summary_sections(results):
     """스크리닝 결과를 [(제목, 종목수, 줄목록), ...] 로 반환"""
     S = []
 
-    def ago_key(r):
-        cr = r["day"]["cross"]
-        return cr["ago"] if cr else 10 ** 6
+    # 일·주·월 중 몇 개에서 최근 같은 방향 크로스가 났는지 (X3 = 셋 다, X2 = 둘)
+    def xsec(golden, k):
+        hit = [r for r in results if cross_count(r, golden) == k]
+        nm = "골든" if golden else "데드"
+        return section(f"{nm}크로스 X{k}  (최근: 일 {CROSS_WIN['day']}거래일 · 주 {CROSS_WIN['week']}주 · 월 {CROSS_WIN['month']}개월 이내)",
+                       hit, lambda r: [f"• {tl(r)}", trans_line(r)])
 
-    # 현재 일봉 배열 상태별로 '언제 바뀌었는지'
-    bear = sorted([r for r in results if r["day"]["ok"] and not r["day"]["above"]], key=ago_key)
-    bull = sorted([r for r in results if r["day"]["ok"] and r["day"]["above"]], key=ago_key)
-    S.append(section("정배열 → 역배열로 바뀐 종목 (현재 일봉 역배열, 최근 전환순)", bear,
-                     lambda r: [f"• {tl(r)}", trans_line(r)]))
-    S.append(section("역배열 → 정배열로 바뀐 종목 (현재 일봉 정배열, 최근 전환순)", bull,
-                     lambda r: [f"• {tl(r)}", trans_line(r)]))
-
-    # 최근 N일 크로스
-    def recent(golden):
-        rs = [r for r in results if r["day"]["ok"] and r["day"]["cross"]
-              and r["day"]["cross"]["golden"] == golden and r["day"]["cross"]["ago"] < CROSS_DAYS]
-        return sorted(rs, key=ago_key)
-
-    def cross_lines(r):
-        cr = r["day"]["cross"]
-        when = "최근 거래일" if cr["ago"] == 0 else f"{cr['ago']}거래일 전"
-        return [f"• {tl(r)}", f"    {cr['date']:%m-%d} ({when}), 현재 5/10 이격 {r['day']['gap']:+.2f}%"]
-
-    S.append(section(f"최근 {CROSS_DAYS}일간 골든크로스 (5일선이 10일선 상향돌파)", recent(True), cross_lines))
-    S.append(section(f"최근 {CROSS_DAYS}일간 데드크로스 (5일선이 10일선 하향돌파)", recent(False), cross_lines))
+    for golden in (True, False):
+        for k in (3, 2):
+            S.append(xsec(golden, k))
 
     # 5일간 큰 변동
     mv = sorted([r for r in results if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT],
