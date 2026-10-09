@@ -5,6 +5,7 @@
 - 결과: docs/backtest.html (요약 표 + 신호 목록), docs/backtest.csv (신호별 기록)
 사용: python backtest.py   (build_page.py 다음에 실행. docs/ 폴더에 같이 저장됨)
 넓은 검증: BT_UNIVERSE=kospi BT_TOP=50 BT_DAYS=1260 BT_OUT=results/backtest_wide python backtest.py
+          BT_UNIVERSE=nasdaq BT_TOP=50 BT_DAYS=1260 BT_OUT=results/backtest_nasdaq python backtest.py
   (코스피 시가총액 상위 50개 · 최근 약 5년. backtest_wide.yml이 수동 실행으로 돌림)
 """
 import html
@@ -17,7 +18,7 @@ import pandas as pd
 import market_report as m
 
 BT_DAYS = int(os.environ.get("BT_DAYS", 252))         # 백테스트 기간(거래일). 252 ≈ 12개월, 1260 ≈ 5년
-UNIVERSE = os.environ.get("BT_UNIVERSE", "tickers")    # tickers = 내 종목 / kospi = 코스피 시가총액 상위
+UNIVERSE = os.environ.get("BT_UNIVERSE", "tickers")    # tickers = 내 종목 / kospi = 코스피 시가총액 상위 / nasdaq = 나스닥 대형주
 TOP = int(os.environ.get("BT_TOP", 50))               # kospi일 때 몇 개
 OUT = os.environ.get("BT_OUT", "docs/backtest")       # 결과 파일 경로(확장자 제외) → .html, .csv
 HORIZONS = (5, 20, 60) # 신호 뒤 수익률을 볼 기간(거래일)
@@ -33,7 +34,15 @@ CATEGORIES = [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") f
 # ---- 비교용 '새 규칙 후보' (리포트 규칙은 바꾸지 않고 백테스트에서만 나란히 계산)
 SHORT_WIN = {"day": 3, "week": 2, "month": 1}   # 골든·데드 '최근' 기간을 짧게: 일 3거래일 · 주 2주 · 월 이번 달
 VARIANTS = [("골든X3·짧게", "up"), ("골든X2·짧게", "up"), ("데드X3·짧게", "down"), ("데드X2·짧게", "down"),
-            ("매수·추세O", "up"), ("매수·추세X", "up")]
+            ("매수·추세O", "up"), ("매수·추세X", "up"),
+            ("불타기·거래량↑", "up"), ("불타기·상대강도↑", "up"),
+            ("익절검토·거래량폭증", "down"), ("과열·거래량폭증", "down"),
+            ("매도·상대강도↓", "down"), ("비중축소·상대강도↓", "down"),
+            ("골든X2·거래량↑", "up"), ("데드X2·거래량↑", "down")]
+VOL_UP = 1.5       # 거래량 증가 = 20일 평균의 1.5배 이상
+VOL_SPIKE = 2.5    # 거래량 폭증 = 20일 평균의 2.5배 이상
+RS_DAYS = 60       # 상대강도 = 최근 60거래일 수익률 - 같은 기간 시장(코스피, 미국 종목은 S&P500) 수익률
+REGIME_MA = 200    # 시장 국면 = 시장 지수가 200일선 위면 상승기, 아래면 하락기
 # 비교 표: (제목, 설명, [현재 분류, 후보 분류들])
 COMPARE = [
     ("골든크로스 기간", "현재 일 5거래일·주 4주·월 2개월 → 짧게 일 3거래일·주 2주·월 이번 달",
@@ -41,11 +50,20 @@ COMPARE = [
     ("데드크로스 기간", "같은 방식", ["데드X3", "데드X3·짧게", "데드X2", "데드X2·짧게"]),
     ("매수 + 장기 추세", "추세O = 월봉 정배열 또는 종가가 10월선 위 / 추세X = 그 반대(지금 매수에서 빼고 반등대기로 보낼 후보)",
      ["매수", "매수·추세O", "매수·추세X"]),
+    ("불타기 보완", f"거래량↑ = 반등한 날 거래량이 20일 평균의 {VOL_UP}배 이상 / 상대강도↑ = 최근 {RS_DAYS}거래일 수익률이 시장보다 높음",
+     ["불타기", "불타기·거래량↑", "불타기·상대강도↑"]),
+    ("익절검토·과열 보완", f"거래량폭증 = 최근 5일 중 거래량이 20일 평균의 {VOL_SPIKE}배 이상인 날이 있음(매수세 소진 신호)",
+     ["익절검토", "익절검토·거래량폭증", "과열", "과열·거래량폭증"]),
+    ("매도·비중축소 보완", f"상대강도↓ = 최근 {RS_DAYS}거래일 수익률이 시장보다 낮음",
+     ["매도", "매도·상대강도↓", "비중축소", "비중축소·상대강도↓"]),
+    ("골든·데드X2 보완", f"거래량↑ = 최근 5일 중 거래량이 20일 평균의 {VOL_UP}배 이상인 날이 있음",
+     ["골든X2", "골든X2·거래량↑", "데드X2", "데드X2·거래량↑"]),
 ]
+REGIMES = ("상승기", "하락기")
 
 
-def categories_of(r):
-    """그날 이 종목에 켜진 분류 이름 집합 (현재 규칙 + 비교용 후보)"""
+def categories_of(r, feat=None):
+    """그날 이 종목에 켜진 분류 이름 집합 (현재 규칙 + 비교용 후보). feat = 그날의 거래량 비율·상대강도"""
     on = {nm for nm, _ in m.sig_groups(r)}
     for golden, nm in ((True, "골든"), (False, "데드")):
         k = m.cross_count(r, golden)
@@ -58,7 +76,39 @@ def categories_of(r):
         on.add("과열")
     if "매수" in on:
         on.add("매수·추세O" if m.long_up(r) else "매수·추세X")
+    f = feat or {}
+    vr, vr5, rs = f.get("vr"), f.get("vr5"), f.get("rs")
+    if vr is not None:
+        if "불타기" in on and vr >= VOL_UP:
+            on.add("불타기·거래량↑")
+        for nm in ("익절검토", "과열"):
+            if nm in on and vr5 is not None and vr5 >= VOL_SPIKE:
+                on.add(f"{nm}·거래량폭증")
+        for nm in ("골든X2", "데드X2"):
+            if nm in on and vr5 is not None and vr5 >= VOL_UP:
+                on.add(f"{nm}·거래량↑")
+    if rs is not None:
+        if "불타기" in on and rs > 0:
+            on.add("불타기·상대강도↑")
+        for nm in ("매도", "비중축소"):
+            if nm in on and rs < 0:
+                on.add(f"{nm}·상대강도↓")
     return on
+
+
+_bench = {}
+
+
+def bench_for(code):
+    """시장 지수 종가(국내 6자리 코드 = 코스피, 그 외 = S&P500). 실패하면 None"""
+    key = "kr" if code[:6].isdigit() else "us"
+    if key not in _bench:
+        try:
+            _bench[key] = m._index_close("KS11", "^KS11") if key == "kr" else m._index_close("US500", "^GSPC")
+        except Exception as e:
+            print(f"시장 지수({key}) 실패: {e}")
+            _bench[key] = None
+    return _bench[key]
 
 
 def run_stock(code, name):
@@ -71,25 +121,55 @@ def run_stock(code, name):
         raise ValueError(f"자료 부족({n}일)")
     start = max(260, n - BT_DAYS)
     fwd = {h: (c.shift(-h) / c - 1) * 100 for h in HORIZONS}     # 미래 수익률(결과 측정용으로만 사용)
+    # 그날까지의 데이터만 쓰는 보조 지표: 거래량 비율, 상대강도, 시장 국면
+    vr = vr5 = rs = reg = None
+    if "Volume" in df and df["Volume"].fillna(0).sum() > 0:
+        v = df["Volume"].replace(0, float("nan"))
+        vr = v / v.shift(1).rolling(20, min_periods=10).mean()
+        vr5 = vr.rolling(5, min_periods=1).max()
+    b = bench_for(code)
+    if b is not None and len(b) > REGIME_MA:
+        b_al = b.reindex(c.index, method="ffill")
+        rs = (c / c.shift(RS_DAYS) - 1) * 100 - (b_al / b_al.shift(RS_DAYS) - 1) * 100
+        up = (b >= b.rolling(REGIME_MA).mean()).reindex(c.index, method="ffill")
+        reg = up.map({True: "상승기", False: "하락기"})
+
+    def val(sr, t):
+        if sr is None:
+            return None
+        x = sr.iloc[t]
+        return None if pd.isna(x) else (x if isinstance(x, str) else float(x))
     events, base = [], []
     last_on = {}                                                 # 분류별로 마지막으로 켜져 있던 날(t)
     for t in range(start - COOLDOWN, n):                         # 앞쪽 며칠은 '최근에 켜져 있었나' 판단용
         r = m.analyze_df(df.iloc[: t + 1], code, name, light=True)
-        on = categories_of(r)
+        on = categories_of(r, {"vr": val(vr, t), "vr5": val(vr5, t), "rs": val(rs, t)})
         if t >= start:
             rets = {h: (None if pd.isna(fwd[h].iloc[t]) else float(fwd[h].iloc[t])) for h in HORIZONS}
-            base.append(rets)
+            rg = val(reg, t)
+            base.append({**rets, "reg": rg})
             for cat in sorted(on):
                 if t - last_on.get(cat, -10 ** 9) > COOLDOWN:    # 최근 COOLDOWN일 동안 꺼져 있다가 새로 켜진 경우만
                     events.append({"date": c.index[t], "code": code, "name": name, "cat": cat,
-                                   "close": float(c.iloc[t]), "rsi": r["rsi"], **{f"r{h}": rets[h] for h in HORIZONS}})
+                                   "close": float(c.iloc[t]), "rsi": r["rsi"], "reg": rg,
+                                   **{f"r{h}": rets[h] for h in HORIZONS}})
         for cat in on:
             last_on[cat] = t
     return events, base
 
 
+# 나스닥 대형주(2026년 기준 시가총액 상위권, 고정 목록 — 라이브러리가 미국 시총 순위를 주지 않아서 직접 적음)
+NASDAQ_LARGE = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA", "COST", "NFLX",
+                "AMD", "PEP", "ADBE", "CSCO", "TMUS", "QCOM", "INTU", "TXN", "AMGN", "ISRG",
+                "AMAT", "BKNG", "HON", "CMCSA", "ADP", "VRTX", "GILD", "SBUX", "MU", "LRCX",
+                "ADI", "PANW", "REGN", "KLAC", "MDLZ", "INTC", "SNPS", "CDNS", "MELI", "PYPL",
+                "MAR", "ORLY", "CSX", "CTAS", "ASML", "FTNT", "MNST", "ABNB", "CRWD", "PDD"]
+
+
 def load_universe():
-    """백테스트 대상: 내 종목(tickers.json) 또는 코스피 시가총액 상위 TOP개"""
+    """백테스트 대상: 내 종목(tickers.json) / 코스피 시가총액 상위 TOP개 / 나스닥 대형주 TOP개"""
+    if UNIVERSE == "nasdaq":
+        return [{"code": t, "name": t} for t in NASDAQ_LARGE[:TOP]]
     if UNIVERSE == "kospi":
         lst = m.fdr.StockListing("KOSPI")
         cap = "Marcap" if "Marcap" in lst.columns else next(c for c in lst.columns if "cap" in c.lower())
@@ -125,17 +205,15 @@ def main():
     rows = []
     for cat, way in CATEGORIES + VARIANTS:
         ev = [e for e in events if e["cat"] == cat]
-        S = {h: stats([e[f"r{h}"] for e in ev]) for h in HORIZONS}
-        verdict = {}
-        for h in HORIZONS:
-            if not S[h] or not B[h] or S[h]["n"] < MIN_N:
-                verdict[h] = "표본 부족" if ev else "-"
-            else:
-                diff = S[h]["mean"] - B[h]["mean"]
-                ok = diff > 0 if way == "up" else diff < 0
-                word = "차이 없음" if abs(diff) < NEUTRAL.get(h, 0.5) else ("맞음" if ok else "틀림")
-                verdict[h] = word + f" ({diff:+.1f}%p)"
-        rows.append({"cat": cat, "way": way, "n": len(ev), "S": S, "verdict": verdict, "events": ev})
+        S, verdict = judge(ev, B, way)
+        row = {"cat": cat, "way": way, "n": len(ev), "S": S, "verdict": verdict, "events": ev, "reg": {}}
+        for rg in REGIMES:              # 시장 국면별(상승기/하락기) — 기준선도 같은 국면의 날들로
+            evr = [e for e in ev if e.get("reg") == rg]
+            Br = {h: stats([b[h] for b in base if b.get("reg") == rg]) for h in HORIZONS}
+            Sr, vr_ = judge(evr, Br, way)
+            row["reg"][rg] = {"n": len(evr), "S": Sr, "verdict": vr_, "B": Br}
+        rows.append(row)
+    reg_days = {rg: sum(1 for b in base if b.get("reg") == rg) for rg in REGIMES}
 
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
     if events:
@@ -145,8 +223,23 @@ def main():
     if events or base:
         ds = [e["date"] for e in events]
         period = f"{min(ds):%Y-%m-%d} ~ {max(ds):%Y-%m-%d}" if ds else ""
-    write_html(rows, B, len(tickers) - len(failed), failed, period, time.time() - t0)
+    write_html(rows, B, len(tickers) - len(failed), failed, period, time.time() - t0, reg_days)
     print(f"{OUT}.html 생성 완료 ({time.time() - t0:.0f}초, 신호 {len(events)}건)")
+
+
+def judge(ev, B, way):
+    """분류 신호들의 기간별 통계와 판정(기준선 B 대비)"""
+    S = {h: stats([e[f"r{h}"] for e in ev]) for h in HORIZONS}
+    verdict = {}
+    for h in HORIZONS:
+        if not S[h] or not B.get(h) or S[h]["n"] < MIN_N:
+            verdict[h] = "표본 부족" if ev else "-"
+        else:
+            diff = S[h]["mean"] - B[h]["mean"]
+            ok = diff > 0 if way == "up" else diff < 0
+            word = "차이 없음" if abs(diff) < NEUTRAL.get(h, 0.5) else ("맞음" if ok else "틀림")
+            verdict[h] = word + f" ({diff:+.1f}%p)"
+    return S, verdict
 
 
 def fmt(s, key, unit="%"):
@@ -162,10 +255,11 @@ def ret_td(v):
     return f'<td class="{"up" if v > 0 else "dn"}">{v:+.1f}%</td>'
 
 
-def write_html(rows, B, n_stocks, failed, period, secs):
+def write_html(rows, B, n_stocks, failed, period, secs, reg_days=None):
     E = html.escape
     years = BT_DAYS / 252
-    label = ("시그널 백테스트 · 내 종목" if UNIVERSE == "tickers" else f"시그널 백테스트 · 코스피 시총 상위 {TOP}") + \
+    label = {"tickers": "시그널 백테스트 · 내 종목", "nasdaq": f"시그널 백테스트 · 나스닥 대형 {TOP}"}.get(
+        UNIVERSE, f"시그널 백테스트 · 코스피 시총 상위 {TOP}") + \
         (f" · {years:.0f}년" if years >= 1.5 else f" · {BT_DAYS / 21:.0f}개월")
     kst = datetime.now(timezone.utc) + timedelta(hours=9)
     vcls = lambda v: "ok" if v.startswith("맞음") else "bad" if v.startswith("틀림") else "mut"
@@ -182,6 +276,24 @@ def write_html(rows, B, n_stocks, failed, period, secs):
 
     base_names = [c for c, _ in CATEGORIES]
     trs = "".join(row_html(byname[c]) for c in base_names)
+    # 시장 국면별 표: 분류마다 상승기·하락기의 20·60일 판정(기준선도 같은 국면의 날들)
+    reg_days = reg_days or {}
+    tot = sum(reg_days.values()) or 1
+    rtrs = ""
+    for c in base_names:
+        r = byname[c]
+        cells = ""
+        for rg in REGIMES:
+            x = r["reg"].get(rg, {"n": 0, "verdict": {h: "-" for h in HORIZONS}})
+            cells += f'<td class="g">{x["n"]}</td>' + "".join(
+                f'<td class="{vcls(x["verdict"][h])}">{E(x["verdict"][h])}</td>' for h in (20, 60) if h in HORIZONS)
+        rtrs += (f'<tr><td class="c"><b>{E(c)}</b> <small>{"▲" if r["way"] == "up" else "▼"}</small></td>{cells}</tr>')
+    def rg_base(rg):
+        Bx = next((byname[c]["reg"][rg]["B"] for c in base_names if rg in byname[c]["reg"]), {})
+        return " · ".join(f'{h}일 평균 {fmt(Bx.get(h), "mean")}' for h in (20, 60) if h in HORIZONS)
+    reg_note = " / ".join(f'{rg} {reg_days.get(rg, 0) / tot * 100:.0f}%의 날 (기준선 {rg_base(rg)})' for rg in REGIMES)
+    rhead = "".join(f'<th colspan="3" class="g">{rg}</th>' for rg in REGIMES)
+    rhead2 = "".join('<th class="g">신호</th><th>20일 판정</th><th>60일 판정</th>' for _ in REGIMES)
     ctrs = ""
     for title, desc, names in COMPARE:
         ctrs += (f'<tr class="grp"><td class="c" colspan="{2 + 3 * len(HORIZONS)}"><b>{E(title)}</b> '
@@ -234,7 +346,14 @@ a {{ color:inherit; }}
 <p class="note">▲ = 신호 뒤 오르면 맞는 분류(매수·불타기·눌림진행·반등대기·골든), ▼ = 내리거나 덜 오르면 맞는 분류(매도·익절검토·비중축소·하락진행·데드·과열).
 판정은 분류 평균과 기준선 평균의 차이(%p)로 봄({neutral} 안이면 '차이 없음'). {MIN_N}건 미만은 '표본 부족'. 플러스 = 수익률이 0보다 큰 비율.
 같은 종목에서 같은 신호가 {COOLDOWN}거래일 안에 다시 뜨면 이어진 신호로 보고 한 번만 셈. 최근 신호는 아직 시간이 안 지나 긴 기간(20·60일) 결과가 없으므로, 기간별 건수가 다름.
-한계: {"지금 보유·관심 종목만 대상(최근에 괜찮았던 종목 위주라 결과가 좋게 나오기 쉬움)" if UNIVERSE == "tickers" else "지금 시총 상위 종목 기준(과거에 상위였다 빠진 종목은 없음 — 결과가 다소 좋게 나오기 쉬움)"}, {"한 장세만 반영" if BT_DAYS < 500 else "여러 장세 포함"}, 거래비용 미반영.</p>
+한계: {"지금 보유·관심 종목만 대상(최근에 괜찮았던 종목 위주라 결과가 좋게 나오기 쉬움)" if UNIVERSE == "tickers" else ("지금 대형주 기준 — 지난 몇 년의 승자 위주라 기준선이 높고 결과가 좋게 나오기 쉬움" if UNIVERSE == "nasdaq" else "지금 시총 상위 종목 기준(과거에 상위였다 빠진 종목은 없음 — 결과가 다소 좋게 나오기 쉬움)")}, {"한 장세만 반영" if BT_DAYS < 500 else "여러 장세 포함"}, 거래비용 미반영.</p>
+<h2 style="font-size:1rem">시장 국면별</h2>
+<p class="note">시장(코스피, 미국 종목은 S&P500)이 {REGIME_MA}일선 위인 날 = 상승기, 아래인 날 = 하락기. 판정의 기준선도 같은 국면의 날들로 다시 계산.
+{E(reg_note)}</p>
+<div class="wrap"><table>
+<tr><th class="c" rowspan="2">분류</th>{rhead}</tr>
+<tr>{rhead2}</tr>
+{rtrs}</table></div>
 <h2 style="font-size:1rem">새 규칙 후보 비교</h2>
 <p class="note">리포트 규칙은 바꾸지 않고, 같은 기간·같은 종목에서 후보 규칙을 나란히 계산한 결과. 후보가 '현재'보다 기준선 대비 차이가 크게(기대 방향으로) 나오고 건수도 충분하면 리포트에 반영할 만함.</p>
 <div class="wrap"><table>

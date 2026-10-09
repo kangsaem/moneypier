@@ -136,10 +136,21 @@ def _metrics_html(r, side, lv):
     """종목 한 줄 요약 태그. 조건에 걸린 태그는 테두리, 트리거에 걸린 태그는 채움으로 강조"""
     keys = r["sig"][side + "_k"]
 
+    # 채움(진한 색 + 흰 글자 + 테두리) = 이 시그널의 조건·트리거로 쓰인 칸만(둘은 같은 모양, 구분은 마우스 올림 설명).
+    # 역할이 없는 칸은 값이 극단이어도 연한 색으로만 표시
+    FILL = {"up": "h2", "h1": "h2", "h2": "h2", "hot": "h2", "dn": "cold", "cold": "cold",
+            "l1": "l2", "l2": "l2", "n": "fn", "arr up": "h2 arr", "arr dn": "cold arr"}
+    SOFT = {"h2": "h1", "l2": "l1", "hot": "up", "cold": "dn"}
+
     def tag(key, txt, color, title=""):
-        mark = {"c": " cond", "t": " trig"}.get(keys.get(key), "")
+        role = keys.get(key) if key else None
+        if role:
+            cls = FILL.get(color, "fn") + " role"     # 조건·트리거 같은 모양: 진한 채움 + 흰 글자 + 테두리
+            title = (title + " · " if title else "") + ("이 시그널의 트리거" if role == "t" else "이 시그널의 조건")
+        else:
+            cls = SOFT.get(color, color)
         ttl = f' title="{E(title)}"' if title else ""
-        return f'<span class="mt {color}{mark}"{ttl}>{E(txt)}</span>'
+        return f'<span class="mt {cls}"{ttl}>{E(txt)}</span>'
 
     out = []
     d = r["disp"]
@@ -166,7 +177,7 @@ def _metrics_html(r, side, lv):
     for k, nm in (("day", "일봉"), ("week", "주봉"), ("month", "월봉")):
         x = r[k]
         txt, cls = ("정", "arr up") if x["ok"] and x["above"] else ("역", "arr dn") if x["ok"] else ("-", "n")
-        out.append(tag("day" if k == "day" else "", txt + (day_note if k == "day" else ""), cls, f"{nm} 5·10선 배열"))
+        out.append(tag(k if k in ("day", "week") else "", txt + (day_note if k == "day" else ""), cls, f"{nm} 5·10선 배열"))
     g = (r["close"] / r["ma10"] - 1) * 100
     m20 = r["chart"]["ma20"][-1] if r.get("chart") else None
     if m20:
@@ -183,7 +194,7 @@ def _metrics_html(r, side, lv):
                            f"종가가 {lab}선보다 {abs(gp):.1f}% {'위' if gp >= 0 else '아래 (위쪽 저항 가능)'}"))
     out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else "n"))
     out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
-    out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "n"))
+    out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "dn" if r["from_high"] <= -20 else "n"))
     return '<div class="mrow">' + "".join(out) + "</div>"
 
 
@@ -343,8 +354,9 @@ if render_errors:
     notes += "\n\n[화면 생성 중 오류]\n" + "\n".join(sorted(set(render_errors)))
 extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 
-wide_link = (' &nbsp;·&nbsp; <a href="backtest_wide.html">코스피 시총 상위 · 5년 →</a>'
-             if os.path.exists("results/backtest_wide.html") else "")
+wide_link = "".join(f' &nbsp;·&nbsp; <a href="{f}.html">{t} →</a>'
+                    for f, t in (("backtest_wide", "코스피 시총 상위 · 5년"), ("backtest_nasdaq", "나스닥 대형 · 5년"))
+                    if os.path.exists(f"results/{f}.html"))
 
 page = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
@@ -352,9 +364,11 @@ page = f"""<!doctype html>
 <title>{TITLE}</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
-  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#dc2626; --cw5:#84cc16; --cw10:#15803d; --cm5:#2563eb; --cm10:#1e3a8a; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1; }}
+  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#dc2626; --cw5:#84cc16; --cw10:#15803d; --cm5:#2563eb; --cm10:#1e3a8a; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1;
+  --buyfill:#d92d20; --sellfill:#1d5fd1; --skyfill:#0284c7; --mutfill:#6b7380; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#f472b6; --c20:#f87171; --cw5:#a3e635; --cw10:#22c55e; --cm5:#60a5fa; --cm10:#818cf8; --sky:#38bdf8; --skybg:#0c2a3d; --skyfg:#7dd3fc; }} }}
+  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#f472b6; --c20:#f87171; --cw5:#a3e635; --cw10:#22c55e; --cm5:#60a5fa; --cm10:#818cf8; --sky:#38bdf8; --skybg:#0c2a3d; --skyfg:#7dd3fc;
+  --buyfill:#c62a1f; --sellfill:#2856b8; --skyfill:#0369a1; --mutfill:#525a68; }} }}
 * {{ box-sizing:border-box; }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0; padding:14px; line-height:1.5; max-width:760px; margin-inline:auto; }}
 h1 {{ font-size:1.3rem; margin:4px 0 2px; }}
@@ -395,11 +409,11 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}
 .mt {{ font-size:.72rem; padding:1px 7px; border-radius:6px; border:1.5px solid transparent; background:var(--line); color:var(--mut); white-space:nowrap; }}
 .mt.up {{ background:var(--buybg); color:var(--buy); }} .mt.dn {{ background:var(--sellbg); color:var(--sell); }}
-.mt.h1 {{ background:var(--buybg); color:var(--buy); }} .mt.h2 {{ background:var(--buy); color:#fff; }}
-.mt.l1 {{ background:var(--skybg); color:var(--skyfg); }} .mt.l2 {{ background:var(--sky); color:#fff; }}
-.mt.hot {{ background:var(--buy); color:#fff; }} .mt.cold {{ background:var(--sell); color:#fff; }}
-.mt.cond {{ border-color:currentColor; font-weight:700; box-shadow:0 0 0 1px currentColor inset; }}
-.mt.trig {{ font-weight:800; outline:2px solid currentColor; outline-offset:1px; }}
+.mt.h1 {{ background:var(--buybg); color:var(--buy); }} .mt.h2 {{ background:var(--buyfill); color:#fff; }}
+.mt.l1 {{ background:var(--skybg); color:var(--skyfg); }} .mt.l2 {{ background:var(--skyfill); color:#fff; }}
+.mt.hot {{ background:var(--buyfill); color:#fff; }} .mt.cold {{ background:var(--sellfill); color:#fff; }}
+.mt.fn {{ background:var(--mutfill); color:#fff; }} .mt.h2, .mt.cold, .mt.l2, .mt.fn, .mt.hot {{ font-weight:700; border-color:transparent; }}
+.mt.role {{ border-color:var(--fg); }}
 .chart {{ width:100%; height:auto; display:block; }} .chwrap {{ padding:0 10px 6px; }} .chwrap.kospi {{ background:var(--card); border:1px solid var(--line); border-radius:12px; margin-top:8px; padding:8px 10px; }}
 .chart.mini {{ margin-top:6px; }}
 .ch-bg {{ fill:none; stroke:var(--line); }} .ch-grid {{ stroke:var(--mut); stroke-dasharray:3 3; opacity:.5; }}
@@ -462,7 +476,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 눌림진행 = 싸고 아직 떨어지는 중(5일 -5% 이하 또는 20일 신저가)이지만 장기 추세는 상승(월봉 정배열 또는 10월선 위) — 곧 매수 후보 / 하락진행 = 같은 상황인데 장기 추세도 하락 — 반등 확인 전까지 보류 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하. 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
+<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 눌림진행 = 싸고 아직 떨어지는 중(5일 -5% 이하 또는 20일 신저가)이지만 장기 추세는 상승(월봉 정배열 또는 10월선 위) — 곧 매수 후보 / 하락진행 = 같은 상황인데 장기 추세도 하락 — 반등 확인 전까지 보류 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 색 채움 + 흰 글자 + 테두리 칸 = 이 시그널의 조건이나 트리거로 쓰인 항목(어느 쪽인지는 칸에 마우스를 올리면 표시). 나머지는 연한 색. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %). 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
 
 <h2>종목 스크리닝</h2>
 <div class="dgrid">{screen_html}</div>
