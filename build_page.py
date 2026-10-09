@@ -118,22 +118,41 @@ def metrics_html(r, side, lv):
     """종목 한 줄 요약 태그. 조건에 걸린 태그는 테두리, 트리거에 걸린 태그는 채움으로 강조"""
     keys = r["sig"]["buy_k" if side == "buy" else "sell_k"]
 
-    def tag(key, txt, color):
+    def tag(key, txt, color, title=""):
         mark = {"c": " cond", "t": " trig"}.get(keys.get(key), "")
-        return f'<span class="mt {color}{mark}">{E(txt)}</span>'
+        ttl = f' title="{E(title)}"' if title else ""
+        return f'<span class="mt {color}{mark}"{ttl}>{E(txt)}</span>'
 
     out = []
     d = r["disp"]
     if d:
-        out.append(tag("disp", f"50일 이격 {d['cur']:.1f} ({m._n(d['min'])}/{m._n(d['max'])})", disp_cls(d["cur"])))
+        v = m.disp_view(d)
+        if v["side"] == "high":      # 높은 쪽 = 빨강, 과거 최대 대비 %
+            cls = "h2" if v["strong"] else "h1"
+        else:                        # 낮은 쪽 = 하늘색, 과거 최소 대비 %
+            cls = "l2" if v["strong"] else "l1"
+        txt = f"50일 이격 {v['pct']:.0f}% ({m._n(d['min'])}/{m._n(d['max'])})"
+        out.append(tag("disp", txt, cls, f"현재 50일 이격도 {d['cur']:.1f}"))
+    trig = r["sig"][side + "_t"]
+    ago = r["day"]["cross"]["ago"] if r["day"]["ok"] and r["day"]["cross"] else 0
+    day_note = ""
+    for t_ in trig:
+        if "임박" in t_:
+            day_note = " · 골든 임박"
+        elif "골든" in t_:
+            day_note = f" · 골든 {ago}일전"
+        elif "데드" in t_:
+            day_note = f" · 데드 {ago}일전"
+    rsi_note = "".join(" ↗반등" if "반등" in t_ else " ↘꺾임" if "꺾임" in t_ else "" for t_ in trig)
     for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
         x = r[k]
-        out.append(tag("day" if k == "day" else "", lb + (" 정" if x["above"] else " 역") if x["ok"] else lb + " -",
+        label = (lb + (" 정" if x["above"] else " 역") if x["ok"] else lb + " -") + (day_note if k == "day" else "")
+        out.append(tag("day" if k == "day" else "", label,
                        "up" if x["ok"] and x["above"] else "dn" if x["ok"] else "n"))
     g = (r["close"] / r["ma10"] - 1) * 100
     out.append(tag("", f"10일 {abs(g):.1f}% {'▲' if g >= 0 else '▼'}" + (f" · 이탈선 {m.fmt_price(r['ma10'])}" if lv == "과열" else ""),
                    "up" if g >= 0 else "dn"))
-    out.append(tag("rsi", f"RSI {r['rsi']:.0f}", "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else "n"))
+    out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else "n"))
     out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
     out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "n"))
     return '<div class="mrow">' + "".join(out) + "</div>"
@@ -156,7 +175,7 @@ def svg_chart(ch, mini=False):
         return ""
     sl = slice(-60, None) if mini else slice(None)
     g = lambda k: ch[k][sl]
-    keys = ("close", "ma5", "ma10") if mini else ("close", "ma5", "ma10", "ma50")
+    keys = ("close", "ma5", "ma20", "ma30", "ma150", "ma300")
     close = g("close")
     n = len(close)
     W = 320 if mini else 640
@@ -179,13 +198,15 @@ def svg_chart(ch, mini=False):
     for k in keys[::-1]:
         o.append(f'<path class="ch-{k}" d="{_path(g(k), x, y)}"/>')
     ly = y(close[-1])
-    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="2.6"/>')
+    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="2"/>')
     if not mini:
         for v, ypos in ((hi - m_, y(hi - m_)), (lo + m_, y(lo + m_))):
+            if abs(ypos - ly) < 10:      # 현재가 라벨과 겹치면 최고·최저 라벨은 생략
+                continue
             o.append(f'<text class="ch-t" x="{W - pr + 4}" y="{ypos + 3:.1f}">{m.fmt_price(v)}</text>')
         o.append(f'<text class="ch-last" x="{W - pr + 4}" y="{ly + 3:.1f}">{m.fmt_price(close[-1])}</text>')
-        for i, (lab, cls) in enumerate((("종가", "close"), ("5일", "ma5"), ("10일", "ma10"), ("50일", "ma50"))):
-            o.append(f'<text class="ch-lg ch-l{cls}" x="{pl + 2 + i * 44}" y="11">● {lab}</text>')
+        for i, (lab, cls) in enumerate((("종가", "close"), ("5일", "ma5"), ("20일", "ma20"), ("30일", "ma30"), ("150일", "ma150"), ("300일", "ma300"))):
+            o.append(f'<text class="ch-lg ch-l{cls}" x="{pl + 2 + i * 54}" y="11">● {lab}</text>')
         o.append(f'<text class="ch-t" x="{pl}" y="{H - 3}">{ch["dates"][sl][0]}</text>')
         o.append(f'<text class="ch-t" x="{W - pr}" y="{H - 3}" text-anchor="end">{ch["dates"][sl][-1]}</text>')
         if RH:
@@ -210,9 +231,8 @@ def sig_block(head_txt, side, lv, cls):
     items = ""
     for r in hit:
         sg = r["sig"]
-        why = "".join(chip(c, "cond " + side) for c in sg[side + "_c"]) + "".join(chip(t, "trig " + side) for t in sg[side + "_t"])
         items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
-                  f'</div><div class="why">{why}</div>{metrics_html(r, side, lv)}{svg_chart(r["chart"], mini=True)}</div>')
+                  f'</div>{metrics_html(r, side, lv)}{svg_chart(r["chart"], mini=True)}</div>')
     body = items or '<div class="none">해당 종목 없음</div>'
     return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
 
@@ -220,9 +240,9 @@ def sig_block(head_txt, side, lv, cls):
 sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong")
             + sig_block("저평가 · 반등 대기 <small>(방향 확인 전)</small>", "buy", "관심", "buy")
             + sig_block("하락 진행 중 <small>(매수 보류)</small>", "buy", "보류", "hold")
-            + sig_block("매도 타점", "sell", "타점", "sell strong")
-            + sig_block("과열 · 추세 유지 <small>(매도 아님, 이익 보호 구간)</small>", "sell", "과열", "hot")
-            + sig_block("매도 관심 <small>(일·주봉 중 역배열)</small>", "sell", "관심", "sell"))
+            + sig_block("매도 검토 <small>(과열 + 꺾임 확인)</small>", "sell", "타점", "sell strong")
+            + sig_block("일부 익절 검토 <small>(과열 · 추세는 유지)</small>", "sell", "과열", "hot")
+            + sig_block("비중 축소 검토 <small>(과열 + 일·주봉 중 역배열)</small>", "sell", "관심", "sell"))
 
 screen_html = ""
 for h, n, lines in m.summary_sections(results):
@@ -246,9 +266,9 @@ page = f"""<!doctype html>
 <title>장 마감 리포트</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
-  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#e08a00; --c10:#15803d; --c50:#7c3aed; }}
+  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#e08a00; --c30:#16a34a; --c150:#2563eb; --c300:#7c3aed; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#fbbf24; --c10:#4ade80; --c50:#c4a1ff; }} }}
+  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#f472b6; --c20:#fbbf24; --c30:#4ade80; --c150:#60a5fa; --c300:#c4a1ff; --sky:#38bdf8; --skybg:#0c2a3d; --skyfg:#7dd3fc; }} }}
 * {{ box-sizing:border-box; }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0; padding:14px; line-height:1.5; max-width:760px; margin-inline:auto; }}
 h1 {{ font-size:1.3rem; margin:4px 0 2px; }}
@@ -288,7 +308,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .mt {{ font-size:.72rem; padding:1px 7px; border-radius:6px; border:1.5px solid transparent; background:var(--line); color:var(--mut); white-space:nowrap; }}
 .mt.up {{ background:var(--buybg); color:var(--buy); }} .mt.dn {{ background:var(--sellbg); color:var(--sell); }}
 .mt.h1 {{ background:var(--buybg); color:var(--buy); }} .mt.h2 {{ background:var(--buy); color:#fff; }}
-.mt.l1 {{ background:var(--sellbg); color:var(--sell); }} .mt.l2 {{ background:var(--sell); color:#fff; }}
+.mt.l1 {{ background:var(--skybg); color:var(--skyfg); }} .mt.l2 {{ background:var(--sky); color:#fff; }}
 .mt.hot {{ background:var(--buy); color:#fff; }} .mt.cold {{ background:var(--sell); color:#fff; }}
 .mt.cond {{ border-color:currentColor; font-weight:700; box-shadow:0 0 0 1px currentColor inset; }}
 .mt.trig {{ font-weight:800; outline:2px solid currentColor; outline-offset:1px; }}
@@ -296,10 +316,11 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chart.mini {{ margin-top:6px; }}
 .ch-bg {{ fill:none; stroke:var(--line); }} .ch-grid {{ stroke:var(--mut); stroke-dasharray:3 3; opacity:.5; }}
 .chart path {{ fill:none; stroke-linejoin:round; stroke-linecap:round; }}
-.ch-close {{ stroke:var(--fg); stroke-width:1.7; }} .ch-ma5 {{ stroke:var(--c5); stroke-width:1.1; }}
-.ch-ma10 {{ stroke:var(--c10); stroke-width:1.1; }} .ch-ma50 {{ stroke:var(--c50); stroke-width:1.3; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1.2; }}
+.ch-close {{ stroke:var(--fg); stroke-width:1; }} .ch-ma5 {{ stroke:var(--c5); stroke-width:1; }}
+.ch-ma20 {{ stroke:var(--c20); stroke-width:1; }} .ch-ma30 {{ stroke:var(--c30); stroke-width:1; }}
+.ch-ma150 {{ stroke:var(--c150); stroke-width:1; }} .ch-ma300 {{ stroke:var(--c300); stroke-width:1; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1; }}
 .ch-dot {{ fill:var(--fg); }} .ch-t {{ fill:var(--mut); font-size:9px; }} .ch-last {{ fill:var(--fg); font-size:9.5px; font-weight:700; }}
-.ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma10 {{ fill:var(--c10); }} .ch-lma50 {{ fill:var(--c50); }}
+.ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma20 {{ fill:var(--c20); }} .ch-lma30 {{ fill:var(--c30); }} .ch-lma150 {{ fill:var(--c150); }} .ch-lma300 {{ fill:var(--c300); }}
 .none {{ color:var(--mut); font-size:.85rem; }}
 .chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
@@ -319,14 +340,14 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>시장 현황</h2>
 <div class="cards">{"".join(cards)}</div>
-{('<div class="chwrap kospi"><div class="cl">코스피 최근 6개월</div>' + svg_chart(ks["chart"]) + '</div>') if ks and ks.get("chart") else ""}
+{('<div class="chwrap kospi"><div class="cl">코스피 최근 1년</div>' + svg_chart(ks["chart"]) + '</div>') if ks and ks.get("chart") else ""}
 
 <h2>시장 위험 · 바닥 지표</h2>
 <div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <h2>오늘의 매수 · 매도 시그널</h2>
 {sig_html}
-<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 저평가·매도 관심 = 조건만 충족(방향 확인 전) / 하락 진행 중 = 싸 보이지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 과열 = 조건 충족이지만 일·주봉이 모두 정배열이라 추세가 살아 있음(월봉은 참고). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조.</div>
+<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 저평가·매도 관심 = 조건만 충족(방향 확인 전) / 하락 진행 중 = 싸 보이지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 일부 익절 = 과열 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있음(전량 매도보다 분할 익절을 검토하는 구간, 월봉은 참고). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하.</div>
 
 <h2>종목 스크리닝</h2>
 {screen_html}
