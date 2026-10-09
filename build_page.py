@@ -52,7 +52,10 @@ for t in tickers:
     except Exception as e:
         failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
 
-head = m.market_text()
+snap = m.market_snapshot()
+msig = m.market_signals(snap, results)
+head = m.market_text(snap)
+sigs = m.signals_text(results, msig)
 summary = m.summary_text(results)
 detail = m.detail_section(results)
 
@@ -62,30 +65,153 @@ if failed:
 if unresolved:
     notes += "\n\n[코드를 찾지 못해 제외된 종목] " + ", ".join(unresolved)
 
-report = head + "\n\n" + summary + "\n\n" + detail + notes          # 웹페이지용 전체
 repo = os.environ.get("GITHUB_REPOSITORY", "")
-link = f"\n\n세부내용: https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/" if "/" in repo else ""
-short_report = head + "\n\n" + summary + notes + link                # 텔레그램용(세부 제외)
+link = f"\n\n전체 리포트: https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/" if "/" in repo else ""
+short_report = head + "\n\n" + sigs + notes + link          # 텔레그램용(시그널 중심, 세부 제외)
 
 kst = datetime.now(timezone.utc) + timedelta(hours=9)
 stamp = f"{kst:%Y-%m-%d %H:%M} KST"
+E = html.escape
+
+
+def chip(txt, cls):
+    return f'<span class="chip {cls}">{E(txt)}</span>'
+
+
+def card(label, value, sub="", cls=""):
+    return f'<div class="card {cls}"><div class="cl">{E(label)}</div><div class="cv">{E(value)}</div><div class="cs">{E(sub)}</div></div>'
+
+
+def updown(x):
+    return "up" if x > 0 else "dn" if x < 0 else ""
+
+
+cards = []
+ks = snap.get("ks")
+if ks:
+    cards.append(card("코스피", f"{ks['close']:,.0f}", f"{ks['chg']:+.2f}% · 이격도 {ks['disp']:.0f} · RSI {ks['rsi']:.0f}", updown(ks["chg"])))
+for key, nm, unit in (("vix", "VIX", ""), ("y10", "미국채 10년", "%"), ("y30", "미국채 30년", "%")):
+    v = snap.get(key)
+    if v:
+        cards.append(card(nm, f"{v['last']:.2f}{unit}", f"전일 대비 {v['chg']:+.2f}", updown(v["chg"])))
+for e in snap.get("err", []):
+    cards.append(card("실패", e, "", "bad"))
+
+
+def gauge(key, title):
+    g = msig[key]
+    rows = "".join(
+        f'<li class="{"on" if st else "na" if st is None else "off"}"><span class="dot"></span>'
+        f'<span class="t">{E(lb)}</span><b>{E(val)}</b></li>' for lb, val, st in g["items"])
+    pct = int(100 * g["score"] / g["total"]) if g["total"] else 0
+    return (f'<div class="gauge {key} {g["cls"]}"><div class="gh"><span>{title}</span>'
+            f'<b>{g["score"]}/{g["total"]} · {E(g["label"])}</b></div>'
+            f'<div class="bar"><i style="width:{pct}%"></i></div><ul>{rows}</ul></div>')
+
+
+def sig_block(head_txt, side, lv, cls):
+    hit = [r for r in results if r["sig"][side] == lv]
+    items = ""
+    for r in hit:
+        sg = r["sig"]
+        why = "".join(chip(c, "cond") for c in sg[side + "_c"]) + "".join(chip(t, "trig") for t in sg[side + "_t"])
+        items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
+                  f'<em>RSI {r["rsi"]:.0f}</em></div><div class="why">{why}</div></div>')
+    body = items or '<div class="none">해당 종목 없음</div>'
+    return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
+
+
+sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong") + sig_block("매수 관심", "buy", "관심", "buy")
+            + sig_block("매도 타점", "sell", "타점", "sell strong") + sig_block("매도 관심", "sell", "관심", "sell"))
+
+screen_html = ""
+for h, n, lines in m.summary_sections(results):
+    body = E("\n".join(lines)) if n else "해당 종목 없음"
+    screen_html += f'<details><summary>{E(h)} <small>{n}</small></summary><pre>{body}</pre></details>'
+
+detail_html = ""
+for r in results:
+    fl = m.flags(r)
+    chips = "".join(chip(f, "buy" if f.startswith("매수") else "sell" if f.startswith("매도") else "flag") for f in fl)
+    rc = "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else ""
+    detail_html += (f'<details><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
+                    f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
+                    f'<pre>{E(m.detail_text(r))}</pre></details>')
+
+extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 
 page = f"""<!doctype html>
 <html lang="ko"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>장 마감 리포트</title>
 <style>
-:root {{ --bg:#fff; --fg:#1a1a1a; --mut:#666; }}
-@media (prefers-color-scheme: dark) {{ :root {{ --bg:#111; --fg:#eee; --mut:#999; }} }}
-body {{ background:var(--bg); color:var(--fg); font-family:system-ui,sans-serif; margin:0; padding:16px; }}
-h1 {{ font-size:1.2rem; margin:0 0 4px; }}
-.t {{ color:var(--mut); font-size:.85rem; margin-bottom:12px; }}
-pre {{ white-space:pre-wrap; word-break:break-all; font-size:.85rem; line-height:1.5;
-      font-family:ui-monospace,Menlo,Consolas,monospace; }}
+:root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
+  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; }}
+@media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
+  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; }} }}
+* {{ box-sizing:border-box; }}
+body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0; padding:14px; line-height:1.5; max-width:760px; margin-inline:auto; }}
+h1 {{ font-size:1.3rem; margin:4px 0 2px; }}
+.t {{ color:var(--mut); font-size:.8rem; margin-bottom:14px; }}
+h2 {{ font-size:1.05rem; margin:26px 0 10px; padding-left:10px; border-left:4px solid var(--fg); }}
+.cards {{ display:grid; grid-template-columns:repeat(2,1fr); gap:8px; }}
+.card {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; }}
+.cl {{ font-size:.75rem; color:var(--mut); }} .cv {{ font-size:1.35rem; font-weight:700; }} .cs {{ font-size:.75rem; color:var(--mut); }}
+.card.up .cv {{ color:var(--buy); }} .card.dn .cv {{ color:var(--sell); }} .card.bad {{ background:var(--warnbg); }}
+.gauges {{ display:grid; gap:10px; }}
+.gauge {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:12px; border-left-width:6px; }}
+.gauge.risk.lv0, .gauge.bottom.lv0 {{ border-left-color:var(--line); }}
+.gauge.risk.lv1 {{ border-left-color:var(--warn); }} .gauge.risk.lv2 {{ border-left-color:var(--buy); background:var(--buybg); }}
+.gauge.bottom.lv1 {{ border-left-color:var(--ok); }} .gauge.bottom.lv2 {{ border-left-color:var(--ok); background:var(--okbg); }}
+.gh {{ display:flex; justify-content:space-between; font-size:1rem; font-weight:600; }}
+.bar {{ height:6px; background:var(--line); border-radius:3px; margin:8px 0; overflow:hidden; }}
+.bar i {{ display:block; height:100%; background:var(--fg); }}
+.gauge.risk .bar i {{ background:var(--buy); }} .gauge.bottom .bar i {{ background:var(--ok); }}
+.gauge ul {{ list-style:none; margin:0; padding:0; font-size:.83rem; }}
+.gauge li {{ display:flex; gap:8px; align-items:center; padding:3px 0; }} .gauge li .t {{ flex:1; }}
+.dot {{ width:10px; height:10px; border-radius:50%; background:var(--line); flex:none; }}
+.gauge.risk li.on .dot {{ background:var(--buy); }} .gauge.bottom li.on .dot {{ background:var(--ok); }}
+li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
+.sg {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin-bottom:10px; border-left-width:6px; }}
+.sg h3 {{ margin:0 0 6px; font-size:1rem; }} .sg h3 small, summary small {{ color:var(--mut); font-weight:400; }}
+.sg.buy {{ border-left-color:var(--buy); }} .sg.sell {{ border-left-color:var(--sell); }}
+.sg.buy.strong {{ background:var(--buybg); }} .sg.sell.strong {{ background:var(--sellbg); }}
+.sg.buy h3 {{ color:var(--buy); }} .sg.sell h3 {{ color:var(--sell); }}
+.sig {{ padding:7px 0; border-top:1px solid var(--line); }} .sig:first-of-type {{ border-top:0; }}
+.sh {{ display:flex; gap:8px; align-items:baseline; }} .sh span {{ color:var(--mut); font-size:.75rem; }} .sh em {{ margin-left:auto; font-style:normal; font-size:.8rem; }}
+.none {{ color:var(--mut); font-size:.85rem; }}
+.chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
+.chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
+.chip.buy {{ background:var(--buybg); color:var(--buy); border-color:var(--buy); font-weight:600; }}
+.chip.sell {{ background:var(--sellbg); color:var(--sell); border-color:var(--sell); font-weight:600; }}
+.chip.flag {{ color:var(--mut); }}
+details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; }}
+summary {{ cursor:pointer; padding:10px 12px; font-size:.9rem; }} .code {{ color:var(--mut); font-size:.75rem; }}
+.rsi {{ font-size:.75rem; padding:1px 6px; border-radius:6px; background:var(--line); }}
+.rsi.hot {{ background:var(--buybg); color:var(--buy); }} .rsi.cold {{ background:var(--sellbg); color:var(--sell); }}
+pre {{ white-space:pre-wrap; word-break:break-all; font-size:.78rem; line-height:1.55; margin:0; padding:2px 12px 12px; font-family:ui-monospace,Menlo,Consolas,monospace; }}
+pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
+.legend {{ font-size:.75rem; color:var(--mut); margin-top:6px; }}
 </style></head><body>
 <h1>장 마감 리포트</h1>
-<div class="t">갱신: {stamp} (참고용, 투자 판단 책임은 본인에게 있습니다)</div>
-<pre>{html.escape(report)}</pre>
+<div class="t">갱신 {stamp} · 규칙 기반 참고 신호이며 투자 판단 책임은 본인에게 있습니다</div>
+
+<h2>시장 현황</h2>
+<div class="cards">{"".join(cards)}</div>
+
+<h2>시장 위험 · 바닥 지표</h2>
+<div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
+
+<h2>오늘의 매수 · 매도 시그널</h2>
+{sig_html}
+<div class="legend">타점 = 조건(싸다/과열) 2개 이상 + 트리거(크로스·RSI 방향전환) 1개 이상 / 관심 = 조건만 충족. 한국 관례대로 매수=빨강, 매도=파랑.</div>
+
+<h2>종목 스크리닝</h2>
+{screen_html}
+
+<h2>종목별 세부내용</h2>
+{detail_html}
+{extra}
 </body></html>"""
 
 os.makedirs("docs", exist_ok=True)

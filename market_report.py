@@ -16,7 +16,8 @@ START = (datetime.today() - timedelta(days=365 * 12)).strftime("%Y-%m-%d")
 # ===== 스크리닝 기준 (여기 숫자만 바꾸면 됩니다) =====
 CROSS_DAYS = 5      # '최근 N거래일 이내' 골든/데드크로스
 MOVE_PCT = 8.0      # 최근 5거래일 누적 등락 또는 하루 등락이 이 % 이상이면 포함
-NEAR_RATIO = 0.9    # 50일 이격도가 과거 최대/최소 범위의 이 비율(90%) 이상 접근하면 포함
+NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 포함
+NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 포함
 
 
 # ---------------------------------------------------------------- 데이터
@@ -80,8 +81,10 @@ def analyze(code, name):
     c = df["Close"].dropna()
     if len(c) < 30:
         raise ValueError("시세 데이터가 부족하거나 조회 실패")
+    rs = rsi(c)
     r = {"code": code, "name": name, "last": c.index[-1], "close": float(c.iloc[-1]),
-         "rsi": float(rsi(c).iloc[-1]),
+         "rsi": float(rs.iloc[-1]), "rsi_prev": float(rs.iloc[-2]),
+         "rsi_min5": float(rs.tail(5).min()), "rsi_max5": float(rs.tail(5).max()),
          "day": cross_state(c), "week": cross_state(make_bars(c, "W-FRI")),
          "month": cross_state(make_bars(c, "ME"))}
 
@@ -89,11 +92,9 @@ def analyze(code, name):
     r["disp"] = None
     if len(disp):
         cur, mx, mn = float(disp.iloc[-1]), float(disp.max()), float(disp.min())
-        # 이격도는 100이 기준선이므로, 100에서 최대/최소까지 거리 중 얼마나 왔는지로 접근도를 계산
-        up = (cur - 100) / (mx - 100) if (mx > 100 and cur > 100) else 0.0
-        dn = (100 - cur) / (100 - mn) if (mn < 100 and cur < 100) else 0.0
+        up, dn = cur / mx, cur / mn   # 현재값이 과거 최대/최소의 몇 배인지
         r["disp"] = {"cur": cur, "max": mx, "max_date": disp.idxmax(), "min": mn, "min_date": disp.idxmin(),
-                     "up": up, "down": dn, "pct": float((disp < cur).mean() * 100),
+                     "up": up, "down": dn, "max_thr": mx * NEAR_MAX, "min_thr": mn * NEAR_MIN, "pct": float((disp < cur).mean() * 100),
                      "months": len(disp) / 21, "since": disp.index[0]}
 
     high = df["High"].dropna() if "High" in df else c
@@ -104,7 +105,44 @@ def analyze(code, name):
     r["rets"] = rets
     r["ret5"] = float((c.iloc[-1] / c.iloc[-6] - 1) * 100) if len(c) >= 6 else 0.0
     r["maxday"] = max(rets, key=abs) if rets else 0.0
+    r["sig"] = stock_signals(r)
     return r
+
+
+# ---------------------------------------------------------------- 종목 시그널
+def stock_signals(r):
+    """조건(싸다/과열) 2개 이상 + 트리거(크로스·RSI 방향전환) 1개 이상 → '타점', 조건만 충족 → '관심'"""
+    d, dy = r["disp"], r["day"]
+    recent = dy["ok"] and dy["cross"] and dy["cross"]["ago"] < CROSS_DAYS
+    buy_c, buy_t, sell_c, sell_t = [], [], [], []
+
+    if r["rsi"] <= 35:
+        buy_c.append(f"RSI {r['rsi']:.0f} (35 이하)")
+    if d and (d["cur"] <= 95 or d["down"] <= NEAR_MIN):
+        buy_c.append(f"50일 이격도 {d['cur']:.1f} (낮은 구간)")
+    if r["from_high"] <= -20:
+        buy_c.append(f"52주 고점 대비 {r['from_high']:.0f}%")
+    if recent and dy["cross"]["golden"]:
+        buy_t.append("5일 내 골든크로스")
+    if r["rsi_min5"] <= 35 and r["rsi"] > r["rsi_min5"] and r["rsi"] >= r["rsi_prev"]:
+        buy_t.append("RSI 저점 찍고 반등")
+
+    if r["rsi"] >= 70:
+        sell_c.append(f"RSI {r['rsi']:.0f} (70 이상)")
+    if d and (d["cur"] >= 110 or d["up"] >= NEAR_MAX):
+        sell_c.append(f"50일 이격도 {d['cur']:.1f} (높은 구간)")
+    if r["ret5"] >= MOVE_PCT:
+        sell_c.append(f"5일 {r['ret5']:+.1f}% 급등")
+    if recent and not dy["cross"]["golden"]:
+        sell_t.append("5일 내 데드크로스")
+    if r["rsi_max5"] >= 65 and r["rsi"] < r["rsi_max5"] and r["rsi"] <= r["rsi_prev"]:
+        sell_t.append("RSI 고점 찍고 꺾임")
+
+    def level(c, t):
+        return "타점" if (len(c) >= 2 and t) else ("관심" if len(c) >= 2 else None)
+
+    return {"buy": level(buy_c, buy_t), "buy_c": buy_c, "buy_t": buy_t,
+            "sell": level(sell_c, sell_t), "sell_c": sell_c, "sell_t": sell_t}
 
 
 # ---------------------------------------------------------------- 분류
@@ -115,10 +153,14 @@ def flags(r):
         f.append("최근골든" if d["cross"]["golden"] else "최근데드")
     if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT:
         f.append(f"{MOVE_PCT:g}%↑변동")
-    if r["disp"] and r["disp"]["up"] >= NEAR_RATIO:
+    if r["disp"] and r["disp"]["up"] >= NEAR_MAX:
         f.append("이격도상단")
-    if r["disp"] and r["disp"]["down"] >= NEAR_RATIO:
+    if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
         f.append("이격도하단")
+    if r["sig"]["buy"]:
+        f.insert(0, "매수" + r["sig"]["buy"])
+    if r["sig"]["sell"]:
+        f.insert(0, "매도" + r["sig"]["sell"])
     return f
 
 
@@ -140,61 +182,151 @@ def trans_line(r):
                               trans_str("월", r["month"], "월")])
 
 
+def tl(r):
+    return f"{r['name']} ({r['code']})  RSI {r['rsi']:.0f}"
+
+
 def title(r):
     return f"{r['name']} ({r['code']})"
 
 
 # ---------------------------------------------------------------- 1. 시장 지표
-def market_text():
-    L = ["■ 1. 시장 지표"]
+def _yf_close(sym):
+    import yfinance as yf
+    return yf.Ticker(sym).history(period="2mo")["Close"].dropna()
+
+
+def market_snapshot():
+    snap = {"ks": None, "vix": None, "y10": None, "y30": None, "err": []}
     try:
         ks = fdr.DataReader("KS11", START)["Close"].dropna()
         disp = (ks / ks.rolling(50).mean() * 100).dropna()
-        chg = (ks.iloc[-1] / ks.iloc[-2] - 1) * 100
-        L.append(f"코스피 {ks.iloc[-1]:,.2f} ({chg:+.2f}%, {ks.index[-1]:%m-%d})")
-        L.append(f"  50일 이격도 {disp.iloc[-1]:.1f} (과거 최대 {disp.max():.1f} / 최소 {disp.min():.1f})")
+        hi250 = ks.rolling(250, min_periods=1).max().iloc[-1]
+        snap["ks"] = {"close": float(ks.iloc[-1]), "chg": float((ks.iloc[-1] / ks.iloc[-2] - 1) * 100),
+                      "date": ks.index[-1], "disp": float(disp.iloc[-1]), "disp_max": float(disp.max()),
+                      "disp_min": float(disp.min()), "rsi": float(rsi(ks).iloc[-1]),
+                      "from_high": float((ks.iloc[-1] / hi250 - 1) * 100), "cross": cross_state(ks)}
     except Exception as e:
-        L.append(f"코스피: 가져오기 실패 ({type(e).__name__})")
+        snap["err"].append(f"코스피 ({type(e).__name__})")
+    for key, sym, nm in (("vix", "^VIX", "VIX"), ("y10", "^TNX", "미국채 10년"), ("y30", "^TYX", "미국채 30년")):
+        try:
+            h = _yf_close(sym)
+            n = len(h)
+            snap[key] = {"last": float(h.iloc[-1]), "chg": float(h.iloc[-1] - h.iloc[-2]), "date": h.index[-1],
+                         "chg10": float(h.iloc[-1] - h.iloc[-11]) if n >= 11 else None,
+                         "pct10": float((h.iloc[-1] / h.iloc[-11] - 1) * 100) if n >= 11 else None}
+        except Exception as e:
+            snap["err"].append(f"{nm} ({type(e).__name__})")
+    return snap
 
-    try:
-        import yfinance as yf
-        for sym, nm, unit in (("^VIX", "미국 VIX", ""), ("^TNX", "미국채 10년물", "%"), ("^TYX", "미국채 30년물", "%")):
-            try:
-                h = yf.Ticker(sym).history(period="10d")["Close"].dropna()
-                L.append(f"{nm} {h.iloc[-1]:.2f}{unit} (전일 대비 {h.iloc[-1] - h.iloc[-2]:+.2f}, {h.index[-1]:%m-%d})")
-            except Exception as e:
-                L.append(f"{nm}: 가져오기 실패 ({type(e).__name__})")
-    except Exception as e:
-        L.append(f"미국 지표: 가져오기 실패 ({type(e).__name__})")
+
+def _level(score, kind):
+    if kind == "risk":
+        return ("경고", "lv2") if score >= 4 else ("주의", "lv1") if score >= 2 else ("낮음", "lv0")
+    return ("바닥권 신호 다수", "lv2") if score >= 4 else ("바닥 형성 가능성", "lv1") if score >= 2 else ("신호 약함", "lv0")
+
+
+def market_signals(snap, results):
+    """시장 위험 / 시장 바닥 체크리스트. 항목 = (설명, 현재값, True|False|None(데이터없음))"""
+    ks, vix, y10 = snap.get("ks"), snap.get("vix"), snap.get("y10")
+    n = len(results)
+    bear = sum(1 for r in results if r["day"]["ok"] and not r["day"]["above"]) / n if n else None
+    weak = sum(1 for r in results if r["rsi"] <= 35) / n if n else None
+    kc = ks["cross"] if ks else None
+    k_recent_gold = bool(kc and kc["ok"] and kc["cross"] and kc["cross"]["golden"] and kc["cross"]["ago"] < CROSS_DAYS)
+
+    risk = [
+        ("코스피 50일 이격도 110 이상 (과열)", f"{ks['disp']:.1f}" if ks else "-", ks["disp"] >= 110 if ks else None),
+        ("코스피 RSI 70 이상", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] >= 70 if ks else None),
+        ("코스피 5일선이 10일선 아래 (단기 추세 약화)", f"이격 {kc['gap']:+.2f}%" if kc and kc["ok"] else "-",
+         (not kc["above"]) if kc and kc["ok"] else None),
+        ("VIX 25 이상 또는 10일간 30% 이상 급등", f"{vix['last']:.1f}" if vix else "-",
+         (vix["last"] >= 25 or (vix["pct10"] is not None and vix["pct10"] >= 30)) if vix else None),
+        ("미국 10년물 금리 10일간 0.3%p 이상 상승", f"{y10['chg10']:+.2f}%p" if y10 and y10["chg10"] is not None else "-",
+         (y10["chg10"] >= 0.3) if y10 and y10["chg10"] is not None else None),
+        ("내 종목 70% 이상이 일봉 역배열", f"{bear:.0%}" if bear is not None else "-",
+         (bear >= 0.7) if bear is not None else None),
+    ]
+    bottom = [
+        ("코스피 50일 이격도 90 이하 또는 과거 최소권", f"{ks['disp']:.1f}" if ks else "-",
+         (ks["disp"] <= 90 or ks["disp"] <= ks["disp_min"] * NEAR_MIN) if ks else None),
+        ("코스피 RSI 35 이하", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] <= 35 if ks else None),
+        ("코스피 52주 고점 대비 -20% 이하", f"{ks['from_high']:.1f}%" if ks else "-", ks["from_high"] <= -20 if ks else None),
+        ("VIX 30 이상 (공포 극단)", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
+        ("내 종목 30% 이상이 RSI 35 이하", f"{weak:.0%}" if weak is not None else "-",
+         (weak >= 0.3) if weak is not None else None),
+        ("코스피 5일선이 10일선 상향돌파 (최근 5일, 반등 확인)", "있음" if k_recent_gold else "없음",
+         k_recent_gold if kc and kc["ok"] else None),
+    ]
+    out = {}
+    for key, items in (("risk", risk), ("bottom", bottom)):
+        score = sum(1 for _, _, st in items if st)
+        total = sum(1 for _, _, st in items if st is not None)
+        label, cls = _level(score, key)
+        out[key] = {"items": items, "score": score, "total": total, "label": label, "cls": cls}
+    return out
+
+
+def market_text(snap):
+    L = ["■ 1. 시장 지표"]
+    ks = snap.get("ks")
+    if ks:
+        L.append(f"코스피 {ks['close']:,.2f} ({ks['chg']:+.2f}%, {ks['date']:%m-%d})")
+        L.append(f"  50일 이격도 {ks['disp']:.1f} (과거 최대 {ks['disp_max']:.1f} / 최소 {ks['disp_min']:.1f}) · RSI {ks['rsi']:.0f}"
+                 f" · 52주 고점 대비 {ks['from_high']:+.1f}%")
+    for key, nm, unit in (("vix", "미국 VIX", ""), ("y10", "미국채 10년물", "%"), ("y30", "미국채 30년물", "%")):
+        v = snap.get(key)
+        if v:
+            L.append(f"{nm} {v['last']:.2f}{unit} (전일 대비 {v['chg']:+.2f}, {v['date']:%m-%d})")
+    for e in snap.get("err", []):
+        L.append(f"가져오기 실패: {e}")
+    return "\n".join(L)
+
+
+def signals_text(results, msig):
+    L = ["■ 0. 오늘의 시그널 (참고용 규칙 기반 신호)"]
+    for key, nm in (("risk", "시장 위험"), ("bottom", "시장 바닥")):
+        g = msig[key]
+        on = [lb for lb, _, st in g["items"] if st]
+        L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
+    groups = (("매수 타점", "buy", "타점"), ("매수 관심", "buy", "관심"), ("매도 타점", "sell", "타점"), ("매도 관심", "sell", "관심"))
+    for head, side, lv in groups:
+        hit = [r for r in results if r["sig"][side] == lv]
+        L.append(f"\n▶ {head} [{len(hit)}]")
+        if not hit:
+            L.append("  해당 종목 없음")
+        for r in hit:
+            sg = r["sig"]
+            L.append(f"• {tl(r)}")
+            L.append("    조건: " + ", ".join(sg[side + "_c"]) + (" | 트리거: " + ", ".join(sg[side + "_t"]) if sg[side + "_t"] else ""))
     return "\n".join(L)
 
 
 # ---------------------------------------------------------------- 2. 스크리닝
 def section(head, items, lines_fn):
-    out = [f"\n▶ {head}"]
-    if not items:
-        out.append("  해당 종목 없음")
+    lines = []
     for r in items:
-        out.extend(lines_fn(r))
-    return out
+        lines.extend(lines_fn(r))
+    return (head, len(items), lines)
 
 
-def summary_text(results):
-    L = ["■ 2. 종목 스크리닝", "표기: 일/주/월 = 5선·10선 기준, ▲역→정배열(골든) ▼정→역배열(데드), 괄호는 전환 후 경과"]
+def summary_sections(results):
+    """스크리닝 결과를 [(제목, 종목수, 줄목록), ...] 로 반환"""
+    S = []
 
     def ago_key(r):
         cr = r["day"]["cross"]
         return cr["ago"] if cr else 10 ** 6
 
-    # 2-1, 2-2: 현재 일봉 배열 상태별로 '언제 바뀌었는지'
+    # 현재 일봉 배열 상태별로 '언제 바뀌었는지'
     bear = sorted([r for r in results if r["day"]["ok"] and not r["day"]["above"]], key=ago_key)
     bull = sorted([r for r in results if r["day"]["ok"] and r["day"]["above"]], key=ago_key)
-    L += section("정배열 → 역배열로 바뀐 종목 (현재 일봉 역배열, 최근 전환순)", bear,
-                 lambda r: [f"• {title(r)}", trans_line(r)])
-    L += section("역배열 → 정배열로 바뀐 종목 (현재 일봉 정배열, 최근 전환순)", bull,
-                 lambda r: [f"• {title(r)}", trans_line(r)])
+    S.append(section("정배열 → 역배열로 바뀐 종목 (현재 일봉 역배열, 최근 전환순)", bear,
+                     lambda r: [f"• {tl(r)}", trans_line(r)]))
+    S.append(section("역배열 → 정배열로 바뀐 종목 (현재 일봉 정배열, 최근 전환순)", bull,
+                     lambda r: [f"• {tl(r)}", trans_line(r)]))
 
-    # 2-3, 2-4: 최근 N일 크로스
+    # 최근 N일 크로스
     def recent(golden):
         rs = [r for r in results if r["day"]["ok"] and r["day"]["cross"]
               and r["day"]["cross"]["golden"] == golden and r["day"]["cross"]["ago"] < CROSS_DAYS]
@@ -203,29 +335,39 @@ def summary_text(results):
     def cross_lines(r):
         cr = r["day"]["cross"]
         when = "최근 거래일" if cr["ago"] == 0 else f"{cr['ago']}거래일 전"
-        return [f"• {title(r)}  {cr['date']:%m-%d} ({when}), 현재 이격 {r['day']['gap']:+.2f}%"]
+        return [f"• {tl(r)}", f"    {cr['date']:%m-%d} ({when}), 현재 5/10 이격 {r['day']['gap']:+.2f}%"]
 
-    L += section(f"최근 {CROSS_DAYS}일간 골든크로스 (5일선이 10일선 상향돌파)", recent(True), cross_lines)
-    L += section(f"최근 {CROSS_DAYS}일간 데드크로스 (5일선이 10일선 하향돌파)", recent(False), cross_lines)
+    S.append(section(f"최근 {CROSS_DAYS}일간 골든크로스 (5일선이 10일선 상향돌파)", recent(True), cross_lines))
+    S.append(section(f"최근 {CROSS_DAYS}일간 데드크로스 (5일선이 10일선 하향돌파)", recent(False), cross_lines))
 
-    # 2-5: 5일간 큰 변동
+    # 5일간 큰 변동
     mv = sorted([r for r in results if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT],
                 key=lambda r: -abs(r["ret5"]))
-    L += section(f"최근 5일간 {MOVE_PCT:g}% 이상 변동 (5일 누적 또는 하루 기준)", mv,
-                 lambda r: [f"• {title(r)}  5일 {r['ret5']:+.1f}% (하루 최대 {r['maxday']:+.1f}%)"])
+    S.append(section(f"최근 5일간 {MOVE_PCT:g}% 이상 변동 (5일 누적 또는 하루 기준)", mv,
+                     lambda r: [f"• {tl(r)}", f"    5일 {r['ret5']:+.1f}% (하루 최대 {r['maxday']:+.1f}%)"]))
 
-    # 2-6, 2-7: 50일 이격도 최대/최소 접근
+    # 50일 이격도 최대/최소 접근
     def note(r):
         return f" ※자료 {r['disp']['months']:.0f}개월뿐" if r["disp"]["months"] < 12 else ""
 
-    hi = sorted([r for r in results if r["disp"] and r["disp"]["up"] >= NEAR_RATIO], key=lambda r: -r["disp"]["up"])
-    lo = sorted([r for r in results if r["disp"] and r["disp"]["down"] >= NEAR_RATIO], key=lambda r: -r["disp"]["down"])
-    L += section(f"50일 이격도가 과거 최대에 {NEAR_RATIO:.0%} 이상 접근", hi,
-                 lambda r: [f"• {title(r)}  현재 {r['disp']['cur']:.1f} / 최대 {r['disp']['max']:.1f}"
-                            f"({r['disp']['max_date']:%y.%m.%d}) → 접근도 {r['disp']['up']:.0%}{note(r)}"])
-    L += section(f"50일 이격도가 과거 최소에 {NEAR_RATIO:.0%} 이상 접근", lo,
-                 lambda r: [f"• {title(r)}  현재 {r['disp']['cur']:.1f} / 최소 {r['disp']['min']:.1f}"
-                            f"({r['disp']['min_date']:%y.%m.%d}) → 접근도 {r['disp']['down']:.0%}{note(r)}"])
+    hi = sorted([r for r in results if r["disp"] and r["disp"]["up"] >= NEAR_MAX], key=lambda r: -r["disp"]["up"])
+    lo = sorted([r for r in results if r["disp"] and r["disp"]["down"] <= NEAR_MIN], key=lambda r: r["disp"]["down"])
+    S.append(section(f"50일 이격도가 과거 최대 × {NEAR_MAX:g} 이상", hi,
+                     lambda r: [f"• {tl(r)}",
+                                f"    현재 {r['disp']['cur']:.1f} ≥ 기준 {r['disp']['max_thr']:.1f}"
+                                f" (과거 최대 {r['disp']['max']:.1f}, {r['disp']['max_date']:%y.%m.%d}){note(r)}"]))
+    S.append(section(f"50일 이격도가 과거 최소 × {NEAR_MIN:g} 이하", lo,
+                     lambda r: [f"• {tl(r)}",
+                                f"    현재 {r['disp']['cur']:.1f} ≤ 기준 {r['disp']['min_thr']:.1f}"
+                                f" (과거 최소 {r['disp']['min']:.1f}, {r['disp']['min_date']:%y.%m.%d}){note(r)}"]))
+    return S
+
+
+def summary_text(results):
+    L = ["■ 2. 종목 스크리닝", "표기: 일/주/월 = 5선·10선 기준, ▲역→정배열(골든) ▼정→역배열(데드), 괄호는 전환 후 경과"]
+    for head, n, lines in summary_sections(results):
+        L.append(f"\n▶ {head}  [{n}]")
+        L.extend(lines if n else ["  해당 종목 없음"])
     return "\n".join(L)
 
 
@@ -246,13 +388,13 @@ def cross_detail(label, st, unit):
 def detail_text(r):
     tag = flags(r)
     L = [f"===== {title(r)}  기준일 {r['last']:%Y-%m-%d}, 종가 {fmt_price(r['close'])} =====" + (f"  [{' / '.join(tag)}]" if tag else ""),
-         f"RSI(14): {r['rsi']:.1f}",
+         f"RSI(14): {r['rsi']:.1f}" + ("  (과매수권)" if r["rsi"] >= 70 else "  (과매도권)" if r["rsi"] <= 30 else ""),
          cross_detail("일봉", r["day"], "일"), cross_detail("주봉", r["week"], "주"), cross_detail("월봉", r["month"], "월")]
     d = r["disp"]
     if d:
         L.append(f"50일 이격도: 현재 {d['cur']:.1f} (과거 분포 하위 {d['pct']:.0f}%)")
         L.append(f"  최대 {d['max']:.1f} ({d['max_date']:%Y-%m-%d}) / 최소 {d['min']:.1f} ({d['min_date']:%Y-%m-%d})")
-        L.append(f"  최대 접근도 {d['up']:.0%} / 최소 접근도 {d['down']:.0%}  (자료 {d['since']:%Y-%m-%d}~)")
+        L.append(f"  현재는 최대의 {d['up']:.0%} (기준 {d['max_thr']:.1f}) / 최소의 {d['down']:.0%} (기준 {d['min_thr']:.1f})  (자료 {d['since']:%Y-%m-%d}~)")
     L.append(f"52주 최고가(장중): {fmt_price(r['high52'])} → 현재 {r['from_high']:+.1f}%")
     L.append(f"최근 5거래일 등락률: {r['ret5']:+.2f}%  (일별 " + ", ".join(f"{x:+.1f}%" for x in r["rets"]) + ")")
     return "\n".join(L)
@@ -270,6 +412,8 @@ if __name__ == "__main__":
             res.append(analyze(cd, cd))
         except Exception as e:
             print(f"{cd}: 실패 ({type(e).__name__}: {e})")
-    print(market_text(), "\n")
+    snap = market_snapshot()
+    print(market_text(snap), "\n")
+    print(signals_text(res, market_signals(snap, res)), "\n")
     print(summary_text(res), "\n")
     print(detail_section(res))
