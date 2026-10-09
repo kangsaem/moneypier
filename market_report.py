@@ -5,6 +5,8 @@
 """
 import contextlib
 import io
+import json
+import os
 import sys
 from datetime import datetime, timedelta
 
@@ -113,15 +115,16 @@ def bar_ma_proj(c, n, rule, fut):
     return [None if pd.isna(v) else float(v) for v in s.interpolate(limit_area="inside")]
 
 
-def chart_data(c, rs=None, n=None):
+def chart_data(c, rs=None, n=None, with_proj=True):
     """차트용 최근 n거래일 데이터: 종가, 5/20일선, 5/10주선, 5/10월선(전체 기간으로 계산 후 자름), RSI.
     이동평균은 5·20일, 5·10주, 5·10월만 쓴다(30·150·300일선은 쓰지 않음)."""
     t = c.tail(n or CHART_DAYS)
     def lst(x):
         return [None if pd.isna(v) else float(v) for v in x.reindex(t.index)]
-    fut = future_days(c)
+    fut = future_days(c) if with_proj else pd.DatetimeIndex([])   # 백테스트(가벼운 모드)는 점선 경로 생략
     proj = {}
-    for k, nn, rule in (("w5", 5, "W-FRI"), ("w10", 10, "W-FRI"), ("m5", 5, "ME"), ("m10", 10, "ME")):
+    specs = (("w5", 5, "W-FRI"), ("w10", 10, "W-FRI"), ("m5", 5, "ME"), ("m10", 10, "ME"))
+    for k, nn, rule in (specs if with_proj else ()):
         try:
             proj[k] = bar_ma_proj(c, nn, rule, fut)      # 길이 = 1(오늘) + len(fut)
         except Exception:
@@ -136,7 +139,12 @@ def chart_data(c, rs=None, n=None):
 
 def analyze(code, name):
     """종목 하나의 모든 지표를 계산해 dict로 반환"""
-    df = load_prices(code)
+    return analyze_df(load_prices(code), code, name)
+
+
+def analyze_df(df, code, name, light=False):
+    """시세 DataFrame(Close, High)으로 지표·신호 계산. 백테스트는 과거 시점까지 자른 df를 넣는다.
+    light=True면 화면용 점선 경로 계산을 생략(신호 결과는 같음)"""
     c = df["Close"].dropna()
     if len(c) < 30:
         raise ValueError("시세 데이터가 부족하거나 조회 실패")
@@ -164,11 +172,41 @@ def analyze(code, name):
     r["rets"] = rets
     r["ret5"] = float((c.iloc[-1] / c.iloc[-6] - 1) * 100) if len(c) >= 6 else 0.0
     r["maxday"] = max(rets, key=abs) if rets else 0.0
-    r["chart"] = chart_data(c, rs)
+    r["chart"] = chart_data(c, rs, with_proj=not light)
     newlow = c <= c.shift(1).rolling(20).min()          # 직전 20일 저가를 깬 날
     r["new_low3"] = bool(newlow.tail(3).any())          # 최근 3일 안에 신저가를 냈는가
     r["sig"] = stock_signals(r)
     return r
+
+
+# ---------------------------------------------------------------- 종목 목록 (리포트·백테스트 공용)
+def load_tickers():
+    raw = os.environ.get("TICKERS_JSON", "").strip()
+    if raw:
+        return json.loads(raw)
+    with open("tickers.json", encoding="utf-8") as f:
+        return json.load(f)
+
+
+def resolve_codes(items):
+    """코드 없이 이름만 있는 종목(금액만 입력한 경우)은 KRX 종목/ETF 목록에서 이름으로 찾는다"""
+    if all(t.get("code") for t in items):
+        return items
+    names = {}
+    try:
+        import FinanceDataReader as fdr
+        for market, col in (("KRX", "Code"), ("ETF/KR", "Symbol")):
+            try:
+                lst = fdr.StockListing(market)
+                names.update(dict(zip(lst["Name"], lst[col])))
+            except Exception as e:
+                print(f"[{market} 목록] 실패: {e}")
+    except Exception as e:
+        print(f"[종목 목록] 실패: {e}")
+    for t in items:
+        if not t.get("code"):
+            t["code"] = names.get(t["name"], "")
+    return items
 
 
 # ---------------------------------------------------------------- 종목 시그널

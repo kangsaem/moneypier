@@ -24,36 +24,7 @@ def guard(label, fn, *args, default=""):
 
 
 
-def load_tickers():
-    raw = os.environ.get("TICKERS_JSON", "").strip()
-    if raw:
-        return json.loads(raw)
-    with open("tickers.json", encoding="utf-8") as f:
-        return json.load(f)
-
-
-def resolve_codes(items):
-    """코드 없이 이름만 있는 종목(금액만 입력한 경우)은 KRX 종목/ETF 목록에서 이름으로 찾는다"""
-    if all(t.get("code") for t in items):
-        return items
-    names = {}
-    try:
-        import FinanceDataReader as fdr
-        for market, col in (("KRX", "Code"), ("ETF/KR", "Symbol")):
-            try:
-                lst = fdr.StockListing(market)
-                names.update(dict(zip(lst["Name"], lst[col])))
-            except Exception as e:
-                print(f"[{market} 목록] 실패: {e}")
-    except Exception as e:
-        print(f"[종목 목록] 실패: {e}")
-    for t in items:
-        if not t.get("code"):
-            t["code"] = names.get(t["name"], "")
-    return items
-
-
-tickers = resolve_codes(load_tickers())
+tickers = m.resolve_codes(m.load_tickers())
 unresolved = [t["name"] for t in tickers if not t.get("code")]
 tickers = [t for t in tickers if t.get("code")]
 
@@ -495,6 +466,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>종목별 세부내용</h2>
 <div class="dgrid">{detail_html}</div>
+<div class="legend" style="margin-top:14px"><a href="backtest.html">시그널 백테스트 결과 (최근 12개월) →</a></div>
 {extra}
 </body></html>"""
 
