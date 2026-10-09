@@ -39,6 +39,8 @@ jobs:
         timeout-minutes: 30
         env:
           TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
+      - name: 넓은 백테스트 결과 포함 (backtest-wide가 만든 results/ 를 페이지에 복사)
+        run: if [ -d results ]; then cp -r results/. docs/; fi
       - uses: actions/upload-pages-artifact@v3
         with:
           path: docs
