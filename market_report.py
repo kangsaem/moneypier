@@ -75,6 +75,16 @@ def cross_state(close, short=5, long=10):
     return out
 
 
+def chart_data(c, rs=None, n=130):
+    """차트용 최근 n거래일 데이터: 종가, 5/10/50일선(전체 기간으로 계산 후 자름), RSI"""
+    t = c.tail(n)
+    def lst(x):
+        return [None if pd.isna(v) else float(v) for v in x.reindex(t.index)]
+    return {"dates": [d.strftime("%y.%m.%d") for d in t.index], "close": [float(v) for v in t],
+            "ma5": lst(c.rolling(5).mean()), "ma10": lst(c.rolling(10).mean()), "ma50": lst(c.rolling(50).mean()),
+            "rsi": lst(rs) if rs is not None else None}
+
+
 def analyze(code, name):
     """종목 하나의 모든 지표를 계산해 dict로 반환"""
     df = load_prices(code)
@@ -106,6 +116,7 @@ def analyze(code, name):
     r["ret5"] = float((c.iloc[-1] / c.iloc[-6] - 1) * 100) if len(c) >= 6 else 0.0
     r["maxday"] = max(rets, key=abs) if rets else 0.0
     r["sig"] = stock_signals(r)
+    r["chart"] = chart_data(c, rs)
     return r
 
 
@@ -216,7 +227,7 @@ def market_snapshot():
                       "date": ks.index[-1], "disp": float(disp.iloc[-1]), "disp_max": float(disp.max()),
                       "disp_min": float(disp.min()), "rsi": float(rsi(ks).iloc[-1]),
                       "from_high": float((ks.iloc[-1] / hi250 - 1) * 100), "cross": cross_state(ks),
-                      "days_since_low": int(days_since_low)}
+                      "days_since_low": int(days_since_low), "chart": chart_data(ks)}
     except Exception as e:
         snap["err"].append(f"코스피 ({type(e).__name__})")
     for key, sym, nm in (("vix", "^VIX", "VIX"), ("y10", "^TNX", "미국채 10년"), ("y30", "^TYX", "미국채 30년")):

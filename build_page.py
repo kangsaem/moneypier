@@ -139,6 +139,72 @@ def metrics_html(r, side, lv):
     return '<div class="mrow">' + "".join(out) + "</div>"
 
 
+def _path(vals, x, y):
+    d, pen = [], False
+    for i, v in enumerate(vals):
+        if v is None:
+            pen = False
+            continue
+        d.append(("L" if pen else "M") + f"{x(i):.1f},{y(v):.1f}")
+        pen = True
+    return "".join(d)
+
+
+def svg_chart(ch, mini=False):
+    """인라인 SVG: 종가 + 5/10/50일선 (+ RSI 패널). mini는 최근 60일 소형 차트"""
+    if not ch or len(ch["close"]) < 5:
+        return ""
+    sl = slice(-60, None) if mini else slice(None)
+    g = lambda k: ch[k][sl]
+    keys = ("close", "ma5", "ma10") if mini else ("close", "ma5", "ma10", "ma50")
+    close = g("close")
+    n = len(close)
+    W = 320 if mini else 640
+    PH = 56 if mini else 170
+    RH = 0 if (mini or not ch.get("rsi")) else 54
+    gap = 10 if RH else 0
+    pl, pr = 4, (4 if mini else 50)
+    pt, pb = (4 if mini else 18), (0 if mini else 16)
+    H = pt + PH + gap + RH + pb
+    vals = [v for k in keys for v in g(k) if v is not None]
+    lo, hi = min(vals), max(vals)
+    if hi == lo:
+        hi = lo + 1
+    m_ = (hi - lo) * 0.04
+    lo, hi = lo - m_, hi + m_
+    x = lambda i: pl + (W - pl - pr) * i / (n - 1)
+    y = lambda v: pt + PH * (1 - (v - lo) / (hi - lo))
+    o = [f'<svg class="chart{" mini" if mini else ""}" viewBox="0 0 {W} {H}" role="img" aria-label="가격 차트">']
+    o.append(f'<rect class="ch-bg" x="0" y="{pt}" width="{W - pr}" height="{PH}"/>')
+    for k in keys[::-1]:
+        o.append(f'<path class="ch-{k}" d="{_path(g(k), x, y)}"/>')
+    ly = y(close[-1])
+    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="2.6"/>')
+    if not mini:
+        for v, ypos in ((hi - m_, y(hi - m_)), (lo + m_, y(lo + m_))):
+            o.append(f'<text class="ch-t" x="{W - pr + 4}" y="{ypos + 3:.1f}">{m.fmt_price(v)}</text>')
+        o.append(f'<text class="ch-last" x="{W - pr + 4}" y="{ly + 3:.1f}">{m.fmt_price(close[-1])}</text>')
+        for i, (lab, cls) in enumerate((("종가", "close"), ("5일", "ma5"), ("10일", "ma10"), ("50일", "ma50"))):
+            o.append(f'<text class="ch-lg ch-l{cls}" x="{pl + 2 + i * 44}" y="11">● {lab}</text>')
+        o.append(f'<text class="ch-t" x="{pl}" y="{H - 3}">{ch["dates"][sl][0]}</text>')
+        o.append(f'<text class="ch-t" x="{W - pr}" y="{H - 3}" text-anchor="end">{ch["dates"][sl][-1]}</text>')
+        if RH:
+            top = pt + PH + gap
+            y2 = lambda v: top + RH * (1 - v / 100)
+            o.append(f'<rect class="ch-bg" x="0" y="{top}" width="{W - pr}" height="{RH}"/>')
+            rv = g("rsi")
+            last = next((v for v in reversed(rv) if v is not None), None)
+            for lv in (30, 70):
+                o.append(f'<line class="ch-grid" x1="0" x2="{W - pr}" y1="{y2(lv):.1f}" y2="{y2(lv):.1f}"/>')
+                if last is None or abs(y2(lv) - y2(last)) > 9:      # RSI 값 라벨과 겹치면 기준선 숫자는 생략
+                    o.append(f'<text class="ch-t" x="{W - pr + 4}" y="{y2(lv) + 3:.1f}">{lv}</text>')
+            o.append(f'<path class="ch-rsi" d="{_path(rv, x, y2)}"/>')
+            if last is not None:
+                o.append(f'<text class="ch-last" x="{W - pr + 4}" y="{y2(last) + 3:.1f}">RSI {last:.0f}</text>')
+    o.append("</svg>")
+    return "".join(o)
+
+
 def sig_block(head_txt, side, lv, cls):
     hit = [r for r in results if r["sig"][side] == lv]
     items = ""
@@ -146,7 +212,7 @@ def sig_block(head_txt, side, lv, cls):
         sg = r["sig"]
         why = "".join(chip(c, "cond " + side) for c in sg[side + "_c"]) + "".join(chip(t, "trig " + side) for t in sg[side + "_t"])
         items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
-                  f'</div><div class="why">{why}</div>{metrics_html(r, side, lv)}</div>')
+                  f'</div><div class="why">{why}</div>{metrics_html(r, side, lv)}{svg_chart(r["chart"], mini=True)}</div>')
     body = items or '<div class="none">해당 종목 없음</div>'
     return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
 
@@ -168,7 +234,7 @@ for r in results:
     rc = "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else ""
     detail_html += (f'<details><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
                     f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
-                    f'<pre>{E(m.detail_text(r))}</pre></details>')
+                    f'<div class="chwrap">{svg_chart(r["chart"])}</div><pre>{E(m.detail_text(r))}</pre></details>')
 
 extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 
@@ -178,9 +244,9 @@ page = f"""<!doctype html>
 <title>장 마감 리포트</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
-  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; }}
+  --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#e08a00; --c10:#15803d; --c50:#7c3aed; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; }} }}
+  --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#fbbf24; --c10:#4ade80; --c50:#c4a1ff; }} }}
 * {{ box-sizing:border-box; }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0; padding:14px; line-height:1.5; max-width:760px; margin-inline:auto; }}
 h1 {{ font-size:1.3rem; margin:4px 0 2px; }}
@@ -223,6 +289,14 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .mt.hot {{ background:var(--buy); color:#fff; }} .mt.cold {{ background:var(--sell); color:#fff; }}
 .mt.cond {{ border-color:currentColor; font-weight:700; box-shadow:0 0 0 1px currentColor inset; }}
 .mt.trig {{ font-weight:800; outline:2px solid currentColor; outline-offset:1px; }}
+.chart {{ width:100%; height:auto; display:block; }} .chwrap {{ padding:0 10px 6px; }} .chwrap.kospi {{ background:var(--card); border:1px solid var(--line); border-radius:12px; margin-top:8px; padding:8px 10px; }}
+.chart.mini {{ margin-top:6px; }}
+.ch-bg {{ fill:none; stroke:var(--line); }} .ch-grid {{ stroke:var(--mut); stroke-dasharray:3 3; opacity:.5; }}
+.chart path {{ fill:none; stroke-linejoin:round; stroke-linecap:round; }}
+.ch-close {{ stroke:var(--fg); stroke-width:1.7; }} .ch-ma5 {{ stroke:var(--c5); stroke-width:1.1; }}
+.ch-ma10 {{ stroke:var(--c10); stroke-width:1.1; }} .ch-ma50 {{ stroke:var(--c50); stroke-width:1.3; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1.2; }}
+.ch-dot {{ fill:var(--fg); }} .ch-t {{ fill:var(--mut); font-size:9px; }} .ch-last {{ fill:var(--fg); font-size:9.5px; font-weight:700; }}
+.ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma10 {{ fill:var(--c10); }} .ch-lma50 {{ fill:var(--c50); }}
 .none {{ color:var(--mut); font-size:.85rem; }}
 .chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
@@ -242,6 +316,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>시장 현황</h2>
 <div class="cards">{"".join(cards)}</div>
+{('<div class="chwrap kospi"><div class="cl">코스피 최근 6개월</div>' + svg_chart(ks["chart"]) + '</div>') if ks and ks.get("chart") else ""}
 
 <h2>시장 위험 · 바닥 지표</h2>
 <div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
