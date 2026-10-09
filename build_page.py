@@ -2,9 +2,7 @@
 tickers.json(또는 환경변수 TICKERS_JSON)의 종목들로 리포트를 만들어
 1) docs/index.html 저장  2) 텔레그램 토큰이 있으면 메시지로도 전송
 """
-import contextlib
 import html
-import io
 import json
 import os
 from datetime import datetime, timedelta, timezone
@@ -47,16 +45,27 @@ tickers = resolve_codes(load_tickers())
 unresolved = [t["name"] for t in tickers if not t.get("code")]
 tickers = [t for t in tickers if t.get("code")]
 
-buf = io.StringIO()
-with contextlib.redirect_stdout(buf):
-    for t in tickers:
-        m.TICKER, m.NAME = t["code"], t["name"]
-        m.safe(f"종목 {t['name']}", m.stock_report)
-    m.safe("코스피", m.kospi_report)
-    m.safe("미국", m.us_report)
-report = buf.getvalue()
+results, failed = [], []
+for t in tickers:
+    try:
+        results.append(m.analyze(t["code"], t["name"]))
+    except Exception as e:
+        failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
+
+head = m.market_text()
+summary = m.summary_text(results)
+detail = m.detail_section(results)
+
+notes = ""
+if failed:
+    notes += "\n\n[시세 조회 실패 종목]\n" + "\n".join(failed)
 if unresolved:
-    report += "\n[코드를 찾지 못해 제외된 종목] " + ", ".join(unresolved) + "\n"
+    notes += "\n\n[코드를 찾지 못해 제외된 종목] " + ", ".join(unresolved)
+
+report = head + "\n\n" + summary + "\n\n" + detail + notes          # 웹페이지용 전체
+repo = os.environ.get("GITHUB_REPOSITORY", "")
+link = f"\n\n세부내용: https://{repo.split('/')[0]}.github.io/{repo.split('/')[1]}/" if "/" in repo else ""
+short_report = head + "\n\n" + summary + notes + link                # 텔레그램용(세부 제외)
 
 kst = datetime.now(timezone.utc) + timedelta(hours=9)
 stamp = f"{kst:%Y-%m-%d %H:%M} KST"
@@ -88,7 +97,7 @@ print("docs/index.html 생성 완료")
 token = os.environ.get("TELEGRAM_TOKEN")
 chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 if token and chat_id:
-    text = f"장 마감 리포트 {stamp}\n{report}"
+    text = f"장 마감 리포트 {stamp}\n\n{short_report}"
     for i in range(0, len(text), 3800):  # 텔레그램 글자 제한(4096) 대비 분할
         r = requests.post(
             f"https://api.telegram.org/bot{token}/sendMessage",
