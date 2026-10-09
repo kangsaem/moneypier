@@ -115,28 +115,29 @@ def stock_signals(r):
     d, dy = r["disp"], r["day"]
     recent = dy["ok"] and dy["cross"] and dy["cross"]["ago"] < CROSS_DAYS
     buy_c, buy_t, sell_c, sell_t = [], [], [], []
+    bk, sk = {}, {}   # 강조용: 지표키 -> "c"(조건) / "t"(트리거)
 
     if r["rsi"] <= 35:
-        buy_c.append(f"RSI {r['rsi']:.0f} (35 이하)")
+        buy_c.append(f"RSI {r['rsi']:.0f} (35 이하)"); bk["rsi"] = "c"
     if d and (d["cur"] <= 95 or d["down"] <= NEAR_MIN):
-        buy_c.append(f"50일 이격도 {d['cur']:.1f} (낮은 구간)")
+        buy_c.append(f"50일 이격도 {d['cur']:.1f} (낮은 구간)"); bk["disp"] = "c"
     if r["from_high"] <= -20:
-        buy_c.append(f"52주 고점 대비 {r['from_high']:.0f}%")
+        buy_c.append(f"52주 고점 대비 {r['from_high']:.0f}%"); bk["high"] = "c"
     if recent and dy["cross"]["golden"]:
-        buy_t.append("5일 내 골든크로스")
+        buy_t.append("5일 내 골든크로스"); bk["day"] = "t"
     if r["rsi_min5"] <= 35 and r["rsi"] > r["rsi_min5"] and r["rsi"] >= r["rsi_prev"]:
-        buy_t.append("RSI 저점 찍고 반등")
+        buy_t.append("RSI 저점 찍고 반등"); bk["rsi"] = "t"
 
     if r["rsi"] >= 70:
-        sell_c.append(f"RSI {r['rsi']:.0f} (70 이상)")
+        sell_c.append(f"RSI {r['rsi']:.0f} (70 이상)"); sk["rsi"] = "c"
     if d and (d["cur"] >= 110 or d["up"] >= NEAR_MAX):
-        sell_c.append(f"50일 이격도 {d['cur']:.1f} (높은 구간)")
+        sell_c.append(f"50일 이격도 {d['cur']:.1f} (높은 구간)"); sk["disp"] = "c"
     if r["ret5"] >= MOVE_PCT:
-        sell_c.append(f"5일 {r['ret5']:+.1f}% 급등")
+        sell_c.append(f"5일 {r['ret5']:+.1f}% 급등"); sk["ret5"] = "c"
     if recent and not dy["cross"]["golden"]:
-        sell_t.append("5일 내 데드크로스")
+        sell_t.append("5일 내 데드크로스"); sk["day"] = "t"
     if r["rsi_max5"] >= 65 and r["rsi"] < r["rsi_max5"] and r["rsi"] <= r["rsi_prev"]:
-        sell_t.append("RSI 고점 찍고 꺾임")
+        sell_t.append("RSI 고점 찍고 꺾임"); sk["rsi"] = "t"
 
     def level(c, t):
         return "타점" if (len(c) >= 2 and t) else ("관심" if len(c) >= 2 else None)
@@ -148,7 +149,8 @@ def stock_signals(r):
     if sell == "관심" and strong_up:
         sell = "과열"          # 과열이지만 추세는 살아 있음 → 매도 신호가 아니라 '이익 보호' 구간
     return {"buy": level(buy_c, buy_t), "buy_c": buy_c, "buy_t": buy_t,
-            "sell": sell, "sell_c": sell_c, "sell_t": sell_t, "strong_up": strong_up}
+            "sell": sell, "sell_c": sell_c, "sell_t": sell_t, "strong_up": strong_up,
+            "buy_k": bk, "sell_k": sk}
 
 
 # ---------------------------------------------------------------- 분류
@@ -242,7 +244,7 @@ def market_signals(snap, results):
     k_recent_gold = bool(kc and kc["ok"] and kc["cross"] and kc["cross"]["golden"] and kc["cross"]["ago"] < CROSS_DAYS)
 
     risk = [
-        ("코스피 50일 이격도 110 이상 (과열)", f"{ks['disp']:.1f}" if ks else "-", ks["disp"] >= 110 if ks else None),
+        ("코스피 50일 이격도 120 이상 (과열)", f"{ks['disp']:.1f}" if ks else "-", ks["disp"] >= 120 if ks else None),
         ("코스피 RSI 70 이상", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] >= 70 if ks else None),
         ("코스피 5일선이 10일선 아래 (단기 추세 약화)", f"이격 {kc['gap']:+.2f}%" if kc and kc["ok"] else "-",
          (not kc["above"]) if kc and kc["ok"] else None),
@@ -289,19 +291,24 @@ def market_text(snap):
     return "\n".join(L)
 
 
+def _n(x):
+    t = f"{x:.1f}"
+    return t[:-2] if t.endswith(".0") else t
+
+
 def extra_line(r, lv=None):
-    """시그널 카드 하단: 이격도 현재/최대/최소 + 배열 상태 + (과열이면) 이탈 기준"""
+    """한 줄 요약: 50일 이격 현재 (최소/최대) 일/주/월 배열 · 10일선 대비"""
     d = r["disp"]
     parts = []
     if d:
-        parts.append(f"50일 이격도 현재 {d['cur']:.1f} (최대 {d['max']:.1f} / 최소 {d['min']:.1f})")
+        parts.append(f"50일 이격 {d['cur']:.1f} ({_n(d['min'])}/{_n(d['max'])})")
     st = []
     for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
         x = r[k]
         st.append(f"{lb}{'정' if x['above'] else '역'}" if x["ok"] else f"{lb}-")
-    parts.append("배열 " + "/".join(st))
-    if lv == "과열":
-        parts.append(f"추세 이탈 기준: 10일선 {fmt_price(r['ma10'])} (종가 {r['close'] / r['ma10'] * 100 - 100:+.1f}% 위)")
+    parts.append("/".join(st))
+    g = (r["close"] / r["ma10"] - 1) * 100
+    parts.append(f"10일 {abs(g):.1f}%{'▲' if g >= 0 else '▼'}" + (f" (이탈선 {fmt_price(r['ma10'])})" if lv == "과열" else ""))
     return " · ".join(parts)
 
 

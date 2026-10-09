@@ -109,15 +109,44 @@ def gauge(key, title):
             f'<div class="bar"><i style="width:{pct}%"></i></div><ul>{rows}</ul></div>')
 
 
+
+def disp_cls(v):
+    return ("h2" if v >= 120 else "h1" if v >= 110 else "n" if v > 95 else "l1" if v > 90 else "l2")
+
+
+def metrics_html(r, side, lv):
+    """종목 한 줄 요약 태그. 조건에 걸린 태그는 테두리, 트리거에 걸린 태그는 채움으로 강조"""
+    keys = r["sig"]["buy_k" if side == "buy" else "sell_k"]
+
+    def tag(key, txt, color):
+        mark = {"c": " cond", "t": " trig"}.get(keys.get(key), "")
+        return f'<span class="mt {color}{mark}">{E(txt)}</span>'
+
+    out = []
+    d = r["disp"]
+    if d:
+        out.append(tag("disp", f"50일 이격 {d['cur']:.1f} ({m._n(d['min'])}/{m._n(d['max'])})", disp_cls(d["cur"])))
+    for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
+        x = r[k]
+        out.append(tag("day" if k == "day" else "", lb + (" 정" if x["above"] else " 역") if x["ok"] else lb + " -",
+                       "up" if x["ok"] and x["above"] else "dn" if x["ok"] else "n"))
+    g = (r["close"] / r["ma10"] - 1) * 100
+    out.append(tag("", f"10일 {abs(g):.1f}% {'▲' if g >= 0 else '▼'}" + (f" · 이탈선 {m.fmt_price(r['ma10'])}" if lv == "과열" else ""),
+                   "up" if g >= 0 else "dn"))
+    out.append(tag("rsi", f"RSI {r['rsi']:.0f}", "hot" if r["rsi"] >= 70 else "cold" if r["rsi"] <= 30 else "n"))
+    out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
+    out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "n"))
+    return '<div class="mrow">' + "".join(out) + "</div>"
+
+
 def sig_block(head_txt, side, lv, cls):
     hit = [r for r in results if r["sig"][side] == lv]
     items = ""
     for r in hit:
         sg = r["sig"]
-        why = "".join(chip(c, "cond") for c in sg[side + "_c"]) + "".join(chip(t, "trig") for t in sg[side + "_t"])
+        why = "".join(chip(c, "cond " + side) for c in sg[side + "_c"]) + "".join(chip(t, "trig " + side) for t in sg[side + "_t"])
         items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
-                  f'<em>RSI {r["rsi"]:.0f}</em></div><div class="why">{why}</div>'
-                  f'<div class="ex">{E(m.extra_line(r, lv))}</div></div>')
+                  f'</div><div class="why">{why}</div>{metrics_html(r, side, lv)}</div>')
     body = items or '<div class="none">해당 종목 없음</div>'
     return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
 
@@ -184,6 +213,16 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .sh {{ display:flex; gap:8px; align-items:baseline; }} .sh span {{ color:var(--mut); font-size:.75rem; }} .sh em {{ margin-left:auto; font-style:normal; font-size:.8rem; }}
 .ex {{ font-size:.75rem; color:var(--mut); margin-top:2px; }}
 .sg.hot {{ border-left-color:var(--warn); }} .sg.hot h3 {{ color:var(--warn); }}
+.chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
+.chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}
+.mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}
+.mt {{ font-size:.72rem; padding:1px 7px; border-radius:6px; border:1.5px solid transparent; background:var(--line); color:var(--mut); white-space:nowrap; }}
+.mt.up {{ background:var(--buybg); color:var(--buy); }} .mt.dn {{ background:var(--sellbg); color:var(--sell); }}
+.mt.h1 {{ background:var(--buybg); color:var(--buy); }} .mt.h2 {{ background:var(--buy); color:#fff; }}
+.mt.l1 {{ background:var(--sellbg); color:var(--sell); }} .mt.l2 {{ background:var(--sell); color:#fff; }}
+.mt.hot {{ background:var(--buy); color:#fff; }} .mt.cold {{ background:var(--sell); color:#fff; }}
+.mt.cond {{ border-color:currentColor; font-weight:700; box-shadow:0 0 0 1px currentColor inset; }}
+.mt.trig {{ font-weight:800; outline:2px solid currentColor; outline-offset:1px; }}
 .none {{ color:var(--mut); font-size:.85rem; }}
 .chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
@@ -209,7 +248,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>오늘의 매수 · 매도 시그널</h2>
 {sig_html}
-<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 관심 = 조건만 충족 / 과열 = 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있는 종목. 한국 관례대로 매수=빨강, 매도=파랑.</div>
+<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 관심 = 조건만 충족 / 과열 = 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있는 종목. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조.</div>
 
 <h2>종목 스크리닝</h2>
 {screen_html}
