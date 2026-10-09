@@ -314,10 +314,10 @@ def sig_groups(r):
 CROSS_WIN = {"day": 5, "week": 4, "month": 2}   # '최근 크로스'로 보는 기간: 일 5거래일, 주 4주, 월 2개월(이번 달·지난달)
 
 
-def cross_count(r, golden):
-    """일·주·월 중 최근(CROSS_WIN 이내) 같은 방향(골든/데드) 크로스가 난 단위 수"""
+def cross_count(r, golden, wins=None):
+    """일·주·월 중 최근(CROSS_WIN 이내) 같은 방향(골든/데드) 크로스가 난 단위 수. wins로 기간을 바꿔 셀 수 있음(백테스트 비교용)"""
     n = 0
-    for k, win in CROSS_WIN.items():
+    for k, win in (wins or CROSS_WIN).items():
         st = r[k]
         cr = st.get("cross") if st.get("ok") else None
         if cr and cr["golden"] == golden and cr["ago"] < win:

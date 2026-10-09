@@ -25,15 +25,46 @@ CATEGORIES = [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") f
     ("골든X3", "up"), ("골든X2", "up"), ("데드X3", "down"), ("데드X2", "down"), ("과열", "down")]
 
 
+# ---- 비교용 '새 규칙 후보' (리포트 규칙은 바꾸지 않고 백테스트에서만 나란히 계산)
+SHORT_WIN = {"day": 3, "week": 2, "month": 1}   # 골든·데드 '최근' 기간을 짧게: 일 3거래일 · 주 2주 · 월 이번 달
+VARIANTS = [("골든X3·짧게", "up"), ("골든X2·짧게", "up"), ("데드X3·짧게", "down"), ("데드X2·짧게", "down"),
+            ("매수·추세O", "up"), ("매수·추세X", "up"), ("눌림진행", "up"), ("하락진행·추세X", "down")]
+# 비교 표: (제목, 설명, [현재 분류, 후보 분류들])
+COMPARE = [
+    ("골든크로스 기간", "현재 일 5거래일·주 4주·월 2개월 → 짧게 일 3거래일·주 2주·월 이번 달",
+     ["골든X3", "골든X3·짧게", "골든X2", "골든X2·짧게"]),
+    ("데드크로스 기간", "같은 방식", ["데드X3", "데드X3·짧게", "데드X2", "데드X2·짧게"]),
+    ("매수 + 장기 추세", "추세O = 월봉 정배열 또는 종가가 10월선 위 / 추세X = 그 반대(지금 매수에서 빼고 반등대기로 보낼 후보)",
+     ["매수", "매수·추세O", "매수·추세X"]),
+    ("하락진행 나누기", "눌림진행 = 하락 중이지만 장기 추세 상승(곧 매수 후보) / 하락진행·추세X = 장기 추세도 하락",
+     ["하락진행", "눌림진행", "하락진행·추세X"]),
+]
+
+
+def long_up(r):
+    """장기 추세 상승: 월봉 정배열(5월>10월) 또는 종가가 10월선 위"""
+    mo = r["month"]
+    m10 = r["chart"]["m10"][-1] if r.get("chart") else None
+    return bool((mo.get("ok") and mo.get("above")) or (m10 is not None and r["close"] >= m10))
+
+
 def categories_of(r):
-    """그날 이 종목에 켜진 분류 이름 집합"""
+    """그날 이 종목에 켜진 분류 이름 집합 (현재 규칙 + 비교용 후보)"""
     on = {nm for nm, _ in m.sig_groups(r)}
     for golden, nm in ((True, "골든"), (False, "데드")):
         k = m.cross_count(r, golden)
         if k >= 2:
             on.add(f"{nm}X{k}")
+        k2 = m.cross_count(r, golden, SHORT_WIN)
+        if k2 >= 2:
+            on.add(f"{nm}X{k2}·짧게")
     if len(r["sig"]["sell_c"]) >= 2:
         on.add("과열")
+    up = long_up(r)
+    if "매수" in on:
+        on.add("매수·추세O" if up else "매수·추세X")
+    if "하락진행" in on:
+        on.add("눌림진행" if up else "하락진행·추세X")
     return on
 
 
@@ -89,7 +120,7 @@ def main():
 
     B = {h: stats([b[h] for b in base]) for h in HORIZONS}
     rows = []
-    for cat, way in CATEGORIES:
+    for cat, way in CATEGORIES + VARIANTS:
         ev = [e for e in events if e["cat"] == cat]
         S = {h: stats([e[f"r{h}"] for e in ev]) for h in HORIZONS}
         verdict = {}
@@ -132,22 +163,33 @@ def write_html(rows, B, n_stocks, failed, period, secs):
     E = html.escape
     kst = datetime.now(timezone.utc) + timedelta(hours=9)
     vcls = lambda v: "ok" if v.startswith("맞음") else "bad" if v.startswith("틀림") else "mut"
-    trs = ""
-    for r in rows:
+    byname = {r["cat"]: r for r in rows}
+
+    def row_html(r, label=None, cls=""):
         cells = ""
         for h in HORIZONS:
             sh = r["S"][h]
             cells += (f'<td class="g">{fmt(sh, "mean")} <small>{sh["n"] if sh else 0}건</small></td><td>{fmt(sh, "win")}</td>'
                       f'<td class="{vcls(r["verdict"][h])}">{E(r["verdict"][h])}</td>')
-        trs += (f'<tr><td class="c"><b>{E(r["cat"])}</b> <small>{"▲" if r["way"] == "up" else "▼"}</small></td>'
+        return (f'<tr class="{cls}"><td class="c"><b>{E(label or r["cat"])}</b> <small>{"▲" if r["way"] == "up" else "▼"}</small></td>'
                 f'<td>{r["n"]}</td>{cells}</tr>')
+
+    base_names = [c for c, _ in CATEGORIES]
+    trs = "".join(row_html(byname[c]) for c in base_names)
+    ctrs = ""
+    for title, desc, names in COMPARE:
+        ctrs += (f'<tr class="grp"><td class="c" colspan="{2 + 3 * len(HORIZONS)}"><b>{E(title)}</b> '
+                 f'<small>{E(desc)}</small></td></tr>')
+        for nm in names:
+            cur = nm in base_names
+            ctrs += row_html(byname[nm], ("현재 · " if cur else "후보 · ") + nm, "cur" if cur else "alt")
     head1 = "".join(f'<th colspan="3" class="g">{h}일 뒤</th>' for h in HORIZONS)
     head2 = "".join('<th class="g">평균</th><th>플러스</th><th>판정</th>' for _ in HORIZONS)
     base = " / ".join(f'{h}일 뒤 평균 {fmt(B[h], "mean")} · 플러스 {fmt(B[h], "win")}' for h in HORIZONS)
     neutral = ", ".join(f"{h}일 ±{NEUTRAL[h]}%p" for h in HORIZONS)
     lists = ""
     for r in rows:
-        if not r["events"]:
+        if not r["events"] or r["cat"] not in base_names:
             continue
         li = "".join(
             f'<tr><td>{e["date"]:%y.%m.%d}</td><td>{E(e["name"])}</td><td>{m.fmt_price(e["close"])}</td>'
@@ -169,7 +211,7 @@ h1 {{ font-size:1.3rem; margin:4px 0; }} .t {{ color:var(--mut); font-size:.8rem
 table {{ border-collapse:collapse; width:100%; font-size:.82rem; }} th, td {{ padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }}
 th {{ color:var(--mut); font-weight:500; }} td.c, th.c {{ text-align:left; }} small {{ color:var(--mut); }}
 td.ok {{ background:var(--okbg); color:var(--ok); font-weight:600; }} td.bad {{ background:var(--badbg); color:var(--buy); }} td.mut {{ color:var(--mut); }}
-td.up {{ color:var(--buy); }} td.dn {{ color:var(--sell); }} .g {{ border-left:1px solid var(--line); }} th.g {{ text-align:center; }}
+td.up {{ color:var(--buy); }} td.dn {{ color:var(--sell); }} .g {{ border-left:1px solid var(--line); }} th.g {{ text-align:center; }} tr.grp td {{ background:var(--bg); padding-top:10px; }} tr.cur td.c b {{ color:var(--mut); }}
 .base {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px 12px; margin:12px 0; font-size:.85rem; }}
 details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin:6px 0; }} summary {{ cursor:pointer; padding:9px 12px; }}
 table.ev td:nth-child(2), table.ev th:nth-child(2) {{ text-align:left; }}
@@ -187,6 +229,12 @@ a {{ color:inherit; }}
 판정은 분류 평균과 기준선 평균의 차이(%p)로 봄({neutral} 안이면 '차이 없음'). {MIN_N}건 미만은 '표본 부족'. 플러스 = 수익률이 0보다 큰 비율.
 같은 종목에서 같은 신호가 {COOLDOWN}거래일 안에 다시 뜨면 이어진 신호로 보고 한 번만 셈. 최근 신호는 아직 시간이 안 지나 긴 기간(20·60일) 결과가 없으므로, 기간별 건수가 다름.
 한계: 지금 보유·관심 종목만 대상(최근에 괜찮았던 종목 위주라 결과가 좋게 나오기 쉬움), 12개월 한 장세만 반영, 거래비용 미반영.</p>
+<h2 style="font-size:1rem">새 규칙 후보 비교</h2>
+<p class="note">리포트 규칙은 바꾸지 않고, 같은 기간·같은 종목에서 후보 규칙을 나란히 계산한 결과. 후보가 '현재'보다 기준선 대비 차이가 크게(기대 방향으로) 나오고 건수도 충분하면 리포트에 반영할 만함.</p>
+<div class="wrap"><table>
+<tr><th class="c" rowspan="2">분류</th><th rowspan="2">신호</th>{head1}</tr>
+<tr>{head2}</tr>
+{ctrs}</table></div>
 <h2 style="font-size:1rem">분류별 신호 목록</h2>{lists or '<div class="note">신호 없음</div>'}
 {fail}
 </body></html>"""
