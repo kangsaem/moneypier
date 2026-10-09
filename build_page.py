@@ -217,10 +217,12 @@ def sig_block(head_txt, side, lv, cls):
     return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
 
 
-sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong") + sig_block("매수 관심", "buy", "관심", "buy")
+sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong")
+            + sig_block("저평가 · 반등 대기 <small>(방향 확인 전)</small>", "buy", "관심", "buy")
+            + sig_block("하락 진행 중 <small>(매수 보류)</small>", "buy", "보류", "hold")
             + sig_block("매도 타점", "sell", "타점", "sell strong")
             + sig_block("과열 · 추세 유지 <small>(매도 아님, 이익 보호 구간)</small>", "sell", "과열", "hot")
-            + sig_block("매도 관심 <small>(추세 약화)</small>", "sell", "관심", "sell"))
+            + sig_block("매도 관심 <small>(일·주봉 중 역배열)</small>", "sell", "관심", "sell"))
 
 screen_html = ""
 for h, n, lines in m.summary_sections(results):
@@ -278,6 +280,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .sig {{ padding:7px 0; border-top:1px solid var(--line); }} .sig:first-of-type {{ border-top:0; }}
 .sh {{ display:flex; gap:8px; align-items:baseline; }} .sh span {{ color:var(--mut); font-size:.75rem; }} .sh em {{ margin-left:auto; font-style:normal; font-size:.8rem; }}
 .ex {{ font-size:.75rem; color:var(--mut); margin-top:2px; }}
+.sg.hold {{ border-left-color:var(--mut); }} .sg.hold h3 {{ color:var(--mut); }}
 .sg.hot {{ border-left-color:var(--warn); }} .sg.hot h3 {{ color:var(--warn); }}
 .chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
 .chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}
@@ -323,7 +326,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>오늘의 매수 · 매도 시그널</h2>
 {sig_html}
-<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 관심 = 조건만 충족 / 과열 = 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있는 종목. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조.</div>
+<div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 저평가·매도 관심 = 조건만 충족(방향 확인 전) / 하락 진행 중 = 싸 보이지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 과열 = 조건 충족이지만 일·주봉이 모두 정배열이라 추세가 살아 있음(월봉은 참고). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조.</div>
 
 <h2>종목 스크리닝</h2>
 {screen_html}

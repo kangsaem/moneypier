@@ -16,6 +16,8 @@ START = (datetime.today() - timedelta(days=365 * 12)).strftime("%Y-%m-%d")
 # ===== 스크리닝 기준 (여기 숫자만 바꾸면 됩니다) =====
 CROSS_DAYS = 5      # '최근 N거래일 이내' 골든/데드크로스
 MOVE_PCT = 8.0      # 최근 5거래일 누적 등락 또는 하루 등락이 이 % 이상이면 포함
+CROSS_NEAR = 0.7   # 5일선이 10일선 아래 몇 % 이내면 '골든크로스 임박'으로 볼지
+FALL_PCT = -5.0    # 최근 5일 등락이 이 값 이하이거나 20일 신저가 갱신 중이면 '하락 진행 중'
 NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 포함
 NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 포함
 
@@ -115,8 +117,10 @@ def analyze(code, name):
     r["rets"] = rets
     r["ret5"] = float((c.iloc[-1] / c.iloc[-6] - 1) * 100) if len(c) >= 6 else 0.0
     r["maxday"] = max(rets, key=abs) if rets else 0.0
-    r["sig"] = stock_signals(r)
     r["chart"] = chart_data(c, rs)
+    newlow = c <= c.shift(1).rolling(20).min()          # 직전 20일 저가를 깬 날
+    r["new_low3"] = bool(newlow.tail(3).any())          # 최근 3일 안에 신저가를 냈는가
+    r["sig"] = stock_signals(r)
     return r
 
 
@@ -138,6 +142,11 @@ def stock_signals(r):
         buy_t.append("5일 내 골든크로스"); bk["day"] = "t"
     if r["rsi_min5"] <= 35 and r["rsi"] > r["rsi_min5"] and r["rsi"] >= r["rsi_prev"]:
         buy_t.append("RSI 저점 찍고 반등"); bk["rsi"] = "t"
+    ma5 = r["chart"]["ma5"]
+    ma5_up = ma5[-1] is not None and ma5[-2] is not None and ma5[-1] > ma5[-2]
+    if dy["ok"] and not dy["above"] and dy["gap"] >= -CROSS_NEAR and ma5_up:
+        buy_t.append(f"골든크로스 임박 (5일선 {dy['gap']:+.2f}%, 상승 중)"); bk["day"] = "t"
+    falling = bool(r["ret5"] <= FALL_PCT or r.get("new_low3"))   # 아직 떨어지는 중이면 '싸 보여도' 보류
 
     if r["rsi"] >= 70:
         sell_c.append(f"RSI {r['rsi']:.0f} (70 이상)"); sk["rsi"] = "c"
@@ -153,13 +162,17 @@ def stock_signals(r):
     def level(c, t):
         return "타점" if (len(c) >= 2 and t) else ("관심" if len(c) >= 2 else None)
 
-    # 추세 판단: 일봉·주봉이 모두 정배열(월봉은 계산 가능할 때만 확인)이면 '강한 상승추세'
-    wk, mo = r["week"], r["month"]
-    strong_up = bool(dy["ok"] and dy["above"] and wk["ok"] and wk["above"] and (not mo["ok"] or mo["above"]))
+    # 추세 판단: 일봉·주봉이 모두 정배열이면 '상승 추세 유지'. 월봉은 수개월 지연되는 지표라
+    # 장기 하락 뒤 급반등한 종목은 늘 역배열로 남으므로 판단에 쓰지 않고 참고로만 표시한다.
+    wk = r["week"]
+    strong_up = bool(dy["ok"] and dy["above"] and wk["ok"] and wk["above"])
     sell = level(sell_c, sell_t)
     if sell == "관심" and strong_up:
         sell = "과열"          # 과열이지만 추세는 살아 있음 → 매도 신호가 아니라 '이익 보호' 구간
-    return {"buy": level(buy_c, buy_t), "buy_c": buy_c, "buy_t": buy_t,
+    buy = level(buy_c, buy_t)
+    if buy == "관심" and falling:
+        buy = "보류"           # 싸 보이지만 아직 하락 진행 중 → 반등 확인 전까지 보류
+    return {"buy": buy, "falling": falling, "buy_c": buy_c, "buy_t": buy_t,
             "sell": sell, "sell_c": sell_c, "sell_t": sell_t, "strong_up": strong_up,
             "buy_k": bk, "sell_k": sk}
 
@@ -330,8 +343,9 @@ def signals_text(results, msig):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
-    groups = (("매수 타점", "buy", "타점"), ("매수 관심", "buy", "관심"), ("매도 타점", "sell", "타점"),
-              ("과열 · 추세 유지 (매도 아님, 이익 보호 구간)", "sell", "과열"), ("매도 관심 (추세 약화)", "sell", "관심"))
+    groups = (("매수 타점", "buy", "타점"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"),
+              ("하락 진행 중 · 매수 보류", "buy", "보류"), ("매도 타점", "sell", "타점"),
+              ("과열 · 추세 유지 (매도 아님, 이익 보호 구간)", "sell", "과열"), ("매도 관심 (일·주봉 중 역배열)", "sell", "관심"))
     for head, side, lv in groups:
         hit = [r for r in results if r["sig"][side] == lv]
         L.append(f"\n▶ {head} [{len(hit)}]")
