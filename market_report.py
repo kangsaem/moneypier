@@ -22,7 +22,7 @@ NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 포
 NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 포함
 ADD_DISP_MAX = 90   # 불타기: 50일 이격도가 과거 최대 대비 이 % 미만이어야 "과열 아님" (매도 쪽 상단 기준과 동일)
 ADD_RSI_MAX = 70    # 불타기: RSI가 이 값 미만이어야 '과열 아님'
-CHART_DAYS = 90     # 차트에 보여줄 기간(거래일). 큰 차트·소형 차트·코스피 공통
+CHART_DAYS = 132    # 차트에 보여줄 기간(거래일). 큰 차트·소형 차트·코스피 공통
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
 
@@ -91,13 +91,40 @@ def bar_ma(c, n, rule):
     return s.interpolate(limit_area="inside")
 
 
+def future_days(c):
+    """앞으로 보여줄 날짜: 내일부터 한 달 뒤까지의 평일(공휴일은 무시한 근사)"""
+    last = c.index[-1]
+    end = last + pd.DateOffset(months=1)
+    return pd.bdate_range(last + pd.Timedelta(days=1), end)
+
+
+def bar_ma_proj(c, n, rule, fut):
+    """가격이 오늘 종가에 그대로 머문다고 가정한 주봉/월봉 이평의 앞으로의 경로.
+    오늘 값에서 출발해, 이후 각 주(월) 마지막 날의 예상값을 찍고 직선으로 잇는다."""
+    ext = pd.concat([c, pd.Series(float(c.iloc[-1]), index=fut)])
+    ma = make_bars(ext, rule).rolling(n).mean()
+    pts = ma[ma.index > c.index[-1]].dropna()
+    s = pd.Series(float("nan"), index=pd.DatetimeIndex([c.index[-1]]).append(fut))
+    s.iloc[0] = bar_ma(c, n, rule).iloc[-1]
+    s.loc[pts.index] = pts.values
+    return [None if pd.isna(v) else float(v) for v in s.interpolate(limit_area="inside")]
+
+
 def chart_data(c, rs=None, n=None):
     """차트용 최근 n거래일 데이터: 종가, 5/20일선, 5/10주선, 5/10월선(전체 기간으로 계산 후 자름), RSI.
     ma30/ma150/ma300은 차트에 그리지 않지만 신호 로직(불타기 추세 판단)에서 아직 쓰므로 함께 넘긴다."""
     t = c.tail(n or CHART_DAYS)
     def lst(x):
         return [None if pd.isna(v) else float(v) for v in x.reindex(t.index)]
+    fut = future_days(c)
+    proj = {}
+    for k, nn, rule in (("w5", 5, "W-FRI"), ("w10", 10, "W-FRI"), ("m5", 5, "ME"), ("m10", 10, "ME")):
+        try:
+            proj[k] = bar_ma_proj(c, nn, rule, fut)      # 길이 = 1(오늘) + len(fut)
+        except Exception:
+            proj[k] = None
     return {"dates": [d.strftime("%y.%m.%d") for d in t.index], "close": [float(v) for v in t],
+            "fdates": [d.strftime("%y.%m.%d") for d in fut], "proj": proj,
             "w5": lst(bar_ma(c, 5, "W-FRI")), "w10": lst(bar_ma(c, 10, "W-FRI")),
             "m5": lst(bar_ma(c, 5, "ME")), "m10": lst(bar_ma(c, 10, "ME")),
             "ma5": lst(c.rolling(5).mean()), "ma20": lst(c.rolling(20).mean()), "ma30": lst(c.rolling(30).mean()),
@@ -397,15 +424,15 @@ def signals_text(results, msig):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
-    groups = (("불타기 후보 (추세 유지 · 과열 아님 · 20일선 눌림 후 반등)", "add", "후보"),
-              ("매수 타점", "buy", "타점"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"),
-              ("하락 진행 중 · 매수 보류", "buy", "보류"), ("매도 검토 (과열 + 꺾임 확인)", "sell", "타점"),
-              ("일부 익절 검토 (과열 · 추세는 유지)", "sell", "과열"), ("비중 축소 검토 (과열 + 추세 약화)", "sell", "관심"))
+    groups = (("매수 타점", "buy", "타점"), ("매도 검토 (과열 + 꺾임 확인)", "sell", "타점"),
+              ("불타기 후보 (추세 유지 · 과열 아님 · 20일선 눌림 후 반등)", "add", "후보"),
+              ("일부 익절 검토 (과열 · 추세는 유지)", "sell", "과열"), ("비중 축소 검토 (과열 + 추세 약화)", "sell", "관심"),
+              ("하락 진행 중 · 매수 보류", "buy", "보류"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"))
     for head, side, lv in groups:
         hit = [r for r in results if r["sig"][side] == lv]
+        if not hit:            # 해당 종목이 없는 분류는 생략
+            continue
         L.append(f"\n▶ {head} [{len(hit)}]")
-        if not hit:
-            L.append("  해당 종목 없음")
         for r in hit:
             sg = r["sig"]
             L.append(f"• {tl(r)}")

@@ -11,7 +11,6 @@ import requests
 
 import market_report as m
 
-MINI_DAYS = m.CHART_DAYS   # 시그널 카드 소형 차트 기간. 기간은 market_report.py의 CHART_DAYS에서 바꾼다
 render_errors = []
 
 
@@ -157,11 +156,11 @@ def _metrics_html(r, side, lv):
         elif "데드" in t_:
             day_note = f" · 데드 {ago}일전"
     rsi_note = "".join(" ↗반등" if "반등" in t_ else " ↘꺾임" if "꺾임" in t_ else "" for t_ in trig)
-    for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
+    # 일/주/월 5·10 배열: 칸 3개 (정=빨간 테두리, 역=파란 테두리). 순서대로 일·주·월
+    for k, nm in (("day", "일봉"), ("week", "주봉"), ("month", "월봉")):
         x = r[k]
-        label = (lb + (" 정" if x["above"] else " 역") if x["ok"] else lb + " -") + (day_note if k == "day" else "")
-        out.append(tag("day" if k == "day" else "", label,
-                       "up" if x["ok"] and x["above"] else "dn" if x["ok"] else "n"))
+        txt, cls = ("정", "arr up") if x["ok"] and x["above"] else ("역", "arr dn") if x["ok"] else ("-", "n")
+        out.append(tag("day" if k == "day" else "", txt + (day_note if k == "day" else ""), cls, f"{nm} 5·10선 배열"))
     g = (r["close"] / r["ma10"] - 1) * 100
     m20 = r["chart"]["ma20"][-1] if r.get("chart") else None
     if m20:
@@ -193,61 +192,94 @@ def _path(vals, x, y):
     return "".join(d)
 
 
+LINES = (("5일", "ma5"), ("20일", "ma20"), ("5주", "w5"), ("10주", "w10"), ("5월", "m5"), ("10월", "m10"))
+PAIRS = (("ma5", "ma20"), ("w5", "w10"), ("m5", "m10"))
+
+
+def _last(ch, k):
+    return ch[k][-1] if ch.get(k) else None
+
+
+def legend_html(ch):
+    """차트 위 범례(HTML): 오늘 종가 + 일/주/월 이평선 색"""
+    sw = lambda k: f'<i class="sw sw-{k}"></i>'
+    parts = [f'<span class="lgi">{sw("close")}오늘 종가</span>']
+    for (la, a), (lb, b) in zip(LINES[0::2], LINES[1::2]):
+        parts.append(f'<span class="lgi">{sw(a)}{la} {sw(b)}{lb}</span>')
+    if ch.get("proj") and any(ch["proj"].values()):
+        parts.append('<span class="lgn">점선 = 가격 유지 가정</span>')
+    return '<div class="lg">' + "".join(parts) + "</div>"
+
+
 def _svg_chart(ch, mini=False):
-    """인라인 SVG: 이평선(5·20일, 5·10주, 5·10월) + 오늘 종가 점 (+ RSI 패널). 종가 선은 그리지 않는다"""
+    """인라인 SVG: 이평선(5·20일, 5·10주, 5·10월) + 오늘 종가 점 + RSI 패널.
+    오른쪽 여분 = 가격이 오늘 수준에 머문다고 가정한 주·월선의 앞으로의 경로(점선).
+    오늘 종가·RSI 숫자는 그림 영역 안쪽 오른쪽 끝(앞으로 구간)에 표시"""
     if not ch or len(ch["close"]) < 5:
         return ""
-    sl = slice(-MINI_DAYS, None) if mini else slice(None)
-    g = lambda k: ch[k][sl]
-    keys = ("ma5", "ma20", "w5", "w10", "m5", "m10")
+    g = lambda k: ch[k]
+    keys = [k for _, k in LINES]
     close = g("close")
     n = len(close)
-    W = 320 if mini else 640
-    PH = 64 if mini else 170
-    RH = 0 if (mini or not ch.get("rsi")) else 54
+    proj = ch.get("proj") or {}
+    fdates = ch.get("fdates") or []
+    F = len(fdates) if any(proj.values()) else 0
+    N = n + F
+    W = 660
+    PH = 170
+    RH = 54 if ch.get("rsi") else 0
     gap = 10 if RH else 0
-    pl, pr = 4, (4 if mini else 50)
-    pt, pb = (4 if mini else 18), (0 if mini else 16)
+    pl, pt, pb = 4, 4, 16
     H = pt + PH + gap + RH + pb
-    vals = [v for k in keys for v in g(k) if v is not None] + [close[-1]]   # 오늘 종가 점이 범위 안에 들도록
+    xr = W - 2                                      # 그림 영역 오른쪽 끝
+    vals = [v for k in keys for v in g(k) if v is not None] + [close[-1]]
+    vals += [v for k in proj if proj[k] for v in proj[k] if v is not None]
     lo, hi = min(vals), max(vals)
     if hi == lo:
         hi = lo + 1
-    m_ = (hi - lo) * 0.04
+    m_ = (hi - lo) * 0.06
     lo, hi = lo - m_, hi + m_
-    x = lambda i: pl + (W - pl - pr) * i / (n - 1)
+    x = lambda i: pl + (xr - pl - 2) * i / (N - 1)
     y = lambda v: pt + PH * (1 - (v - lo) / (hi - lo))
-    o = [f'<svg class="chart{" mini" if mini else ""}" viewBox="0 0 {W} {H}" role="img" aria-label="가격 차트">']
-    o.append(f'<rect class="ch-bg" x="0" y="{pt}" width="{W - pr}" height="{PH}"/>')
+    tx = xr - 4                                     # 안쪽 숫자 라벨 x (오른쪽 정렬)
+    o = [f'<svg class="chart" viewBox="0 0 {W} {H}" role="img" aria-label="가격 차트">']
+    o.append(f'<rect class="ch-bg" x="0" y="{pt}" width="{xr}" height="{PH}"/>')
+    if F:   # 앞으로 구간 옅은 배경
+        o.append(f'<rect class="ch-fc" x="{x(n - 1):.1f}" y="{pt}" width="{xr - x(n - 1):.1f}" height="{PH}"/>')
+    # 월 경계 세로선 + 월 숫자
+    alld = list(ch["dates"]) + list(fdates[:F])
+    for i in range(1, N):
+        if alld[i][3:5] != alld[i - 1][3:5]:
+            xv = x(i)
+            o.append(f'<line class="ch-vl" x1="{xv:.1f}" x2="{xv:.1f}" y1="{pt}" y2="{pt + PH}"/>')
+            o.append(f'<text class="ch-mo" x="{xv + 2:.1f}" y="{pt + PH - 3}">{int(alld[i][3:5])}</text>')
     for k in keys[::-1]:
         o.append(f'<path class="ch-{k}" d="{_path(g(k), x, y)}"/>')
+        if F and proj.get(k):
+            xf = lambda i, k=k: x(n - 1 + i)
+            o.append(f'<path class="ch-{k} ch-f" d="{_path(proj[k], xf, y)}"/>')
     ly = y(close[-1])
-    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="{2.5 if mini else 3}"/>')
-    if not mini:
-        for v, ypos in ((hi - m_, y(hi - m_)), (lo + m_, y(lo + m_))):
-            if abs(ypos - ly) < 10:      # 현재가 라벨과 겹치면 최고·최저 라벨은 생략
-                continue
-            o.append(f'<text class="ch-t" x="{W - pr + 4}" y="{ypos + 3:.1f}">{m.fmt_price(v)}</text>')
-        o.append(f'<text class="ch-last" x="{W - pr + 4}" y="{ly + 3:.1f}">{m.fmt_price(close[-1])}</text>')
-        for i, (lab, cls) in enumerate((("오늘 종가", "close"), ("5일", "ma5"), ("20일", "ma20"), ("5주", "w5"), ("10주", "w10"), ("5월", "m5"), ("10월", "m10"))):
-            o.append(f'<text class="ch-lg ch-l{cls}" x="{pl + 2 + i * 50 + (14 if i else 0)}" y="11">● {lab}</text>')
-        o.append(f'<text class="ch-t" x="{pl}" y="{H - 3}">{ch["dates"][sl][0]}</text>')
-        o.append(f'<text class="ch-t" x="{W - pr}" y="{H - 3}" text-anchor="end">{ch["dates"][sl][-1]}</text>')
-        if RH:
-            top = pt + PH + gap
-            y2 = lambda v: top + RH * (1 - v / 100)
-            o.append(f'<rect class="ch-bg" x="0" y="{top}" width="{W - pr}" height="{RH}"/>')
-            rv = g("rsi")
-            last = next((v for v in reversed(rv) if v is not None), None)
-            for lv in (30, 70):
-                o.append(f'<line class="ch-grid" x1="0" x2="{W - pr}" y1="{y2(lv):.1f}" y2="{y2(lv):.1f}"/>')
-                if last is None or abs(y2(lv) - y2(last)) > 9:      # RSI 값 라벨과 겹치면 기준선 숫자는 생략
-                    o.append(f'<text class="ch-t" x="{W - pr + 4}" y="{y2(lv) + 3:.1f}">{lv}</text>')
-            o.append(f'<path class="ch-rsi" d="{_path(rv, x, y2)}"/>')
-            if last is not None:
-                o.append(f'<text class="ch-last" x="{W - pr + 4}" y="{y2(last) + 3:.1f}">RSI {last:.0f}</text>')
+    o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="3"/>')
+    # 가격 숫자: 그림 영역 안쪽 오른쪽 끝
+    cy_ = min(max(ly - 5, pt + 10), pt + PH - 16)        # 현재가 라벨 위치(영역 밖으로 안 나가게)
+    o.append(f'<text class="ch-last ch-in" x="{tx}" y="{cy_:.1f}" text-anchor="end">{m.fmt_price(close[-1])}</text>')
+    o.append(f'<text class="ch-t" x="{pl}" y="{H - 3}">{ch["dates"][0]}</text>')
+    o.append(f'<text class="ch-t" x="{x(n - 1):.1f}" y="{H - 3}" text-anchor="middle">{ch["dates"][-1]}</text>')
+    if RH:
+        top = pt + PH + gap
+        y2 = lambda v: top + RH * (1 - v / 100)
+        o.append(f'<rect class="ch-bg" x="0" y="{top}" width="{xr}" height="{RH}"/>')
+        rv = g("rsi")
+        last = next((v for v in reversed(rv) if v is not None), None)
+        for lv in (30, 70):
+            o.append(f'<line class="ch-grid" x1="0" x2="{xr}" y1="{y2(lv):.1f}" y2="{y2(lv):.1f}"/>')
+            if last is None or abs(y2(lv) - y2(last)) > 9:      # RSI 값 라벨과 겹치면 기준선 숫자는 생략
+                o.append(f'<text class="ch-t ch-in" x="{tx}" y="{y2(lv) + 3:.1f}" text-anchor="end">{lv}</text>')
+        o.append(f'<path class="ch-rsi" d="{_path(rv, x, y2)}"/>')
+        if last is not None:
+            o.append(f'<text class="ch-last ch-in" x="{tx}" y="{y2(last) + 3:.1f}" text-anchor="end">RSI {last:.0f}</text>')
     o.append("</svg>")
-    return "".join(o)
+    return legend_html(ch) + "".join(o)
 
 
 def svg_chart(ch, mini=False):
@@ -270,20 +302,21 @@ def sig_block(head_txt, side, lv, cls):
     hit = [r for r in results if r["sig"][side] == lv]
     items = ""
     for r in hit:
-        sg = r["sig"]
         items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
-                  f'</div>{metrics_html(r, side, lv)}{svg_chart(r["chart"], mini=True)}</div>')
-    body = items or '<div class="none">해당 종목 없음</div>'
-    return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
+                  f'</div>{metrics_html(r, side, lv)}<div class="chwrap sigch">{svg_chart(r["chart"])}</div></div>')
+    if not hit:            # 해당 종목이 없는 영역은 화면에 표시하지 않음
+        return ""
+    return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{items}</div>'
 
 
-sig_html = (sig_block("불타기 후보 <small>(추세 유지 · 과열 아님 · 20일선 눌림 후 반등)</small>", "add", "후보", "add")
-            + sig_block("매수 타점", "buy", "타점", "buy strong")
-            + sig_block("저평가 · 반등 대기 <small>(방향 확인 전)</small>", "buy", "관심", "buy")
-            + sig_block("하락 진행 중 <small>(매수 보류)</small>", "buy", "보류", "hold")
+# 순서: 매수 / 매도 / 불타기 / 익절 검토 / 비중 축소 / 하락 진행 / 반등 대기  (market_report.SIGNAL_GROUPS와 같은 순서)
+sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong")
             + sig_block("매도 검토 <small>(과열 + 꺾임 확인)</small>", "sell", "타점", "sell strong")
+            + sig_block("불타기 후보 <small>(추세 유지 · 과열 아님 · 20일선 눌림 후 반등)</small>", "add", "후보", "add")
             + sig_block("일부 익절 검토 <small>(과열 · 추세는 유지)</small>", "sell", "과열", "hot")
-            + sig_block("비중 축소 검토 <small>(과열 + 일·주봉 중 역배열)</small>", "sell", "관심", "sell"))
+            + sig_block("비중 축소 검토 <small>(과열 + 일·주봉 중 역배열)</small>", "sell", "관심", "sell")
+            + sig_block("하락 진행 중 <small>(매수 보류)</small>", "buy", "보류", "hold")
+            + sig_block("저평가 · 반등 대기 <small>(방향 확인 전)</small>", "buy", "관심", "buy"))
 
 screen_html = ""
 for h, n, lines in guard("스크리닝", m.summary_sections, results, default=[]):
@@ -364,14 +397,25 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .ch-close {{ stroke:var(--fg); stroke-width:1; }} .ch-ma5 {{ stroke:var(--c5); stroke-width:1; }}
 .ch-ma20 {{ stroke:var(--c20); stroke-width:1; }} .ch-w5 {{ stroke:var(--cw5); stroke-width:1; }} .ch-w10 {{ stroke:var(--cw10); stroke-width:1; }}
 .ch-m5 {{ stroke:var(--cm5); stroke-width:1; }} .ch-m10 {{ stroke:var(--cm10); stroke-width:1; }} .ch-rsi {{ stroke:var(--fg); stroke-width:1; }}
-.ch-dot {{ fill:var(--fg); }} .ch-t {{ fill:var(--mut); font-size:9px; }} .ch-last {{ fill:var(--fg); font-size:9.5px; font-weight:700; }}
+.ch-dot {{ fill:var(--fg); }} .chart path.ch-f {{ stroke-dasharray:3 3; }} .ch-fc {{ fill:var(--fg); opacity:.035; }}
+.ch-vl {{ stroke:var(--fg); opacity:.09; }} .ch-mo {{ fill:var(--mut); opacity:.85; font-size:9px; }}
+.ch-in {{ paint-order:stroke; stroke:var(--card); stroke-width:3px; stroke-linejoin:round; }}
+.lg {{ display:flex; flex-wrap:wrap; gap:4px 14px; align-items:center; font-size:.72rem; color:var(--mut); margin:4px 0 2px; }}
+.lgi {{ display:inline-flex; align-items:center; gap:3px; white-space:nowrap; }} .lgn {{ margin-left:auto; font-size:.68rem; }}
+.sw {{ display:inline-block; width:9px; height:9px; border-radius:2px; }} .sw-close {{ background:var(--fg); border-radius:50%; }}
+.sw-ma5 {{ background:var(--c5); }} .sw-ma20 {{ background:var(--c20); }} .sw-w5 {{ background:var(--cw5); }} .sw-w10 {{ background:var(--cw10); }} .sw-m5 {{ background:var(--cm5); }} .sw-m10 {{ background:var(--cm10); }}
+.pj {{ font-size:.7rem; padding:0 5px; border-radius:4px; color:#fff; margin-left:2px; }} .pj.up {{ background:var(--buy); }} .pj.dn {{ background:var(--sell); }}
+.mt.arr {{ font-weight:700; }} .mt.arr.up {{ border-color:var(--buy); }} .mt.arr.dn {{ border-color:var(--sell); }}
+.chwrap.sigch {{ padding:2px 0 0; }}
+.ch-t {{ fill:var(--mut); font-size:9px; }} .ch-last {{ fill:var(--fg); font-size:9.5px; font-weight:700; }}
 .ch-lg {{ font-size:9.5px; }} .ch-lclose {{ fill:var(--fg); }} .ch-lma5 {{ fill:var(--c5); }} .ch-lma20 {{ fill:var(--c20); }} .ch-lw5 {{ fill:var(--cw5); }} .ch-lw10 {{ fill:var(--cw10); }} .ch-lm5 {{ fill:var(--cm5); }} .ch-lm10 {{ fill:var(--cm10); }}
 @media (min-width: 900px) {{
   body {{ max-width:1180px; }}
   .cards {{ grid-template-columns:repeat(4,1fr); }}
   .gauges {{ grid-template-columns:1fr 1fr; align-items:start; }}
-  .sgrid, .dgrid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }}
-  .sgrid .sg, .dgrid details {{ margin-bottom:0; }}
+  .dgrid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }}
+  .dgrid details {{ margin-bottom:0; }}
+  .sgrid {{ columns:2; column-gap:10px; }} .sgrid .sg {{ break-inside:avoid; }}
 }}
 .none {{ color:var(--mut); font-size:.85rem; }}
 .chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
@@ -398,7 +442,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <h2>오늘의 매수 · 매도 시그널</h2>
-<div class="sgrid">{sig_html}</div>
+<div class="sgrid">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
 <div class="legend">타점 = 조건 2개 이상 + 트리거 1개 이상 / 저평가·매도 관심 = 조건만 충족(방향 확인 전) / 하락 진행 중 = 싸 보이지만 5일 -5% 이하이거나 20일 신저가 갱신 중 / 일부 익절 = 과열 조건은 충족했지만 일·주봉이 모두 정배열이라 추세가 살아 있음(전량 매도보다 분할 익절을 검토하는 구간, 월봉은 참고). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 조건에 걸린 항목은 굵은 테두리, 트리거에 걸린 항목은 바깥 윤곽선으로 강조. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %), 진한 색은 최대×0.9 이상 또는 최소×1.1 이하.</div>
 
 <h2>종목 스크리닝</h2>
