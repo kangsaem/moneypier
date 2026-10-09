@@ -77,13 +77,14 @@ def cross_state(close, short=5, long=10):
     return out
 
 
-def chart_data(c, rs=None, n=130):
+def chart_data(c, rs=None, n=250):
     """차트용 최근 n거래일 데이터: 종가, 5/10/50일선(전체 기간으로 계산 후 자름), RSI"""
     t = c.tail(n)
     def lst(x):
         return [None if pd.isna(v) else float(v) for v in x.reindex(t.index)]
     return {"dates": [d.strftime("%y.%m.%d") for d in t.index], "close": [float(v) for v in t],
-            "ma5": lst(c.rolling(5).mean()), "ma10": lst(c.rolling(10).mean()), "ma50": lst(c.rolling(50).mean()),
+            "ma5": lst(c.rolling(5).mean()), "ma20": lst(c.rolling(20).mean()), "ma30": lst(c.rolling(30).mean()),
+            "ma150": lst(c.rolling(150).mean()), "ma300": lst(c.rolling(300).mean()),
             "rsi": lst(rs) if rs is not None else None}
 
 
@@ -321,12 +322,22 @@ def _n(x):
     return t[:-2] if t.endswith(".0") else t
 
 
+def disp_view(d):
+    """50일 이격도의 위치: 과거 범위에서 높은 쪽이면 (up, 최대 대비 %), 낮은 쪽이면 (down, 최소 대비 %)"""
+    rng = d["max"] - d["min"]
+    pos = (d["cur"] - d["min"]) / rng if rng > 0 else 0.5
+    if pos >= 0.5:
+        return {"side": "high", "pct": d["cur"] / d["max"] * 100, "strong": d["up"] >= NEAR_MAX}
+    return {"side": "low", "pct": d["cur"] / d["min"] * 100, "strong": d["down"] <= NEAR_MIN}
+
+
 def extra_line(r, lv=None):
     """한 줄 요약: 50일 이격 현재 (최소/최대) 일/주/월 배열 · 10일선 대비"""
     d = r["disp"]
     parts = []
     if d:
-        parts.append(f"50일 이격 {d['cur']:.1f} ({_n(d['min'])}/{_n(d['max'])})")
+        v = disp_view(d)
+        parts.append(f"50일 이격 {'상단' if v['side'] == 'high' else '하단'} {v['pct']:.0f}% ({_n(d['min'])}/{_n(d['max'])})")
     st = []
     for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
         x = r[k]
@@ -344,8 +355,8 @@ def signals_text(results, msig):
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
     groups = (("매수 타점", "buy", "타점"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"),
-              ("하락 진행 중 · 매수 보류", "buy", "보류"), ("매도 타점", "sell", "타점"),
-              ("과열 · 추세 유지 (매도 아님, 이익 보호 구간)", "sell", "과열"), ("매도 관심 (일·주봉 중 역배열)", "sell", "관심"))
+              ("하락 진행 중 · 매수 보류", "buy", "보류"), ("매도 검토 (과열 + 꺾임 확인)", "sell", "타점"),
+              ("일부 익절 검토 (과열 · 추세는 유지)", "sell", "과열"), ("비중 축소 검토 (과열 + 추세 약화)", "sell", "관심"))
     for head, side, lv in groups:
         hit = [r for r in results if r["sig"][side] == lv]
         L.append(f"\n▶ {head} [{len(hit)}]")
