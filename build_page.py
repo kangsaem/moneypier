@@ -129,7 +129,7 @@ def disp_cls(v):
 
 def _metrics_html(r, side, lv):
     """종목 한 줄 요약 태그. 조건에 걸린 태그는 테두리, 트리거에 걸린 태그는 채움으로 강조"""
-    keys = r["sig"]["buy_k" if side == "buy" else "sell_k"]
+    keys = r["sig"][side + "_k"]
 
     def tag(key, txt, color, title=""):
         mark = {"c": " cond", "t": " trig"}.get(keys.get(key), "")
@@ -163,6 +163,11 @@ def _metrics_html(r, side, lv):
         out.append(tag("day" if k == "day" else "", label,
                        "up" if x["ok"] and x["above"] else "dn" if x["ok"] else "n"))
     g = (r["close"] / r["ma10"] - 1) * 100
+    m20 = r["chart"]["ma20"][-1] if r.get("chart") else None
+    if m20:
+        g20 = (r["close"] / m20 - 1) * 100
+        out.append(tag("ma20", f"20일 {abs(g20):.1f}% {'▲' if g20 >= 0 else '▼'}", "up" if g20 >= 0 else "dn",
+                       "눌림 기준선(20일선) 대비 종가 위치"))
     out.append(tag("", f"10일 {abs(g):.1f}% {'▲' if g >= 0 else '▼'}" + (f" · 이탈선 {m.fmt_price(r['ma10'])}" if lv == "과열" else ""),
                    "up" if g >= 0 else "dn"))
     for lab, k in (("150일", "ma150"), ("300일", "ma300")):
@@ -272,7 +277,8 @@ def sig_block(head_txt, side, lv, cls):
     return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{body}</div>'
 
 
-sig_html = (sig_block("매수 타점", "buy", "타점", "buy strong")
+sig_html = (sig_block("불타기 후보 <small>(추세 유지 · 과열 아님 · 20일선 눌림 후 반등)</small>", "add", "후보", "add")
+            + sig_block("매수 타점", "buy", "타점", "buy strong")
             + sig_block("저평가 · 반등 대기 <small>(방향 확인 전)</small>", "buy", "관심", "buy")
             + sig_block("하락 진행 중 <small>(매수 보류)</small>", "buy", "보류", "hold")
             + sig_block("매도 검토 <small>(과열 + 꺾임 확인)</small>", "sell", "타점", "sell strong")
@@ -338,6 +344,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .sh {{ display:flex; gap:8px; align-items:baseline; }} .sh span {{ color:var(--mut); font-size:.75rem; }} .sh em {{ margin-left:auto; font-style:normal; font-size:.8rem; }}
 .ex {{ font-size:.75rem; color:var(--mut); margin-top:2px; }}
 .sg.hold {{ border-left-color:var(--mut); }} .sg.hold h3 {{ color:var(--mut); }}
+.sg.add {{ border-left-color:var(--buy); background:var(--buybg); }} .sg.add h3 {{ color:var(--buy); }}
 .sg.hot {{ border-left-color:var(--warn); }} .sg.hot h3 {{ color:var(--warn); }}
 .chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
 .chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}

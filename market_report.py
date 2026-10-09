@@ -20,6 +20,9 @@ CROSS_NEAR = 0.7   # 5일선이 10일선 아래 몇 % 이내면 '골든크로스
 FALL_PCT = -5.0    # 최근 5일 등락이 이 값 이하이거나 20일 신저가 갱신 중이면 '하락 진행 중'
 NEAR_MAX = 0.9      # 50일 이격도가 (과거 최대 × 0.9) 이상이면 포함
 NEAR_MIN = 1.1      # 50일 이격도가 (과거 최소 × 1.1) 이하이면 포함
+ADD_DISP_MAX = 90   # 불타기: 50일 이격도가 과거 최대 대비 이 % 미만이어야 "과열 아님" (매도 쪽 상단 기준과 동일)
+ADD_RSI_MAX = 70    # 불타기: RSI가 이 값 미만이어야 '과열 아님'
+ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
 
 # ---------------------------------------------------------------- 데이터
@@ -173,7 +176,31 @@ def stock_signals(r):
     buy = level(buy_c, buy_t)
     if buy == "관심" and falling:
         buy = "보류"           # 싸 보이지만 아직 하락 진행 중 → 반등 확인 전까지 보류
-    return {"buy": buy, "falling": falling, "buy_c": buy_c, "buy_t": buy_t,
+    # ---- 불타기 후보: 추세 유지 + 과열 아님 + 20일선 눌림 뒤 반등 확인 (셋 다 필요)
+    ak = {}
+    add, add_c, add_t = None, [], []
+    ch = r["chart"]
+    cl, m20, m150 = ch["close"], ch["ma20"], ch["ma150"]
+    if len(cl) >= 6 and all(v is not None for v in m20[-5:]) and not sell and not falling:
+        # 눌림 중에는 5일선이 10일선 아래로 내려가므로 일봉 5/10 대신 '주봉 정배열 + 20일선이 30일선 위'로 추세를 본다
+        m30 = ch["ma30"]
+        trend = bool(wk["ok"] and wk["above"] and m30[-1] is not None and m20[-1] > m30[-1]
+                     and (m150[-1] is None or cl[-1] >= m150[-1]))
+        calm = r["rsi"] < ADD_RSI_MAX and (not d or d["cur"] / d["max"] * 100 < ADD_DISP_MAX and d["cur"] < 110)
+        gaps = [(cl[i] / m20[i] - 1) * 100 for i in range(-5, 0)]
+        touched = min(gaps) <= ADD_TOUCH and gaps[-1] >= 0     # 닿았지만 종가는 20일선 위 유지
+        bounce = cl[-1] > cl[-2] and gaps[-1] > min(gaps)
+        if trend:
+            add_c.append("주봉 정배열 · 20일선>30일선" + (" · 150일선 위" if m150[-1] is not None else "")); ak["day"] = "c"
+        if calm:
+            add_c.append("과열 아님 (이격도·RSI)"); ak["disp"] = "c"
+        if touched:
+            add_c.append(f"20일선 눌림 (최근 5일 최저 {min(gaps):+.1f}%)"); ak["ma20"] = "c"
+        if trend and calm and touched and bounce:
+            add_t.append("20일선 지지 후 반등"); ak["ma20"] = "t"
+            add = "후보"
+    return {"buy": buy, "falling": falling, "add": add, "add_c": add_c, "add_t": add_t, "add_k": ak,
+             "buy_c": buy_c, "buy_t": buy_t,
             "sell": sell, "sell_c": sell_c, "sell_t": sell_t, "strong_up": strong_up,
             "buy_k": bk, "sell_k": sk}
 
@@ -190,6 +217,8 @@ def flags(r):
         f.append("이격도상단")
     if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
         f.append("이격도하단")
+    if r["sig"].get("add"):
+        f.insert(0, "불타기후보")
     if r["sig"]["buy"]:
         f.insert(0, "매수" + r["sig"]["buy"])
     if r["sig"]["sell"]:
@@ -354,7 +383,8 @@ def signals_text(results, msig):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
-    groups = (("매수 타점", "buy", "타점"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"),
+    groups = (("불타기 후보 (추세 유지 · 과열 아님 · 20일선 눌림 후 반등)", "add", "후보"),
+              ("매수 타점", "buy", "타점"), ("저평가 · 반등 대기 (방향 확인 전)", "buy", "관심"),
               ("하락 진행 중 · 매수 보류", "buy", "보류"), ("매도 검토 (과열 + 꺾임 확인)", "sell", "타점"),
               ("일부 익절 검토 (과열 · 추세는 유지)", "sell", "과열"), ("비중 축소 검토 (과열 + 추세 약화)", "sell", "관심"))
     for head, side, lv in groups:
