@@ -27,10 +27,16 @@ VARIANTS = [
     ("매도 신호에 전부", "같은 매수, 매도·익절검토·비중축소 중 하나라도 뜨면 전부 판다", ("매수", "불타기"), False, "all"),
     ("눌림진행도 매수", "매수·불타기·눌림진행에 산다(매도는 리포트 규칙)", ("매수", "불타기", "눌림진행"), False, "half"),
     ("하락기에만 매수", "시장이 200일선 아래일 때만 산다(매도는 리포트 규칙)", ("매수", "불타기"), True, "half"),
+    ("매수 트리거=골든X2", "매수 트리거를 골든X2로(싼 조건 2개 + 일·주·월 중 2개 최근 골든) · 불타기 포함, 매도는 리포트 규칙",
+     ("매수·트리거X2", "불타기"), False, "half"),
+    ("바닥 2/3에 매수", "바닥 2/3(바닥 다지기)에 처음 들어선 다음 날 산다(매도는 리포트 규칙)", ("바닥2/3",), False, "half"),
+    ("바닥 3/3에 매수", "바닥 3/3(추세 전환)에 처음 들어선 다음 날 산다(매도는 리포트 규칙)", ("바닥3/3",), False, "half"),
+    ("리포트 규칙 + 꼭지 매도", "리포트 규칙에 더해, 꼭지 단계(1/3·2/3·3/3)가 켜지면 전부 판다", ("매수", "불타기"), False, "half",
+     ("꼭지1/3", "꼭지2/3", "꼭지3/3")),
 ]
 
 
-def simulate(states, dates, buy_cats, bear_only, sell_mode):
+def simulate(states, dates, buy_cats, bear_only, sell_mode, extra_sell=()):
     """states: {code: DataFrame(index=날짜, close, cats(set), reg)}. 반환: 잔고 Series, 거래 목록, 현금비중 Series"""
     px = {c: s["close"].reindex(dates).ffill() for c, s in states.items()}
     cats = {c: s["cats"].reindex(dates) for c, s in states.items()}
@@ -76,7 +82,7 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode):
             if i == 0:          # 첫날은 이미 켜져 있던 신호라 '새로 켜짐'으로 보지 않음
                 continue
             if c in pos:
-                if "매도" in new:
+                if "매도" in new or new & set(extra_sell):
                     orders.append(("sell", c))
                 elif new & set(HALF_CATS):
                     orders.append(("sell" if sell_mode == "all" else "half", c))
@@ -107,8 +113,8 @@ def run(states, names, bench, bench_name, out_path, label):
     dates = sorted(set().union(*[set(s.index) for s in states.values()]))
     dates = pd.DatetimeIndex(dates)
     rows, curves = [], {}
-    for nm, desc, buy_cats, bear_only, mode in VARIANTS:
-        eq, trades, cash, open_n = simulate(states, dates, buy_cats, bear_only, mode)
+    for nm, desc, buy_cats, bear_only, mode, *extra in VARIANTS:
+        eq, trades, cash, open_n = simulate(states, dates, buy_cats, bear_only, mode, extra[0] if extra else ())
         rows.append({"name": nm, "desc": desc, **metrics(eq, trades, cash, open_n), "trades": trades})
         curves[nm] = eq / eq.iloc[0]
     # 비교 대상: 지수 보유, 균등 보유
@@ -166,9 +172,9 @@ def write_html(rows, curves, names, out_path, label, dates):
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{E(label)}</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb; --buy:#d92d20; --sell:#1d5fd1;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#6250d6; --bm1:#14181f; --bm2:#9aa0aa; }}
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#6250d6; --s5:#e87ba4; --s6:#008300; --s7:#eda100; --s8:#e34948; --bm1:#14181f; --bm2:#9aa0aa; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --sell:#6ea2ff; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#9085e9; --bm1:#eceff4; --bm2:#6b7380; }} }}
+  --buy:#ff6b5e; --sell:#6ea2ff; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#9085e9; --s5:#d55181; --s6:#008300; --s7:#c98500; --s8:#e66767; --bm1:#eceff4; --bm2:#6b7380; }} }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0 auto; padding:14px; max-width:980px; line-height:1.5; }}
 h1 {{ font-size:1.3rem; margin:4px 0; }} h2 {{ font-size:1rem; margin:18px 0 6px; }} .t, .note {{ color:var(--mut); font-size:.8rem; }}
 .wrap {{ overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; }}

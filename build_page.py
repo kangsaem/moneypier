@@ -88,6 +88,29 @@ def index_tags(v):
     return f'<div class="mtags">{out}</div>' if out else ""
 
 
+def spark(vals, w=120, h=26):
+    """작은 추이선(최근 120거래일). 끝점 강조"""
+    if not vals or len(vals) < 2:
+        return ""
+    lo, hi = min(vals), max(vals)
+    rng = (hi - lo) or 1
+    pts = " ".join(f"{i * w / (len(vals) - 1):.1f},{h - 2 - (v - lo) / rng * (h - 4):.1f}" for i, v in enumerate(vals))
+    ex, ey = pts.split()[-1].split(",")
+    return (f'<svg class="spark" viewBox="0 0 {w} {h}" width="{w}" height="{h}" aria-hidden="true">'
+            f'<polyline points="{pts}" fill="none" stroke="currentColor" stroke-width="1.4"/>'
+            f'<circle cx="{ex}" cy="{ey}" r="2.2" fill="currentColor"/></svg>')
+
+
+def credit_tags(cr):
+    """신용잔고/예탁금 카드: 과거 대비 위치(상위 %) 태그 + 최근 120일 추이선"""
+    top = max(100 - cr["pct"], 0)
+    cls = "hot" if cr["pct"] >= m.CREDIT_TOP else "h1" if cr["pct"] >= 75 else "l1" if cr["pct"] <= 25 else "n"
+    tip = (f"신용잔고 {cr['cred'] / 1e4:,.1f}조 / 고객예탁금 {cr['dep'] / 1e4:,.1f}조 ({cr['date']:%m-%d}) · "
+           f"{cr['since']:%Y-%m} 이후 {cr['n']}거래일 중 최고 {cr['max']:.1f}% · 최저 {cr['min']:.1f}%")
+    return (f'<div class="mtags" title="{E(tip)}"><span class="mt {cls}">과거 상위 {top:.0f}%</span>'
+            f'<span class="mt n">{cr["min"]:.0f}~{cr["max"]:.0f}%</span></div>{spark(cr.get("spark"))}')
+
+
 def mcard(name, value, chg_txt, ud, extra=""):
     return (f'<div class="mc {ud}"><span class="mn">{E(name)}</span>'
             f'<div class="mv"><b>{E(value)}</b><span class="mg">{E(chg_txt)}</span></div>{extra}</div>')
@@ -96,7 +119,7 @@ def mcard(name, value, chg_txt, ud, extra=""):
 cards = []
 ks = snap.get("ks")
 idx = snap.get("idx") or {}
-for key in ("kospi", "kosdaq"):      # 상단 카드는 코스피·코스닥(이격도 포함)·VIX 3개만
+for key in ("kospi", "kosdaq"):      # 상단 카드: 코스피·코스닥(이격도 포함)·VIX·신용/예탁금
     v = idx.get(key)
     if v:
         cards.append(mcard(v["name"], f"{v['close']:,.2f}", f"{v['chg']:+.2f}%", updown(v["chg"]), index_tags(v)))
@@ -104,6 +127,11 @@ v = snap.get("vix")
 if v:
     prev = v["last"] - v["chg"]
     cards.append(mcard("VIX", f"{v['last']:.2f}", f"{v['chg'] / prev * 100:+.2f}%" if prev else f"{v['chg']:+.2f}", updown(v["chg"])))
+cr = snap.get("credit")
+if cr:
+    cards.append(mcard("신용/예탁금", f"{cr['ratio']:.1f}%",
+                       f"{cr['chg20']:+.1f}%p·20일" if cr.get("chg20") is not None else "",
+                       updown(cr.get("chg20") or 0), credit_tags(cr)))
 for e in snap.get("err", []):
     cards.append(f'<div class="mc bad"><span class="mn">실패</span><b>{E(e)}</b></div>')
 
@@ -195,6 +223,22 @@ def _metrics_html(r, side, lv):
     out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else "n"))
     out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
     out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "dn" if r["from_high"] <= -20 else "n"))
+    bs = r.get("bottom") or 0
+    if bs:
+        bi = r.get("bottom_info") or {}
+        why = {1: "하락 멈춤: 저점 뒤 20거래일 신저가 없음 + 종가가 10일선 위",
+               2: "바닥 다지기: 하락 멈춤 + 쌍바닥 또는 RSI 상승 다이버전스 + 20일선 상승 전환",
+               3: "추세 전환: 하락 멈춤 + 5주>10주 + 종가가 10주선 위 + 10주선 하락 멈춤"}[bs]
+        low = f" · 저점 {m.fmt_price(bi['low'])} ({bi['low_date']:%y.%m.%d}, 1년 고점 대비 {bi['drop']:.0f}%, {bi['since']}거래일 전)" if bi.get("low") else ""
+        out.append(tag("bottom", f"바닥 {bs}/3", "bt" + str(bs), why + low))
+    ts = r.get("top") or 0
+    if ts:
+        ti = r.get("top_info") or {}
+        why = {1: "상승 멈춤: 고점 뒤 신고가 없음(과열 고점이면 바로) + 종가가 10일선 아래",
+               2: "꼭지 다지기: 상승 멈춤 + 쌍봉 또는 RSI 하락 다이버전스 + 20일선 하락 전환",
+               3: "추세 전환: 상승 멈춤 + 5주<10주 + 종가가 10주선 아래 + 10주선 상승 멈춤"}[ts]
+        hi = f" · 고점 {m.fmt_price(ti['high'])} ({ti['high_date']:%y.%m.%d}, 1년 저점 대비 +{ti['rise']:.0f}%, {ti['since']}거래일 전)" if ti.get("high") else ""
+        out.append(tag("top", f"꼭지 {ts}/3", "tp" + str(ts), why + hi))
     return '<div class="mrow">' + "".join(out) + "</div>"
 
 
@@ -355,7 +399,8 @@ if render_errors:
 extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 
 wide_link = "".join(f' &nbsp;·&nbsp; <a href="{f}.html">{t} →</a>'
-                    for f, t in (("backtest_wide", "코스피 시총 상위 · 5년"), ("backtest_nasdaq", "나스닥 대형 · 5년"))
+                    for f, t in (("backtest_wide", "코스피 시총 상위 · 5년"), ("backtest_nasdaq", "나스닥 대형 · 5년"),
+                                 ("backtest_mine", "내 종목 (수동 실행)"), ("backtests", "백테스트 기록·비교"))
                     if os.path.exists(f"results/{f}.html"))
 
 page = f"""<!doctype html>
@@ -407,9 +452,14 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
 .chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}
 .mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}
+.spark {{ display:block; margin-top:4px; color:var(--mut); max-width:100%; }}
 .mt {{ font-size:.72rem; padding:1px 7px; border-radius:6px; border:1.5px solid transparent; background:var(--line); color:var(--mut); white-space:nowrap; }}
 .mt.up {{ background:var(--buybg); color:var(--buy); }} .mt.dn {{ background:var(--sellbg); color:var(--sell); }}
 .mt.h1 {{ background:var(--buybg); color:var(--buy); }} .mt.h2 {{ background:var(--buyfill); color:#fff; }}
+.mt.bt1, .mt.bt2, .mt.bt3 {{ background:var(--card); color:var(--buy); border-color:var(--buy); font-weight:600; }}
+.mt.bt2 {{ background:var(--buybg); }} .mt.bt3 {{ background:var(--buybg); border-width:2px; font-weight:800; }}
+.mt.tp1, .mt.tp2, .mt.tp3 {{ background:var(--card); color:var(--sell); border-color:var(--sell); font-weight:600; }}
+.mt.tp2 {{ background:var(--sellbg); }} .mt.tp3 {{ background:var(--sellbg); border-width:2px; font-weight:800; }}
 .mt.l1 {{ background:var(--skybg); color:var(--skyfg); }} .mt.l2 {{ background:var(--skyfill); color:#fff; }}
 .mt.hot {{ background:var(--buyfill); color:#fff; }} .mt.cold {{ background:var(--sellfill); color:#fff; }}
 .mt.fn {{ background:var(--mutfill); color:#fff; }} .mt.h2, .mt.cold, .mt.l2, .mt.fn, .mt.hot {{ font-weight:700; border-color:transparent; }}
@@ -460,6 +510,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 .sec {{ margin-top:14px; }}
 :root {{ --bignum:1.15rem; }}
 .mcards {{ display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:6px; }}
+@media (min-width:700px) {{ .mcards {{ grid-template-columns:repeat(4,minmax(0,1fr)); }} }}
 .mc {{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:5px 8px; display:flex; flex-direction:column; line-height:1.3; }}
 .mc .mn {{ font-size:.72rem; color:var(--mut); }} .mc .mv {{ display:flex; flex-wrap:wrap; align-items:baseline; column-gap:6px; }}
 .mc b {{ font-size:var(--bignum); }} .mc .mg {{ font-size:.75rem; }} .mc .mtags {{ display:flex; flex-wrap:wrap; gap:3px; margin-top:3px; }} .mc .mt {{ white-space:normal; }}
@@ -476,7 +527,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 눌림진행 = 싸고 아직 떨어지는 중(5일 -5% 이하 또는 20일 신저가)이지만 장기 추세는 상승(월봉 정배열 또는 10월선 위) — 곧 매수 후보 / 하락진행 = 같은 상황인데 장기 추세도 하락 — 반등 확인 전까지 보류 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 색 채움 + 흰 글자 + 테두리 칸 = 이 시그널의 조건이나 트리거로 쓰인 항목(어느 쪽인지는 칸에 마우스를 올리면 표시). 나머지는 연한 색. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %). 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
+<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 눌림진행 = 싸고 아직 떨어지는 중(5일 -5% 이하 또는 20일 신저가)이지만 장기 추세는 상승(월봉 정배열 또는 10월선 위) — 곧 매수 후보 / 하락진행 = 같은 상황인데 장기 추세도 하락 — 반등 확인 전까지 보류 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 꼭지 n/3 = 1년 저점 대비 50% 이상 오른 종목의 꼭지 진행 단계(바닥을 뒤집은 것, 1은 과열 고점 뒤 10일선 이탈 등 빠른 경고라 틀릴 수 있음, 2·3이 확인). 바닥 n/3 = 1년 고점 대비 25% 이상 빠진 종목의 바닥 진행 단계(1 하락 멈춤 → 2 쌍바닥·다이버전스로 바닥 다지기 → 3 주봉 추세 전환, 칸에 마우스를 올리면 저점 정보). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 색 채움 + 흰 글자 + 테두리 칸 = 이 시그널의 조건이나 트리거로 쓰인 항목(어느 쪽인지는 칸에 마우스를 올리면 표시). 나머지는 연한 색. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %). 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
 
 <h2>종목 스크리닝</h2>
 <div class="dgrid">{screen_html}</div>

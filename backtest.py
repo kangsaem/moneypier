@@ -9,7 +9,9 @@
   (코스피 시가총액 상위 50개 · 최근 약 5년. backtest_wide.yml이 수동 실행으로 돌림)
 """
 import html
+import multiprocessing as mp
 import os
+import sys
 import time
 from datetime import datetime, timedelta, timezone
 
@@ -21,7 +23,12 @@ import portfolio
 BT_DAYS = int(os.environ.get("BT_DAYS", 252))         # 백테스트 기간(거래일). 252 ≈ 12개월, 1260 ≈ 5년
 UNIVERSE = os.environ.get("BT_UNIVERSE", "tickers")    # tickers = 내 종목 / kospi = 코스피 시가총액 상위 / nasdaq = 나스닥 대형주
 TOP = int(os.environ.get("BT_TOP", 50))               # kospi일 때 몇 개
-OUT = os.environ.get("BT_OUT", "docs/backtest")       # 결과 파일 경로(확장자 제외) → .html, .csv
+OUT = os.environ.get("BT_OUT", "docs/backtest")       # 최신 결과 파일 경로(확장자 제외) → .html, .csv
+WORKERS = int(os.environ.get("BT_WORKERS", 0)) or (os.cpu_count() or 1)   # 종목을 여러 코어에 나눠 계산 (0 = 코어 수만큼)
+VERSION = os.environ.get("BT_VERSION", "").strip()     # 예: 20261010-1131 → 결과 파일 이름에 붙여 쌓아 둠(최신본은 원래 이름으로도 복사)
+MEMO = os.environ.get("BT_MEMO", "").strip()           # 이번 실행에서 바꾼 로직 메모(목록 페이지에 표시)
+COMMIT = os.environ.get("GITHUB_SHA", "")[:7]
+BASE = OUT + (f"_{VERSION}" if VERSION else "")      # 이번 실행 결과 파일 경로(확장자 제외)
 HORIZONS = (5, 20, 60) # 신호 뒤 수익률을 볼 기간(거래일)
 MIN_N = 5              # 이보다 적으면 '표본 부족'
 COOLDOWN = 5           # 신호가 꺼진 뒤 이 거래일 수 이상 지나야 다시 '처음 뜬 날'로 셈(깜빡이는 신호 중복 방지)
@@ -29,7 +36,9 @@ NEUTRAL = {5: 0.5, 20: 1.0, 60: 2.0}   # 기준선과 차이가 이 %p 미만이
 
 # 분류: (이름, 기대 방향) — up = 신호 뒤 오르면 맞음, down = 내리거나 덜 오르면 맞음
 CATEGORIES = [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") for nm, _, _, tone in m.SIGNAL_GROUPS] + [
-    ("골든X3", "up"), ("골든X2", "up"), ("데드X3", "down"), ("데드X2", "down"), ("과열", "down")]
+    ("골든X3", "up"), ("골든X2", "up"), ("데드X3", "down"), ("데드X2", "down"), ("과열", "down"),
+    ("바닥1/3", "up"), ("바닥2/3", "up"), ("바닥3/3", "up"),
+    ("꼭지1/3", "down"), ("꼭지2/3", "down"), ("꼭지3/3", "down")]
 
 
 # ---- 비교용 '새 규칙 후보' (리포트 규칙은 바꾸지 않고 백테스트에서만 나란히 계산)
@@ -39,7 +48,8 @@ VARIANTS = [("골든X3·짧게", "up"), ("골든X2·짧게", "up"), ("데드X3·
             ("불타기·거래량↑", "up"), ("불타기·상대강도↑", "up"),
             ("익절검토·거래량폭증", "down"), ("과열·거래량폭증", "down"),
             ("매도·상대강도↓", "down"), ("비중축소·상대강도↓", "down"),
-            ("골든X2·거래량↑", "up"), ("데드X2·거래량↑", "down")]
+            ("골든X2·거래량↑", "up"), ("데드X2·거래량↑", "down"),
+            ("매수·트리거X2", "up")]
 VOL_UP = 1.5       # 거래량 증가 = 20일 평균의 1.5배 이상
 VOL_SPIKE = 2.5    # 거래량 폭증 = 20일 평균의 2.5배 이상
 RS_DAYS = 60       # 상대강도 = 최근 60거래일 수익률 - 같은 기간 시장(코스피, 미국 종목은 S&P500) 수익률
@@ -49,6 +59,8 @@ COMPARE = [
     ("골든크로스 기간", "현재 일 5거래일·주 4주·월 2개월 → 짧게 일 3거래일·주 2주·월 이번 달",
      ["골든X3", "골든X3·짧게", "골든X2", "골든X2·짧게"]),
     ("데드크로스 기간", "같은 방식", ["데드X3", "데드X3·짧게", "데드X2", "데드X2·짧게"]),
+    ("매수 트리거 강화", "트리거X2 = 싼 조건 2개 이상 + 일·주·월 중 2개 이상 최근 골든크로스(지금 매수의 트리거 대신)",
+     ["매수", "매수·트리거X2"]),
     ("매수 + 장기 추세", "추세O = 월봉 정배열 또는 종가가 10월선 위 / 추세X = 그 반대(지금 매수에서 빼고 반등대기로 보낼 후보)",
      ["매수", "매수·추세O", "매수·추세X"]),
     ("불타기 보완", f"거래량↑ = 반등한 날 거래량이 20일 평균의 {VOL_UP}배 이상 / 상대강도↑ = 최근 {RS_DAYS}거래일 수익률이 시장보다 높음",
@@ -75,8 +87,14 @@ def categories_of(r, feat=None):
             on.add(f"{nm}X{k2}·짧게")
     if len(r["sig"]["sell_c"]) >= 2:
         on.add("과열")
+    if r.get("bottom"):
+        on.add(f"바닥{r['bottom']}/3")
+    if r.get("top"):
+        on.add(f"꼭지{r['top']}/3")
     if "매수" in on:
         on.add("매수·추세O" if m.long_up(r) else "매수·추세X")
+    if len(r["sig"]["buy_c"]) >= 2 and m.cross_count(r, True) >= 2:
+        on.add("매수·트리거X2")
     f = feat or {}
     vr, vr5, rs = f.get("vr"), f.get("vr5"), f.get("rs")
     if vr is not None:
@@ -182,6 +200,27 @@ def load_universe():
     return [t for t in m.resolve_codes(m.load_tickers()) if t.get("code")]
 
 
+def _work(arg):
+    i, code, name = arg
+    try:
+        return i, ("ok", run_stock(code, name))
+    except Exception as e:
+        return i, ("err", f"{type(e).__name__}: {e}")
+
+
+def run_all(tickers):
+    """종목별 계산을 WORKERS개 프로세스로 나눠 실행. 끝나는 순서대로 (번호, 결과)를 돌려줌"""
+    args = [(i, t["code"], t["name"]) for i, t in enumerate(tickers)]
+    if WORKERS <= 1 or len(args) <= 1 or sys.platform == "win32":
+        for a in args:
+            yield _work(a)
+        return
+    ctx = mp.get_context("fork")          # 리눅스·맥: 부모의 설정·지수 캐시를 그대로 물려받음
+    with ctx.Pool(min(WORKERS, len(args))) as pool:
+        for r in pool.imap_unordered(_work, args):
+            yield r
+
+
 def stats(vals):
     v = [x for x in vals if x is not None]
     if not v:
@@ -195,16 +234,23 @@ def main():
     tickers = load_universe()
     events, base, failed = [], [], []
     states, names = {}, {}
-    for i, t in enumerate(tickers, 1):
-        try:
-            ev, bs, stt = run_stock(t["code"], t["name"])
+    for t in tickers:                     # 시장 지수는 먼저 한 번만 받아 둠(작업 프로세스들이 물려받음)
+        bench_for(t["code"])
+    results = [None] * len(tickers)
+    done = 0
+    for i, res in run_all(tickers):
+        results[i] = res
+        done += 1
+        t = tickers[i]
+        print(f"[{done}/{len(tickers)}] {t['name']}: " + (f"신호 {len(res[1][0])}건" if res[0] == "ok" else f"실패 {res[1]}"), flush=True)
+    for t, res in zip(tickers, results):  # 처리 순서와 상관없이 종목 목록 순서대로 합침(결과가 매번 같도록)
+        if res[0] == "ok":
+            ev, bs, stt = res[1]
             events += ev
             base += bs
             states[t["code"]], names[t["code"]] = stt, t["name"]
-            print(f"[{i}/{len(tickers)}] {t['name']}: 신호 {len(ev)}건")
-        except Exception as e:
-            failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
-            print(f"[{i}/{len(tickers)}] {t['name']} 실패: {e}")
+        else:
+            failed.append(f"{t['name']} ({t['code']}): {res[1]}")
 
     B = {h: stats([b[h] for b in base]) for h in HORIZONS}
     rows = []
@@ -223,7 +269,7 @@ def main():
     os.makedirs(os.path.dirname(OUT) or ".", exist_ok=True)
     if events:
         pd.DataFrame(events).assign(date=lambda d: d["date"].dt.strftime("%Y-%m-%d")).to_csv(
-            OUT + ".csv", index=False, encoding="utf-8-sig")
+            BASE + ".csv", index=False, encoding="utf-8-sig")
     period = ""
     if events or base:
         ds = [e["date"] for e in events]
@@ -237,11 +283,38 @@ def main():
                 bser = m._index_close(*bcodes)
             except Exception:
                 bser = None
-            portfolio.run(states, names, bser, bname, OUT + "_portfolio.html", label_of() + " · 계좌 시뮬레이션")
-            print(f"{OUT}_portfolio.html 생성 완료")
+            prow = portfolio.run(states, names, bser, bname, BASE + "_portfolio.html", label_of() + " · 계좌 시뮬레이션")
+            print(f"{BASE}_portfolio.html 생성 완료")
     except Exception as e:
+        prow = []
         print(f"계좌 시뮬레이션 실패: {type(e).__name__}: {e}")
-    print(f"{OUT}.html 생성 완료 ({time.time() - t0:.0f}초, 신호 {len(events)}건)")
+    save_version(rows, B, period, len(tickers) - len(failed), prow if states else [])
+    print(f"{OUT}.html 생성 완료 (코어 {WORKERS}개, {time.time() - t0:.0f}초, 신호 {len(events)}건)")
+
+
+def save_version(rows, B, period, n_stocks, prow):
+    """요약 json 저장 + 버전 실행이면 최신본 이름으로도 복사(링크는 최신본끼리 연결)"""
+    import json
+    import shutil
+    summ = {"kind": "backtest", "universe": UNIVERSE, "label": label_of(), "version": VERSION or "latest", "memo": MEMO,
+            "commit": COMMIT, "period": period, "stocks": n_stocks,
+            "base": {str(h): (B[h]["mean"] if B.get(h) else None) for h in HORIZONS},
+            "cats": {r["cat"]: {"n": r["n"], "d": {str(h): ((r["S"][h]["mean"] - B[h]["mean"]) if r["S"][h] and B.get(h) and r["S"][h]["n"] >= MIN_N else None)
+                                                    for h in HORIZONS}} for r in rows},
+            "port": [{k: p.get(k) for k in ("name", "tot", "cagr", "mdd", "n", "win")} for p in prow],
+            "files": {"html": os.path.basename(BASE) + ".html", "portfolio": os.path.basename(BASE) + "_portfolio.html",
+                      "csv": os.path.basename(BASE) + ".csv"},
+            "time": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
+    with open(BASE + ".json", "w", encoding="utf-8") as f:
+        json.dump(summ, f, ensure_ascii=False, indent=1)
+    if VERSION:
+        for ext in (".csv", "_portfolio.html", ".json"):
+            if os.path.exists(BASE + ext):
+                shutil.copyfile(BASE + ext, OUT + ext)
+        page = open(BASE + ".html", encoding="utf-8").read().replace(
+            f'{os.path.basename(BASE)}_portfolio.html', f'{os.path.basename(OUT)}_portfolio.html')
+        with open(OUT + ".html", "w", encoding="utf-8") as f:
+            f.write(page)
 
 
 def judge(ev, B, way):
@@ -359,13 +432,13 @@ a {{ color:inherit; }}
 </style></head><body>
 <h1>{E(label)}</h1>
 <div class="t">{E(period)} · 종목 {n_stocks}개 · 신호가 처음 뜬 날 종가 기준 · 계산 {kst:%Y-%m-%d %H:%M} KST ({secs:.0f}초) · <a href="./">리포트로</a></div>
-<div class="base"><b><a href="{os.path.basename(OUT)}_portfolio.html">계좌 시뮬레이션 보기 →</a></b> 리포트 규칙(매수·불타기에 사고 익절검토·비중축소·매도에 판다)대로 매매했을 때의 계좌 잔고를 지수·균등 보유와 비교</div>
+<div class="base"><b><a href="{os.path.basename(BASE)}_portfolio.html">계좌 시뮬레이션 보기 →</a></b> · <a href="backtests.html">지난 백테스트와 비교 →</a> 리포트 규칙(매수·불타기에 사고 익절검토·비중축소·매도에 판다)대로 매매했을 때의 계좌 잔고를 지수·균등 보유와 비교</div>
 <div class="base"><b>기준선</b> (같은 기간 아무 날이나 샀을 때) — {base}</div>
 <div class="wrap"><table>
 <tr><th class="c" rowspan="2">분류</th><th rowspan="2">신호</th>{head1}</tr>
 <tr>{head2}</tr>
 {trs}</table></div>
-<p class="note">▲ = 신호 뒤 오르면 맞는 분류(매수·불타기·눌림진행·반등대기·골든), ▼ = 내리거나 덜 오르면 맞는 분류(매도·익절검토·비중축소·하락진행·데드·과열).
+<p class="note">▲ = 신호 뒤 오르면 맞는 분류(매수·불타기·눌림진행·반등대기·골든·바닥), ▼ = 내리거나 덜 오르면 맞는 분류(매도·익절검토·비중축소·하락진행·데드·과열·꼭지).
 판정은 분류 평균과 기준선 평균의 차이(%p)로 봄({neutral} 안이면 '차이 없음'). {MIN_N}건 미만은 '표본 부족'. 플러스 = 수익률이 0보다 큰 비율.
 같은 종목에서 같은 신호가 {COOLDOWN}거래일 안에 다시 뜨면 이어진 신호로 보고 한 번만 셈. 최근 신호는 아직 시간이 안 지나 긴 기간(20·60일) 결과가 없으므로, 기간별 건수가 다름.
 한계: {"지금 보유·관심 종목만 대상(최근에 괜찮았던 종목 위주라 결과가 좋게 나오기 쉬움)" if UNIVERSE == "tickers" else ("지금 대형주 기준 — 지난 몇 년의 승자 위주라 기준선이 높고 결과가 좋게 나오기 쉬움" if UNIVERSE == "nasdaq" else "지금 시총 상위 종목 기준(과거에 상위였다 빠진 종목은 없음 — 결과가 다소 좋게 나오기 쉬움)")}, {"한 장세만 반영" if BT_DAYS < 500 else "여러 장세 포함"}, 거래비용 미반영.</p>
@@ -385,7 +458,7 @@ a {{ color:inherit; }}
 <h2 style="font-size:1rem">분류별 신호 목록</h2>{lists or '<div class="note">신호 없음</div>'}
 {fail}
 </body></html>"""
-    with open(OUT + ".html", "w", encoding="utf-8") as f:
+    with open(BASE + ".html", "w", encoding="utf-8") as f:
         f.write(page)
 
 

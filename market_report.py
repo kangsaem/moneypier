@@ -30,7 +30,15 @@ RSI_LO_WEAK = 30    # 일·주·월 모두 역배열(역·역·역, 하락 추�
 CHART_DAYS = 132    # 차트에 보여줄 기간(거래일). 큰 차트·소형 차트·코스피 공통
 BOTTOM_DROP = 25.0  # 바닥 단계: 1년 고점 대비 이 % 이상 빠진 저점이 있어야 '바닥'을 따짐
 BOTTOM_WIN = 120    # 바닥 단계: 저점 뒤 이 거래일까지만 바닥 단계로 봄
-BOTTOM_QUIET = 20   # 바닥 단계: 저점 뒤 이 거래일 동안 신저가가 없어야 '하락 멈춤'
+BOTTOM_QUIET = 20   # 바닥 단계: 저점 뒤 이 거래일 동안 신저가가 없어야 '하락 멈춤' (10일도 시험했으나 LS에선 더 빠르지 않았음 — 백테스트로 확인 예정)
+TOP_RISE = 50.0     # 꼭지 단계: 1년 저점 대비 이 % 이상 오른 고점이 있어야 '꼭지'를 따짐
+TOP_WIN = 120       # 꼭지 단계: 고점 뒤 이 거래일까지만 꼭지 단계로 봄
+TOP_QUIET = 10      # 꼭지 단계: 고점 뒤 이 거래일 동안 신고가가 없어야 '상승 멈춤'
+TOP_HOLD = "low"    # 꼭지 단계: 고점을 넘기 전까지 유지
+TOP_FAST = True     # 꼭지 1/3 빠른 판정: 고점 무렵(고점 포함 6거래일) RSI 과열(70 이상)이거나 50일 이격도가 과거 최대 근접(×NEAR_MAX)이면
+                    #   기다리지 않고 10일선 아래 첫 종가에 1/3
+BOTTOM_FAST = False # 바닥 1/3 빠른 판정(이격도 과거 최소 근접 시 기다리지 않음) — LS 시험에서 폭락 중 반등마다 켜져 꺼 둠(2026-10-10)
+BOTTOM_HOLD = "low"  # 바닥 단계 유지 방식: "low" = 저점을 깨기 전까지 유지 / "ma20" = 종가가 20일선 아래로 가면 해제 / "" = 매일 새로 판정
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
 
@@ -179,6 +187,12 @@ def analyze_df(df, code, name, light=False):
     newlow = c <= c.shift(1).rolling(20).min()          # 직전 20일 저가를 깬 날
     r["new_low3"] = bool(newlow.tail(3).any())          # 최근 3일 안에 신저가를 냈는가
     r["bottom"], r["bottom_info"] = bottom_stage(c, rs, r)
+    r["top"], r["top_info"] = top_stage(c, rs, r)
+    if r["bottom"] and r["top"]:                     # 둘 다 켜지면 더 최근 극점 쪽만 남김(급등 뒤 급락처럼 둘 다 조건을 채울 때)
+        if r["bottom_info"]["ext_date"] > r["top_info"]["ext_date"]:
+            r["top"], r["top_info"] = 0, {}
+        else:
+            r["bottom"], r["bottom_info"] = 0, {}
     r["sig"] = stock_signals(r)
     return r
 
@@ -213,8 +227,113 @@ def resolve_codes(items):
     return items
 
 
-def bottom_stage(c, rs, r):
-    """차트상 바닥 단계 0~3 (종가 기준).
+def _turn_stage(c, rs, top=False):
+    """바닥(top=False)·꼭지(top=True) 단계 공용 계산. 꼭지는 바닥 규칙을 위아래로 뒤집은 것.
+    바닥: 1년 고점 이후 최저 종가 = 극점, 그 고점 대비 BOTTOM_DROP% 이상 하락 / 꼭지: 1년 저점 이후 최고 종가 = 극점, 그 저점 대비 TOP_RISE% 이상 상승.
+    1/3 = 극점 뒤 QUIET거래일 이상 새 극점 없음 + 종가가 10일선 위(바닥)/아래(꼭지)
+          빠른 판정(BOTTOM_FAST/TOP_FAST): 극점 무렵 50일 이격도가 과거 최소(바닥)·최대(꼭지)에 근접했으면(꼭지는 RSI 과열도)
+          기다리지 않고 10일선을 넘는(바닥)·깨는(꼭지) 첫 종가에 1/3
+    2/3 = 1/3 + (쌍바닥·쌍봉: 극점에서 10% 이상 되돌린 뒤 그 폭의 60% 이상 다시 극점 쪽으로 와서 극점의 10% 안
+            또는 RSI 다이버전스: 두 번째 극점이 극점의 5% 안인데 RSI는 5 이상 덜 극단) + 20일선 방향 전환
+    3/3 = 1/3 조건 + 주봉 5/10 배열 전환(바닥 5주>10주, 꼭지 5주<10주) + 종가가 10주선 위/아래 + 10주선 방향 멈춤
+    유지(HOLD="low"): 한 번 켜진 단계는 극점을 깨기 전까지 유지. 극점 다음 날부터 오늘까지 하루씩 훑어서 판정."""
+    info = {}
+    if len(c) < 260:
+        return 0, info
+    need, win, quiet, hold_mode = ((TOP_RISE, TOP_WIN, TOP_QUIET, TOP_HOLD) if top
+                                   else (BOTTOM_DROP, BOTTOM_WIN, BOTTOM_QUIET, BOTTOM_HOLD))
+    yr = c.iloc[-250:]
+    if top:
+        d0, A = yr.idxmin(), float(yr.min())         # 최근 1년 저점
+        seg0 = c.loc[d0:]
+        d1, E = seg0.idxmax(), float(seg0.max())     # 그 뒤 최고 종가 = 꼭지 후보
+        move = (E / A - 1) * 100
+        ok = move >= need
+    else:
+        d0, A = yr.idxmax(), float(yr.max())         # 최근 1년 고점
+        seg0 = c.loc[d0:]
+        d1, E = seg0.idxmin(), float(seg0.min())     # 그 뒤 최저 종가 = 바닥 후보
+        move = (E / A - 1) * 100
+        ok = move <= -need
+    since = len(c.loc[d1:]) - 1
+    if not ok or since > win:
+        return 0, info
+    n = len(c)
+    i1 = n - 1 - since
+    tail = c.iloc[-(since + 90):]                    # 극점 전 여유분(20일선·10주선 계산용)
+    cv = c.values
+    off = n - len(tail)
+    m10 = tail.rolling(10).mean().values
+    m20 = tail.rolling(20).mean().values
+    per = tail.index.to_period("W-FRI")
+    wk_close = tail.groupby(per).last()
+
+    def asof(nb):                                    # 그날 기준 주봉 n개 평균 = (직전 완성 주봉 n-1개 + 그날 종가) / n
+        prev = wk_close.rolling(nb - 1).sum().shift(1).reindex(per).values
+        return (tail.values + prev) / nb
+    w5s, w10s = asof(5), asof(10)
+    rv = rs.values
+    sg = -1 if top else 1                            # 꼭지는 부호를 뒤집어 같은 비교를 씀
+    # 빠른 판정: 극점 무렵(극점 포함 6거래일)에 50일 이격도가 그때까지의 과거 최대(꼭지)·최소(바닥)에 근접했거나, 꼭지는 RSI 과열
+    d50 = (c / c.rolling(50).mean() * 100).values
+    lo_ = max(0, i1 - 5)
+    near = False
+    if top and TOP_FAST:
+        hist = pd.Series(d50[: i1 + 1]).cummax().values
+        near = any(d50[k] == d50[k] and d50[k] >= hist[k] * NEAR_MAX for k in range(lo_, i1 + 1)) or max(rv[lo_:i1 + 1]) >= RSI_HI
+    elif not top and BOTTOM_FAST:
+        hist = pd.Series(d50[: i1 + 1]).cummin().values
+        near = any(d50[k] == d50[k] and d50[k] <= hist[k] * NEAR_MIN for k in range(lo_, i1 + 1))
+    fast = bool(near)
+    P, E2, d2 = E, None, None                        # P = 극점 뒤 되돌림의 끝(바닥: 반등 고점, 꼭지: 눌림 저점), E2 = 그 뒤 두 번째 극점
+    lvl, flags = 0, {}
+    for j in range(i1, n):
+        x = cv[j]
+        if sg * x > sg * P:
+            P, E2, d2 = x, None, None
+        elif j > i1 and (E2 is None or sg * x < sg * E2):
+            E2, d2 = x, j
+        k = j - off
+        a10, a20 = m10[k], m20[k]
+        raw1 = ((j - i1) >= quiet or fast) and sg * x >= sg * a10
+        retest = div = False
+        moved = (P >= E * 1.10) if not top else (P <= E * 0.90)                  # 극점에서 10% 이상 되돌림
+        if moved and E2 is not None and sg * E2 <= sg * (P - (P - E) * 0.6):    # 그 폭의 60% 이상 다시 극점 쪽으로
+            retest = (E2 <= E * 1.10) if not top else (E2 >= E * 0.90)
+            div = ((E2 <= E * 1.05 and rv[d2] > rv[i1] + 5) if not top else (E2 >= E * 0.95 and rv[d2] < rv[i1] - 5))
+        m20_turn = k >= 5 and sg * a20 > sg * m20[k - 5]
+        w5, w10 = w5s[k], w10s[k]
+        w10_flat = k >= 5 and w10 == w10 and w10s[k - 5] == w10s[k - 5] and sg * w10 >= sg * w10s[k - 5]
+        raw = 0
+        if raw1:
+            raw = 1
+            if (retest or div) and m20_turn:
+                raw = 2
+            if w5 == w5 and w10 == w10 and sg * w5 > sg * w10 and sg * x >= sg * w10 and w10_flat:
+                raw = 3
+        hold = lvl and (hold_mode == "low" or (hold_mode == "ma20" and sg * x >= sg * a20))
+        lvl = max(lvl, raw) if hold else raw
+        flags = {"retest": retest, "div": div, "m20_turn": bool(m20_turn), "w10_flat": bool(w10_flat)}
+    info = {"move": move, "ext": E, "ext_date": d1, "since": since, **flags}
+    if not top:                                      # 예전 이름도 유지(태그·추적 페이지에서 사용)
+        info.update({"drop": move, "low": E, "low_date": d1})
+    else:
+        info.update({"rise": move, "high": E, "high_date": d1})
+    return lvl, info
+
+
+def bottom_stage(c, rs, r=None):
+    """바닥 단계 0~3 (규칙은 _turn_stage 참고)"""
+    return _turn_stage(c, rs, top=False)
+
+
+def top_stage(c, rs, r=None):
+    """꼭지 단계 0~3 (바닥 규칙을 위아래로 뒤집은 것)"""
+    return _turn_stage(c, rs, top=True)
+
+
+def bottom_stage_v1(c, rs, r):
+    """[기존 규칙 · 비교용으로만 남김] 차트상 바닥 단계 0~3 (종가 기준). 하락 멈춤 20거래일 고정, 날마다 새로 판정(깜빡임 있음).
     전제: 최근 1년 고점 이후의 최저 종가(첫 저점)가 그 고점 대비 BOTTOM_DROP% 이상 빠졌고, 그 저점이 BOTTOM_WIN거래일 이내.
     1/3 하락 멈춤   = 첫 저점 뒤 BOTTOM_QUIET거래일 이상 신저가 없음 + 종가 ≥ 10일선
     2/3 바닥 다지기 = 1/3 + (쌍바닥: 저점에서 10% 이상 반등 → 반등폭 60% 이상 되돌려 첫 저점의 110% 이내로 다시 내려옴
@@ -235,7 +354,7 @@ def bottom_stage(c, rs, r):
     m10 = float(c.iloc[-10:].mean())
     m20 = c.rolling(20).mean()
     info = {"drop": drop, "low": L1, "low_date": d1, "since": since}
-    quiet = since >= BOTTOM_QUIET
+    quiet = since >= 20
     stage = 1 if (quiet and cl >= m10) else 0
     retest = div = False
     seg = c.loc[d1:]
@@ -254,7 +373,7 @@ def bottom_stage(c, rs, r):
     w10 = w10s[-1]
     w10_up = w10 is not None and len(w10s) > 5 and w10s[-6] is not None and w10 >= w10s[-6]   # 10주선 하락 멈춤
     info["w10_up"] = bool(w10_up)
-    if quiet and cl >= m10 and wk.get("ok") and wk.get("above") and w10 is not None and cl >= w10 and w10_up:
+    if since >= 20 and cl >= m10 and wk.get("ok") and wk.get("above") and w10 is not None and cl >= w10 and w10_up:
         stage = 3
     return stage, info
 
@@ -402,6 +521,8 @@ def flags(r):
         f.append("이격도하단")
     if r.get("bottom"):
         f.append(f"바닥{r['bottom']}/3")
+    if r.get("top"):
+        f.append(f"꼭지{r['top']}/3")
     return [nm for nm, _ in sig_groups(r)] + f
 
 
@@ -466,6 +587,58 @@ def _index_info(name, s):
             "date": s.index[-1], "chart": chart_data(s), "disp": d, "rsi": float(rsi(s).iloc[-1])}
 
 
+CREDIT_PAGES = 60     # 증시자금동향 몇 쪽까지 읽을지(쪽마다 수십 거래일 → 대략 수 년치). 백분위의 '과거' 범위
+CREDIT_TOP = 90       # 신용잔고/예탁금 비율이 과거 이 백분위 이상이면 위험 지표 켜짐(= 과거 상위 10%)
+
+
+def credit_series(pages=CREDIT_PAGES):
+    """네이버 증시자금동향(전체 시장): 날짜별 고객예탁금·신용잔고(억원). 표 모양이 바뀌면 예외 → 상단 '실패' 카드로 보임"""
+    import re
+    import requests
+    rows, hdr_ok = {}, None
+    ua = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/sise/"}
+    for p in range(1, pages + 1):
+        t = requests.get("https://finance.naver.com/sise/sise_deposit.naver", params={"page": p},
+                         headers=ua, timeout=10).content.decode("euc-kr", errors="ignore")
+        if hdr_ok is None:   # 열 순서 확인: 고객예탁금이 신용잔고보다 앞이어야 함
+            a, b = t.find("고객예탁금"), t.find("신용잔고")
+            if a < 0 or b < 0:
+                raise ValueError("증시자금동향 표 머리글 없음")
+            hdr_ok = a < b
+        new = 0
+        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S):
+            cells = [re.sub(r"<[^>]+>|&nbsp;|\s", "", c) for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
+            if len(cells) < 5 or not re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", cells[0]):
+                continue
+            nums = [float(x.replace(",", "")) for x in cells[1:5] if re.fullmatch(r"[-+]?[\d,]+(\.\d+)?", x)]
+            if len(nums) < 4:
+                continue
+            d = pd.Timestamp("20" + cells[0].replace(".", "-"))
+            dep, cred = (nums[0], nums[2]) if hdr_ok else (nums[2], nums[0])   # 각 항목 = 금액, 증감
+            if d not in rows:
+                new += 1
+            rows[d] = (dep, cred)
+        if not new:          # 마지막 쪽을 넘김
+            break
+    if len(rows) < 20:
+        raise ValueError(f"증시자금동향 {len(rows)}일치뿐")
+    df = pd.DataFrame.from_dict(rows, orient="index", columns=["dep", "cred"]).sort_index()
+    df["ratio"] = df["cred"] / df["dep"] * 100
+    if not 3 < df["ratio"].median() < 150:
+        raise ValueError(f"신용/예탁금 비율 이상값 {df['ratio'].median():.0f}%")
+    return df
+
+
+def credit_info(df):
+    r = df["ratio"]
+    cur = float(r.iloc[-1])
+    return {"ratio": cur, "date": r.index[-1], "dep": float(df["dep"].iloc[-1]), "cred": float(df["cred"].iloc[-1]),
+            "pct": float((r <= cur).mean() * 100),           # 과거(읽은 기간) 중 오늘보다 낮거나 같은 날 비율
+            "max": float(r.max()), "min": float(r.min()), "since": r.index[0], "n": len(r),
+            "chg20": float(cur - r.iloc[-21]) if len(r) > 20 else None,
+            "spark": [round(float(x), 2) for x in r.tail(120)]}
+
+
 def market_snapshot():
     snap = {"ks": None, "vix": None, "y10": None, "y30": None, "idx": {}, "err": []}
     for key, nm, fc, yc in INDEXES:         # 코스피·코스닥·S&P500·나스닥 (카드 + 차트용)
@@ -495,12 +668,17 @@ def market_snapshot():
                          "pct10": float((h.iloc[-1] / h.iloc[-11] - 1) * 100) if n >= 11 else None}
         except Exception as e:
             snap["err"].append(f"{nm} ({type(e).__name__})")
+    try:
+        snap["credit"] = credit_info(credit_series())
+    except Exception as e:
+        snap["credit"] = None
+        snap["err"].append(f"신용/예탁금 ({type(e).__name__})")
     return snap
 
 
 def _level(score, total, kind):
     ratio = score / total if total else 0
-    hi, mid = ratio >= 0.6, ratio >= 0.3      # 항목 5개 기준: 3개 이상 / 2개 이상
+    hi, mid = ratio >= 0.6, ratio >= 0.3      # 5개면 3개 이상 / 2개, 6개면 4개 이상 / 2개
     if kind == "risk":
         return ("경고", "lv2") if hi else ("주의", "lv1") if mid else ("낮음", "lv0")
     return ("바닥권 신호 다수", "lv2") if hi else ("바닥 형성 가능성", "lv1") if mid else ("신호 약함", "lv0")
@@ -508,7 +686,7 @@ def _level(score, total, kind):
 
 def market_signals(snap, results):
     """시장 위험 / 시장 바닥 체크리스트. 항목 = (설명, 현재값, True|False|None(데이터없음))"""
-    ks, vix, y10 = snap.get("ks"), snap.get("vix"), snap.get("y10")
+    ks, vix, y10, cr = snap.get("ks"), snap.get("vix"), snap.get("y10"), snap.get("credit")
     n = len(results)
     bear = sum(1 for r in results if r["day"]["ok"] and not r["day"]["above"]) / n if n else None
     weak = sum(1 for r in results if r["rsi"] <= 35) / n if n else None
@@ -522,6 +700,9 @@ def market_signals(snap, results):
          (y10["chg10"] >= 0.3) if y10 and y10["chg10"] is not None else None),
         ("내 종목 70% 이상이 일봉 역배열", f"{bear:.0%}" if bear is not None else "-",
          (bear >= 0.7) if bear is not None else None),
+        (f"신용잔고/예탁금 비율 과거 상위 {100 - CREDIT_TOP}% (빚투 과열)",
+         f"{cr['ratio']:.1f}% · 상위 {max(100 - cr['pct'], 0):.0f}%" if cr else "-",
+         (cr["pct"] >= CREDIT_TOP) if cr else None),
     ]
     bottom = [
         ("코스피 50일 이격도 90 이하 또는 과거 최소권", f"{ks['disp']:.1f}" if ks else "-",
@@ -558,6 +739,10 @@ def market_text(snap):
         v = snap.get(key)
         if v:
             L.append(f"{nm} {v['last']:.2f}{unit} (전일 대비 {v['chg']:+.2f}, {v['date']:%m-%d})")
+    cr = snap.get("credit")
+    if cr:
+        L.append(f"신용잔고/고객예탁금 {cr['ratio']:.1f}% (신용 {cr['cred'] / 1e4:,.1f}조 / 예탁금 {cr['dep'] / 1e4:,.1f}조, {cr['date']:%m-%d})"
+                 f" · {cr['since']:%Y-%m} 이후 상위 {max(100 - cr['pct'], 0):.0f}%")
     for e in snap.get("err", []):
         L.append(f"가져오기 실패: {e}")
     return "\n".join(L)
