@@ -39,6 +39,10 @@ TOP_FAST = True     # 꼭지 1/3 빠른 판정: 고점 무렵(고점 포함 6거
                     #   기다리지 않고 10일선 아래 첫 종가에 1/3
 BOTTOM_FAST = False # 바닥 1/3 빠른 판정(이격도 과거 최소 근접 시 기다리지 않음) — LS 시험에서 폭락 중 반등마다 켜져 꺼 둠(2026-10-10)
 BOTTOM_HOLD = "low"  # 바닥 단계 유지 방식: "low" = 저점을 깨기 전까지 유지 / "ma20" = 종가가 20일선 아래로 가면 해제 / "" = 매일 새로 판정
+HI_DAYS = 60       # 정리 신호: 최근 60거래일 최고 종가 대비
+HI_DROP = 8.0      # 그 고점에서 이 % 이상 빠지면 '매도검토' 근거
+RS_DAYS = 60       # 상대강도 = 최근 60거래일 종목 수익률 - 지수 수익률
+VOL_SPIKE = 2.5    # 거래량 폭증 = 최근 5일 중 하루 거래량이 20일 평균의 이 배수 이상
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
 
@@ -148,9 +152,39 @@ def chart_data(c, rs=None, n=None, with_proj=True):
             "rsi": lst(rs) if rs is not None else None}
 
 
+_BENCH = {}
+
+
+def bench_close(code):
+    """상대강도 비교용 지수 종가: 국내(6자리 숫자 코드) = 코스피, 그 외 = S&P500. 실패하면 None"""
+    key = "kr" if str(code)[:6].isdigit() else "us"
+    if key not in _BENCH:
+        try:
+            _BENCH[key] = _index_close("KS11", "^KS11") if key == "kr" else _index_close("US500", "^GSPC")
+        except Exception:
+            _BENCH[key] = None
+    return _BENCH[key]
+
+
+def rel_strength(c, b, n=RS_DAYS):
+    """최근 n거래일 종목 수익률 - 같은 기간 지수 수익률 (%p)"""
+    if b is None or len(c) <= n:
+        return None
+    bb = b.reindex(c.index, method="ffill")
+    if pd.isna(bb.iloc[-1]) or pd.isna(bb.iloc[-1 - n]):
+        return None
+    return float((c.iloc[-1] / c.iloc[-1 - n] - 1) * 100 - (bb.iloc[-1] / bb.iloc[-1 - n] - 1) * 100)
+
+
 def analyze(code, name):
-    """종목 하나의 모든 지표를 계산해 dict로 반환"""
-    return analyze_df(load_prices(code), code, name)
+    df = load_prices(code)
+    r = analyze_df(df, code, name)
+    try:
+        r["rs60"] = rel_strength(df["Close"].dropna(), bench_close(code))
+    except Exception:
+        r["rs60"] = None
+    r["review"] = review(r)
+    return r
 
 
 def analyze_df(df, code, name, light=False):
@@ -185,6 +219,16 @@ def analyze_df(df, code, name, light=False):
     r["ret5"] = float((c.iloc[-1] / c.iloc[-6] - 1) * 100) if len(c) >= 6 else 0.0
     r["maxday"] = max(rets, key=abs) if rets else 0.0
     r["chart"] = chart_data(c, rs, with_proj=not light)
+    # 정리 신호용: 60거래일 최고 종가 대비 위치, 최근 5일 거래량 폭증(20일 평균 대비 최대 배수)
+    r["hi60"] = float(c.tail(HI_DAYS).max())
+    r["from_hi60"] = (r["close"] / r["hi60"] - 1) * 100
+    r["vol5"] = None
+    if "Volume" in df and df["Volume"].fillna(0).tail(30).sum() > 0:
+        v = df["Volume"].reindex(c.index).astype(float).replace(0, float("nan"))
+        vr = v / v.shift(1).rolling(20, min_periods=10).mean()
+        x = vr.tail(5).max()
+        r["vol5"] = None if pd.isna(x) else float(x)
+    r["rs60"] = None                                     # 상대강도(종목 60일 수익률 - 지수 60일 수익률) — analyze()에서 채움
     newlow = c <= c.shift(1).rolling(20).min()          # 직전 20일 저가를 깬 날
     r["new_low3"] = bool(newlow.tail(3).any())          # 최근 3일 안에 신저가를 냈는가
     r["bottom"], r["bottom_info"] = bottom_stage(c, rs, r)
@@ -541,6 +585,60 @@ def stock_signals(r):
             "buy_k": bk, "sell_k": sk, "rsi_hi": rsi_hi, "rsi_lo": rsi_lo}
 
 
+# ---------------------------------------------------------------- 리포트 표시 분류 (2026-10-10, 백테스트 결과 반영)
+# 매수검토 = 매수 또는 눌림진행 (+ 근거 수로 강도) / 매도검토 = 아래 4개 중 하나 이상 (걸린 수로 강도)
+#   ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증  ④ 60거래일 최고 종가 대비 -8% 이하
+# 추격매수 주의 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 (매도검토에 이미 있으면 제외)
+# 상승중 = 불타기 · 대기 = 반등대기 · 하락-대기 = 하락진행
+REVIEW = (("buy", "매수검토", "buy"), ("sell", "매도검토", "sell"), ("caution", "추격매수 주의", "watch"),
+          ("up", "상승중", "buy"), ("wait", "대기", "watch"), ("waitdn", "하락-대기", "watch"))
+
+
+def review(r):
+    sg = r["sig"]
+    rs, vol = r.get("rs60"), r.get("vol5")
+    weak = rs is not None and rs < 0
+    spike = vol is not None and vol >= VOL_SPIKE
+    out = {k: None for k, _, _ in REVIEW}
+    # 매수검토
+    if sg["buy"] in ("타점", "눌림"):
+        why = ["매수 신호" if sg["buy"] == "타점" else "눌림진행"]
+        if len(sg["buy_c"]) >= 3:
+            why.append("싼 조건 3개 모두")
+        if long_up(r):
+            why.append("장기 추세 상승")
+        if r.get("bottom"):
+            why.append("바닥근접")
+        out["buy"] = {"score": len(why), "why": why}
+    # 매도검토
+    why, warn = [], []
+    if sg["sell"] == "타점":
+        (why if weak else warn).append(f"매도 + 상대강도↓({rs:+.1f}%p)" if weak else "매도(상대강도 양호)")
+    if sg["sell"] == "관심":
+        (why if weak else warn).append(f"비중축소 + 상대강도↓({rs:+.1f}%p)" if weak else "비중축소(상대강도 양호)")
+    if sg["sell"] == "과열":
+        (why if spike else warn).append(f"익절검토 + 거래량폭증({vol:.1f}배)" if spike else "익절검토(거래량 폭증 없음)")
+    if r.get("from_hi60") is not None and r["from_hi60"] <= -HI_DROP:
+        why.append(f"{HI_DAYS}일 고점 대비 {r['from_hi60']:.1f}%")
+    if why:
+        out["sell"] = {"score": len(why), "why": why}
+    elif warn:
+        out["caution"] = {"score": 0, "why": warn}
+    if sg["add"] == "후보":
+        out["up"] = {"score": 0, "why": sg["add_c"]}
+    if sg["buy"] == "관심":
+        out["wait"] = {"score": 0, "why": ["싼 조건 2개 이상 · 하락 멈춤 · 반등 신호 전"]}
+    if sg["buy"] == "보류":
+        out["waitdn"] = {"score": 0, "why": ["싸지만 아직 하락 중 · 장기 추세도 하락"]}
+    return out
+
+
+def review_groups(r):
+    """이 종목이 들어가는 리포트 칸 [(이름, 성격, 강도), ...]"""
+    rv = r.get("review") or review(r)
+    return [(nm, tone, rv[k]["score"]) for k, nm, tone in REVIEW if rv.get(k)]
+
+
 # ---------------------------------------------------------------- 분류
 # 시그널 분류: (표시 이름, 신호 쪽, 내부 단계, 성격). 화면·칩·텍스트가 모두 이 이름과 순서를 쓴다.
 # 성격: buy = 사는 쪽(세부내용 탭 연분홍), sell = 파는 쪽(연하늘), watch = 지켜보기(색 없음)
@@ -576,14 +674,13 @@ def cross_count(r, golden, wins=None):
 
 
 def flags(r):
-    f = []
+    """세부내용 칩: 리포트 칸(강도 ●) + 일봉 최근 크로스(매수·매도 트리거로 쓰이는 것만) + 8% 변동 · 이격도 · 바닥/꼭지 근접"""
+    f = [nm + (" " + "●" * sc if sc else "") for nm, _, sc in review_groups(r)]
     d = r["day"]
-    for golden, nm in ((True, "골든"), (False, "데드")):
-        k = cross_count(r, golden)
-        if k >= 2:
-            f.append(f"{nm}X{k}")
-        elif d["ok"] and d["cross"] and d["cross"]["golden"] == golden and d["cross"]["ago"] < CROSS_DAYS:
-            f.append(f"최근{nm}")
+    if d["ok"] and d["cross"] and d["cross"]["ago"] < CROSS_DAYS:
+        f.append("최근골든" if d["cross"]["golden"] else "최근데드")
+    if len(r["sig"]["sell_c"]) >= 2:
+        f.append("과열")
     if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT:
         f.append(f"{MOVE_PCT:g}%↑변동")
     if r["disp"] and r["disp"]["up"] >= NEAR_MAX:
@@ -591,10 +688,10 @@ def flags(r):
     if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
         f.append("이격도하단")
     if r.get("bottom"):
-        f.append(f"바닥{r['bottom']}/3")
+        f.append("바닥근접")
     if r.get("top"):
-        f.append(f"꼭지{r['top']}/3")
-    return [nm for nm, _ in sig_groups(r)] + f
+        f.append("꼭지근접")
+    return f
 
 
 def fd(date, unit):
@@ -912,7 +1009,7 @@ def extra_line(r, lv=None):
     parts = []
     if d:
         v = disp_view(d)
-        parts.append(f"50일 이격 {'상단' if v['side'] == 'high' else '하단'} {v['pct']:.0f}% ({_n(d['min'])}/{_n(d['max'])})")
+        parts.append(f"50일 이격도 {d['cur']:.1f} ({'높은 쪽' if v['side'] == 'high' else '낮은 쪽'}, 최소 {_n(d['min'])} / 최대 {_n(d['max'])})")
     st = []
     for lb, k in (("일", "day"), ("주", "week"), ("월", "month")):
         x = r[k]
@@ -929,16 +1026,16 @@ def signals_text(results, msig):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
-    for head, side, lv, _ in SIGNAL_GROUPS:
-        hit = [r for r in results if r["sig"][side] == lv]
-        if not hit:            # 해당 종목이 없는 분류는 생략
+    for key, head, _ in REVIEW:
+        hit = sorted([r for r in results if (r.get("review") or {}).get(key)], key=lambda r: -r["review"][key]["score"])
+        if not hit:            # 해당 종목이 없는 칸은 생략
             continue
         L.append(f"\n▶ {head} [{len(hit)}]")
         for r in hit:
-            sg = r["sig"]
-            L.append(f"• {tl(r)}")
-            L.append("    조건: " + ", ".join(sg[side + "_c"]) + (" | 트리거: " + ", ".join(sg[side + "_t"]) if sg[side + "_t"] else ""))
-            L.append("    " + extra_line(r, lv))
+            rv = r["review"][key]
+            L.append(f"• {tl(r)}" + (" " + "●" * rv["score"] if rv["score"] else ""))
+            L.append("    " + ", ".join(rv["why"]))
+            L.append("    " + extra_line(r))
     return "\n".join(L)
 
 
@@ -955,16 +1052,13 @@ def summary_sections(results):
     """스크리닝 결과를 [(제목, 종목수, 줄목록), ...] 로 반환"""
     S = []
 
-    # 일·주·월 중 몇 개에서 최근 같은 방향 크로스가 났는지 (X3 = 셋 다, X2 = 둘)
-    def xsec(golden, k):
-        hit = [r for r in results if cross_count(r, golden) == k]
-        nm = "골든" if golden else "데드"
-        return section(f"{nm}크로스 X{k}  (최근: 일 {CROSS_WIN['day']}거래일 · 주 {CROSS_WIN['week']}주 · 월 {CROSS_WIN['month']}개월 이내)",
-                       hit, lambda r: [f"• {tl(r)}", trans_line(r)], "buy" if golden else "sell")
-
+    # 매수·매도 트리거로 쓰이는 일봉 크로스(최근 5거래일)만. 일·주·월 X3/X2는 백테스트에서 효과가 없어 뺌(2026-10-10)
     for golden in (True, False):
-        for k in (3, 2):
-            S.append(xsec(golden, k))
+        nm = "골든" if golden else "데드"
+        hit = [r for r in results if r["day"]["ok"] and r["day"]["cross"] and r["day"]["cross"]["golden"] == golden
+               and r["day"]["cross"]["ago"] < CROSS_DAYS]
+        S.append(section(f"최근 {nm}크로스 (일봉 5·10일선, {CROSS_DAYS}거래일 이내 · 매수·매도 트리거)", hit,
+                         lambda r: [f"• {tl(r)}", trans_line(r)], "buy" if golden else "sell"))
 
     # 과열 종목: 과열 조건(RSI·이격도·5일 급등) 2개 이상 — 매도/익절검토/비중축소 어디로 분류됐든 모아서 표시
     hot = [r for r in results if len(r["sig"]["sell_c"]) >= 2]

@@ -212,8 +212,9 @@ def _metrics_html(r, side, lv):
             cls = "h2" if v["strong"] else "h1"
         else:                        # 낮은 쪽 = 하늘색, 과거 최소 대비 %
             cls = "l2" if v["strong"] else "l1"
-        txt = f"50일 이격 {v['pct']:.0f}% ({m._n(d['min'])}/{m._n(d['max'])})"
-        out.append(tag("disp", txt, cls, f"현재 50일 이격도 {d['cur']:.1f}"))
+        txt = f"이격도 {d['cur']:.1f} ({m._n(d['min'])}~{m._n(d['max'])})"
+        out.append(tag("disp", txt, cls, f"50일 이격도 현재 {d['cur']:.1f} · 과거 최소 {d['min']:.1f} / 최대 {d['max']:.1f}"
+                                         f" · 높음 기준 {d['max_thr']:.1f} 이상 / 낮음 기준 {d['min_thr']:.1f} 이하"))
     trig = r["sig"][side + "_t"]
     ago = r["day"]["cross"]["ago"] if r["day"]["ok"] and r["day"]["cross"] else 0
     day_note = ""
@@ -254,7 +255,7 @@ def _metrics_html(r, side, lv):
                2: "바닥 다지기: 하락 멈춤 + 쌍바닥 또는 RSI 상승 다이버전스 + 20일선 상승 전환",
                3: "추세 전환: 하락 멈춤 + 5주>10주 + 종가가 10주선 위 + 10주선 하락 멈춤"}[bs]
         low = f" · 저점 {m.fmt_price(bi['low'])} ({bi['low_date']:%y.%m.%d}, 1년 고점 대비 {bi['drop']:.0f}%, {bi['since']}거래일 전)" if bi.get("low") else ""
-        out.append(tag("bottom", f"바닥 {bs}/3", "bt" + str(bs), why + low))
+        out.append(tag("bottom", "바닥근접", "bt2", f"단계 {bs}/3 · " + why + low))
     ts = r.get("top") or 0
     if ts:
         ti = r.get("top_info") or {}
@@ -262,7 +263,7 @@ def _metrics_html(r, side, lv):
                2: "꼭지 다지기: 상승 멈춤 + 쌍봉 또는 RSI 하락 다이버전스 + 20일선 하락 전환",
                3: "추세 전환: 상승 멈춤 + 5주<10주 + 종가가 10주선 아래 + 10주선 상승 멈춤"}[ts]
         hi = f" · 고점 {m.fmt_price(ti['high'])} ({ti['high_date']:%y.%m.%d}, 1년 저점 대비 +{ti['rise']:.0f}%, {ti['since']}거래일 전)" if ti.get("high") else ""
-        out.append(tag("top", f"꼭지 {ts}/3", "tp" + str(ts), why + hi))
+        out.append(tag("top", "꼭지근접", "tp2", f"단계 {ts}/3 · " + why + hi))
     return '<div class="mrow">' + "".join(out) + "</div>"
 
 
@@ -383,21 +384,35 @@ def metrics_html(r, side, lv):
         return ""
 
 
-def sig_block(head_txt, side, lv, cls):
-    hit = [r for r in results if r["sig"][side] == lv]
+REV_SIDE = {"buy": "buy", "sell": "sell", "caution": "sell", "up": "add", "wait": "buy", "waitdn": "buy"}
+REV_CLS = {"buy": "buy strong", "sell": "sell strong", "caution": "tp", "up": "add", "wait": "hold", "waitdn": "hold"}
+REV_NOTE = {"buy": "매수 신호 또는 눌림진행 · ● = 근거 수(매수 신호/눌림진행 · 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접)",
+            "sell": "● = 걸린 정리 근거 수(매도+상대강도↓ · 비중축소+상대강도↓ · 익절검토+거래량폭증 · 60일 고점 대비 -8%)",
+            "caution": "과열·경고는 떴지만 정리 근거(상대강도↓·거래량폭증)는 없음 — 팔 이유는 아니고 새로 사지는 말 것",
+            "up": "상승 추세 · 과열 아님 · 20일선 눌림 뒤 반등 (백테스트상 효과는 뚜렷하지 않음 — 참고)",
+            "wait": "싼 조건 2개 이상 · 하락은 멈췄지만 반등 신호 전",
+            "waitdn": "싸지만 아직 하락 중이고 장기 추세도 하락 — 반등 확인 전까지 대기"}
+
+
+def rev_block(key, head_txt):
+    hit = sorted([r for r in results if (r.get("review") or {}).get(key)], key=lambda r: -r["review"][key]["score"])
+    if not hit:            # 해당 종목이 없는 칸은 화면에 표시하지 않음
+        return ""
+    side = REV_SIDE[key]
     items = ""
     for r in hit:
-        items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>'
-                  f'</div>{metrics_html(r, side, lv)}<div class="chwrap sigch">{svg_chart(r["chart"])}</div></div>')
-    if not hit:            # 해당 종목이 없는 영역은 화면에 표시하지 않음
-        return ""
-    return f'<div class="sg {cls}"><h3>{head_txt} <small>{len(hit)}</small></h3>{items}</div>'
+        rv = r["review"][key]
+        dots = (f'<em class="dots" title="강도 {rv["score"]}">' + "●" * rv["score"] + "</em>") if rv["score"] else ""
+        why = "".join(f'<span class="why {key}">{E(w)}</span>' for w in rv["why"])
+        lv = r["sig"].get(side) if side != "add" else None
+        items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>{dots}</div>'
+                  f'<div class="whys">{why}</div>{metrics_html(r, side, lv)}<div class="chwrap sigch">{svg_chart(r["chart"])}</div></div>')
+    return (f'<div class="sg {REV_CLS[key]}"><h3>{head_txt} <small>{len(hit)}</small></h3>'
+            f'<div class="ex">{E(REV_NOTE[key])}</div>{items}</div>')
 
 
-# 순서: 매수 / 매도 / 불타기 / 익절 검토 / 비중 축소 / 하락 진행 / 반등 대기  (market_report.SIGNAL_GROUPS와 같은 순서)
-SG_CLS = {"매수": "buy strong", "매도": "sell strong", "불타기": "add", "익절검토": "tp",
-          "비중축소": "sell", "눌림진행": "buy", "하락진행": "hold", "반등대기": "buy"}
-sig_html = "".join(sig_block(nm, side, lv, SG_CLS[nm]) for nm, side, lv, _ in m.SIGNAL_GROUPS)
+# 순서: 매수검토 / 매도검토 / 추격매수 주의 / 상승중 / 대기 / 하락-대기  (market_report.REVIEW와 같은 순서)
+sig_html = "".join(rev_block(k, nm) for k, nm, _ in m.REVIEW)
 
 screen_html = ""
 for h, n, lines, tone in guard("스크리닝", m.summary_sections, results, default=[]):
@@ -409,9 +424,9 @@ for h, n, lines, tone in guard("스크리닝", m.summary_sections, results, defa
 detail_html = ""
 for r in results:
     fl = guard(f"{r['name']} 태그", m.flags, r, default=[])
-    tone = dict(m.sig_groups(r))
-    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch"}.get(tone.get(f), "flag")) for f in fl)
-    tones = [t for _, t in m.sig_groups(r) if t != "watch"]
+    tone = {nm: t for nm, t, _ in m.review_groups(r)}
+    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch"}.get(tone.get(f.split(" ●")[0]), "flag")) for f in fl)
+    tones = [t for _, t, _ in m.review_groups(r) if t != "watch"]
     dcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"'}.get(tones[0] if tones else "", "")   # 매수 쪽 연분홍, 매도 쪽 연하늘
     rc = "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else ""
     detail_html += (f'<details{dcls}><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
@@ -477,6 +492,12 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .sg.tp {{ border-left-color:var(--sky); }} .sg.tp h3 {{ color:var(--skyfg); }}
 .chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
 .chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}
+.dots {{ margin-left:auto; font-style:normal; letter-spacing:1px; font-size:.85rem; }}
+.sg.buy .dots {{ color:var(--buy); }} .sg.sell .dots {{ color:var(--sell); }}
+.whys {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }}
+.why {{ font-size:.72rem; padding:1px 7px; border-radius:6px; font-weight:600; border:1px solid var(--line); background:var(--card); }}
+.why.buy {{ color:var(--buy); border-color:var(--buy); }} .why.sell {{ color:var(--sell); border-color:var(--sell); }}
+.why.caution {{ color:var(--skyfg); border-color:var(--sky); }} .why.up {{ color:var(--buy); }} .why.wait, .why.waitdn {{ color:var(--mut); }}
 .mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}
 .glink {{ display:block; margin-top:8px; font-size:.82rem; color:var(--fg); text-decoration:none; border-top:1px solid var(--line); padding-top:8px; }}
 .glink small {{ color:var(--mut); }} .glink:hover {{ text-decoration:underline; }}
@@ -555,7 +576,12 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">매수 = 싼 조건 2개 이상 + 반등 트리거 / 매도 = 과열 조건 2개 이상 + 꺾임 트리거 / 불타기 = 상승 추세 · 과열 아님 · 20일선 눌림 후 반등 / 익절검토 = 과열이지만 일·주봉 정배열(추세 유지, 분할 익절 검토) / 비중축소 = 과열인데 일·주봉 중 역배열(추세 약화) / 눌림진행 = 싸고 아직 떨어지는 중(5일 -5% 이하 또는 20일 신저가)이지만 장기 추세는 상승(월봉 정배열 또는 10월선 위) — 곧 매수 후보 / 하락진행 = 같은 상황인데 장기 추세도 하락 — 반등 확인 전까지 보류 / 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 꼭지 n/3 = 1년 저점 대비 50% 이상 오른 종목의 꼭지 진행 단계(바닥을 뒤집은 것, 1은 과열 고점 뒤 10일선 이탈 등 빠른 경고라 틀릴 수 있음, 2·3이 확인). 바닥 n/3 = 1년 고점 대비 25% 이상 빠진 종목의 바닥 진행 단계(1 하락 멈춤 → 2 쌍바닥·다이버전스로 바닥 다지기 → 3 주봉 추세 전환, 칸에 마우스를 올리면 저점 정보). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 색 채움 + 흰 글자 + 테두리 칸 = 이 시그널의 조건이나 트리거로 쓰인 항목(어느 쪽인지는 칸에 마우스를 올리면 표시). 나머지는 연한 색. 50일 이격 태그는 과거 범위의 높은 쪽이면 빨강(최대 대비 %), 낮은 쪽이면 하늘색(최소 대비 %). 종목별 세부내용에서 매수·불타기 종목은 연분홍, 매도·익절검토·비중축소 종목은 연하늘 배경.</div>
+<div class="legend">매수검토 = 매수 신호(싼 조건 2개 이상 + 반등 트리거) 또는 눌림진행(싸고 아직 빠지는 중이지만 장기 추세 상승). ● = 근거 수.
+매도검토 = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹치거나, 60거래일 최고 종가 대비 -8% 이하. ● = 걸린 근거 수 — 두 시장 백테스트에서 일관되게 맞은 경고만 모음.
+추격매수 주의 = 과열·경고는 떴지만 정리 근거는 없음(백테스트상 뒤에 더 오르는 경우도 많음 — 팔 이유는 아니고 새로 사지는 말 것).
+상승중 = 상승 추세 · 과열 아님 · 20일선 눌림 뒤 반등. 대기 = 싸고 하락은 멈췄지만 반등 신호 전. 하락-대기 = 싸지만 하락 중이고 장기 추세도 하락.
+바닥근접 / 꼭지근접 = 1년 고점 대비 25% 이상 빠진(오른) 종목이 하락(상승)을 멈추고 돌아서는 중(칸에 마우스를 올리면 단계·저점·고점) — 매매 신호가 아니라 참고.
+이격도 = 50일 이격도 현재값 (과거 최소~최대). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 채움 칸 = 이 판정의 조건·트리거로 쓰인 항목.</div>
 
 <h2>종목 스크리닝</h2>
 <div class="dgrid">{screen_html}</div>

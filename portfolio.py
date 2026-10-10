@@ -24,35 +24,30 @@ HALF_CATS = ("익절검토", "비중축소")
 # (이름, 설명, 매수 분류, 하락기에만 매수, 매도 방식, 추가 옵션)
 #  매도 방식: half = 익절검토·비중축소에 절반·매도에 전부(리포트 규칙) / all = 셋 중 하나면 전부 /
 #            hold = 매도·비중축소에 상대강도↓(최근 60일 지수보다 약함)가 겹칠 때만 전부(홀딩형)
-#  옵션: stop = (방식, %) — fix_next = 종가가 매수가 -%면 다음 날 종가도 그 아래일 때 매도(내 손절 방식),
+#  옵션: stops = [(방식, %), ...] 하나라도 걸리면 매도 — fix_next = 종가가 매수가 -%면 다음 날 종가도 그 아래일 때 매도(내 손절 방식),
 #                           fix_now = 종가가 매수가 -%면 그날 종가에 매도, trail = 보유 중 최고 종가 대비 -%면 그날 매도
 #        week_exit = 주봉 붕괴(5주<10주 + 종가<10주선)면 다음 날 매도(산 지 5거래일 뒤부터) · extra_sell = 이 분류가 켜지면 전부 매도
 HOLD_BUY = ("매수", "눌림진행")
 HOLD_SELL = ("매도·상대강도↓", "비중축소·상대강도↓")
 VARIANTS = [
     ("리포트 규칙", "매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 판다(구버전)", ("매수", "불타기"), False, "half", {}),
-    ("리포트 + 손절8%", "리포트 규칙 + 종가가 매수가 -8%면 다음 날 종가도 회복 못 할 때 매도", ("매수", "불타기"), False, "half",
-     {"stop": ("fix_next", 8)}),
-    ("홀딩형", "매수·눌림진행에 사고, 매도·비중축소에 상대강도↓가 겹칠 때만 판다(익절검토·과열·꼭지는 무시)", HOLD_BUY, False, "hold", {}),
-    ("홀딩 + 손절8%", "홀딩형 + 종가 매수가 -8% → 다음 날 종가도 회복 못 하면 매도(내 손절 방식)", HOLD_BUY, False, "hold",
-     {"stop": ("fix_next", 8)}),
-    ("홀딩 + 손절8% 즉시", "홀딩형 + 종가가 매수가 -8% 이하면 그날 매도", HOLD_BUY, False, "hold", {"stop": ("fix_now", 8)}),
-    ("홀딩 + 손절12%", "홀딩형 + 종가 매수가 -12% → 다음 날 종가도 회복 못 하면 매도", HOLD_BUY, False, "hold",
-     {"stop": ("fix_next", 12)}),
-    ("홀딩 + 고점-8%", "홀딩형 + 보유 중 최고 종가 대비 -8%면 매도(추적 손절)", HOLD_BUY, False, "hold", {"stop": ("trail", 8)}),
-    ("홀딩 + 고점-15%", "홀딩형 + 보유 중 최고 종가 대비 -15%면 매도(주도주용 넉넉한 추적 손절)", HOLD_BUY, False, "hold",
-     {"stop": ("trail", 15)}),
-    ("홀딩 + 주봉붕괴", "홀딩형 + 주봉 붕괴(5주선<10주선, 종가<10주선)면 매도", HOLD_BUY, False, "hold", {"week_exit": True}),
-    ("매도 신호에 전부", "매수·불타기에 사고, 매도·익절검토·비중축소 중 하나라도 뜨면 전부 판다", ("매수", "불타기"), False, "all", {}),
-    ("하락기에만 매수", "시장이 200일선 아래일 때만 산다(매도는 리포트 규칙)", ("매수", "불타기"), True, "half", {}),
-    ("바닥 3/3에 매수", "바닥 3/3(추세 전환)에 처음 들어선 다음 날 산다(매도는 리포트 규칙)", ("바닥3/3",), False, "half", {}),
+    ("리포트 + 손절8%", "리포트 규칙 + 종가가 매수가 -8%면 다음 날 종가도 회복 못 할 때 매도 (기준)", ("매수", "불타기"), False, "half",
+     {"stops": [("fix_next", 8)]}),
+    ("손절8% + 고점-8%", "기준 + 산 뒤 최고 종가 대비 -8%면 그날 종가에 매도", ("매수", "불타기"), False, "half",
+     {"stops": [("fix_next", 8), ("trail", 8)]}),
+    ("손절8% + 고점-10%", "기준 + 산 뒤 최고 종가 대비 -10%면 매도", ("매수", "불타기"), False, "half",
+     {"stops": [("fix_next", 8), ("trail", 10)]}),
+    ("손절8% + 고점-12%", "기준 + 산 뒤 최고 종가 대비 -12%면 매도", ("매수", "불타기"), False, "half",
+     {"stops": [("fix_next", 8), ("trail", 12)]}),
 ]
+# 이전에 시험하고 뺀 변형(2026-10-10 결과 참고): 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
+# 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수 — HANDOFF.md 참고
 
 
 def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
     """states: {code: DataFrame(index=날짜, close, cats(set), reg)}. 반환: 잔고 Series, 거래 목록, 현금비중 Series, 기말 보유 수"""
     opts = opts or {}
-    stop = opts.get("stop")
+    stops = list(opts.get("stops") or ([opts["stop"]] if opts.get("stop") else []))
     extra_sell = set(opts.get("extra_sell", ()))
     px = {c: s["close"].reindex(dates).ffill() for c, s in states.items()}
     cats = {c: s["cats"].reindex(dates) for c, s in states.items()}
@@ -91,22 +86,24 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
                     pos[c] = {"sh": amt * (1 - BUY_COST) / p, "cost": amt, "date": d, "i": i, "halved": False, "real": 0.0,
                               "entry": p, "peak": p, "warn": False}
         orders = []
-        # 1-2) 손절: 오늘 종가로 판단(오늘 산 종목은 제외)
-        if stop:
-            how, pct = stop
-            for c in list(pos):
-                P, x = pos[c], px[c].iloc[i]
-                if pd.isna(x) or P["i"] == i:
-                    continue
-                P["peak"] = max(P["peak"], x)
+        # 1-2) 손절: 오늘 종가로 판단(오늘 산 종목은 제외). 여러 개면 하나라도 걸리면 매도
+        for c in list(pos) if stops else []:
+            P, x = pos[c], px[c].iloc[i]
+            if pd.isna(x) or P["i"] == i:
+                continue
+            P["peak"] = max(P["peak"], x)
+            why = None
+            for how, pct in stops:
                 line = (P["peak"] if how == "trail" else P["entry"]) * (1 - pct / 100)
                 if how == "fix_next":
                     if x <= line and P["warn"]:          # 어제 종가에 걸렸고 오늘도 회복 못 함 → 오늘 종가에 매도
-                        sell(c, P["sh"], x, d, i, "손절")
+                        why = "손절"
                     else:
                         P["warn"] = x <= line
                 elif x <= line:
-                    sell(c, P["sh"], x, d, i, "손절")
+                    why = "고점 손절" if how == "trail" else "손절"
+            if why:
+                sell(c, P["sh"], x, d, i, why)
         # 2) 오늘 평가
         val = sum(Q["sh"] * px[k].iloc[i] for k, Q in pos.items() if not pd.isna(px[k].iloc[i]))
         eq.append(cash + val)
@@ -266,7 +263,7 @@ a {{ color:inherit; }}
 <p class="note">최근 1·3·5년 구간 첫날을 0%로 본 수익률. 전략은 전체 기간을 이어서 매매한 계좌의 그 구간 성과(구간 첫날 이미 들고 있던 종목 포함). 종목 목록은 이 실행의 시작일 기준 그대로 — 1·3년을 그때의 상위 종목으로 보려면 1년·3년 실행 결과를 볼 것.
 코스피·나스닥 보유는 지수 그대로(배당 제외) — 코스피 종목 백테스트에 나스닥은 참고용.</p>
 <h2>계좌 잔고 <small id="wl"></small></h2>
-<p class="note">범례를 누르면 선을 켜고 끕니다. 처음엔 리포트 규칙·홀딩형·홀딩 + 손절8%와 지수·균등 보유만 보입니다.</p>
+<p class="note">범례를 누르면 선을 켜고 끕니다.</p>
 <div class="seg" id="seg"></div>
 <div class="chart" id="ch"><div class="lg" id="lg"></div><svg id="sv" viewBox="0 0 900 320" role="img" aria-label="계좌 잔고 곡선"></svg><div class="tip" id="tip"></div></div>
 <h2>거래 목록 · 리포트 규칙</h2>
@@ -276,7 +273,7 @@ const D = {json.dumps(data, ensure_ascii=False)};
 const W = 900, H = 320, L = 48, R = 12, T = 10, B = 24;
 const sv = document.getElementById('sv'), tip = document.getElementById('tip'), lg = document.getElementById('lg'), seg = document.getElementById('seg');
 const color = s => s.bm ? (s.name === '균등 보유' ? 'var(--bm2)' : s.name.startsWith('나스닥') ? 'var(--bm3)' : 'var(--bm1)') : 'var(--s' + s.slot + ')';
-const SHOW = new Set(['리포트 규칙', '홀딩형', '홀딩 + 손절8%']);     // 처음에 보이는 선(범례를 눌러 켜고 끔). 지수·균등 보유는 항상 처음에 보임
+const SHOW = new Set(D.s.filter(s => !s.bm).map(s => s.name));     // 처음에 보이는 선(범례를 눌러 켜고 끔). 지수·균등 보유는 항상 처음에 보임
 D.s.forEach((s, k) => {{ s.off = !s.bm && !SHOW.has(s.name);
   lg.insertAdjacentHTML('beforeend', `<span class="li${{s.off ? ' off' : ''}}" data-k="${{k}}"><i class="${{s.bm ? 'dash' : ''}}" style="background:${{color(s)}};border-color:${{color(s)}}"></i>${{s.name}}</span>`); }});
 let cur = null, curW = null;
