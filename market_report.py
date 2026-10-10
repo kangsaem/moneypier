@@ -163,7 +163,8 @@ def analyze_df(df, code, name, light=False):
     r = {"code": code, "name": name, "last": c.index[-1], "close": float(c.iloc[-1]),
          "rsi": float(rs.iloc[-1]), "rsi_prev": float(rs.iloc[-2]),
          "ma10": float(c.rolling(10).mean().iloc[-1]), "rsi_min5": float(rs.tail(5).min()), "rsi_max5": float(rs.tail(5).max()),
-         "day": cross_state(c), "week": cross_state(make_bars(c, "W-FRI")),
+         "day": cross_state(c), "week": cross_state(wk := make_bars(c, "W-FRI")),
+         "w10": float(wk.tail(10).mean()) if len(wk) >= 10 else None,     # 10주선(그날 기준, 진행 중인 주 포함)
          "month": cross_state(make_bars(c, "ME"))}
 
     disp = (c / c.rolling(50).mean() * 100).dropna()

@@ -21,29 +21,58 @@ BUY_COST = 0.0005
 SELL_COST = 0.0025
 HALF_CATS = ("익절검토", "비중축소")
 
-# (이름, 설명, 매수 분류, 하락기에만 매수, 매도 방식 half|all)
+# (이름, 설명, 매수 분류, 하락기에만 매수, 매도 방식, 추가 옵션)
+#  매도 방식: half = 익절검토·비중축소에 절반·매도에 전부(리포트 규칙) / all = 셋 중 하나면 전부 /
+#            hold = 매도·비중축소에 상대강도↓(최근 60일 지수보다 약함)가 겹칠 때만 전부(홀딩형)
+#  옵션: stop = (방식, %) — fix_next = 종가가 매수가 -%면 다음 날 종가도 그 아래일 때 매도(내 손절 방식),
+#                           fix_now = 종가가 매수가 -%면 그날 종가에 매도, trail = 보유 중 최고 종가 대비 -%면 그날 매도
+#        week_exit = 주봉 붕괴(5주<10주 + 종가<10주선)면 다음 날 매도(산 지 5거래일 뒤부터) · extra_sell = 이 분류가 켜지면 전부 매도
+HOLD_BUY = ("매수", "눌림진행")
+HOLD_SELL = ("매도·상대강도↓", "비중축소·상대강도↓")
 VARIANTS = [
-    ("리포트 규칙", "매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 판다", ("매수", "불타기"), False, "half"),
-    ("매도 신호에 전부", "같은 매수, 매도·익절검토·비중축소 중 하나라도 뜨면 전부 판다", ("매수", "불타기"), False, "all"),
-    ("눌림진행도 매수", "매수·불타기·눌림진행에 산다(매도는 리포트 규칙)", ("매수", "불타기", "눌림진행"), False, "half"),
-    ("하락기에만 매수", "시장이 200일선 아래일 때만 산다(매도는 리포트 규칙)", ("매수", "불타기"), True, "half"),
-    ("매수 트리거=골든X2", "매수 트리거를 골든X2로(싼 조건 2개 + 일·주·월 중 2개 최근 골든) · 불타기 포함, 매도는 리포트 규칙",
-     ("매수·트리거X2", "불타기"), False, "half"),
-    ("바닥 2/3에 매수", "바닥 2/3(바닥 다지기)에 처음 들어선 다음 날 산다(매도는 리포트 규칙)", ("바닥2/3",), False, "half"),
-    ("바닥 3/3에 매수", "바닥 3/3(추세 전환)에 처음 들어선 다음 날 산다(매도는 리포트 규칙)", ("바닥3/3",), False, "half"),
-    ("리포트 규칙 + 꼭지 매도", "리포트 규칙에 더해, 꼭지 단계(1/3·2/3·3/3)가 켜지면 전부 판다", ("매수", "불타기"), False, "half",
-     ("꼭지1/3", "꼭지2/3", "꼭지3/3")),
+    ("리포트 규칙", "매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 판다(구버전)", ("매수", "불타기"), False, "half", {}),
+    ("리포트 + 손절8%", "리포트 규칙 + 종가가 매수가 -8%면 다음 날 종가도 회복 못 할 때 매도", ("매수", "불타기"), False, "half",
+     {"stop": ("fix_next", 8)}),
+    ("홀딩형", "매수·눌림진행에 사고, 매도·비중축소에 상대강도↓가 겹칠 때만 판다(익절검토·과열·꼭지는 무시)", HOLD_BUY, False, "hold", {}),
+    ("홀딩 + 손절8%", "홀딩형 + 종가 매수가 -8% → 다음 날 종가도 회복 못 하면 매도(내 손절 방식)", HOLD_BUY, False, "hold",
+     {"stop": ("fix_next", 8)}),
+    ("홀딩 + 손절8% 즉시", "홀딩형 + 종가가 매수가 -8% 이하면 그날 매도", HOLD_BUY, False, "hold", {"stop": ("fix_now", 8)}),
+    ("홀딩 + 손절12%", "홀딩형 + 종가 매수가 -12% → 다음 날 종가도 회복 못 하면 매도", HOLD_BUY, False, "hold",
+     {"stop": ("fix_next", 12)}),
+    ("홀딩 + 고점-8%", "홀딩형 + 보유 중 최고 종가 대비 -8%면 매도(추적 손절)", HOLD_BUY, False, "hold", {"stop": ("trail", 8)}),
+    ("홀딩 + 고점-15%", "홀딩형 + 보유 중 최고 종가 대비 -15%면 매도(주도주용 넉넉한 추적 손절)", HOLD_BUY, False, "hold",
+     {"stop": ("trail", 15)}),
+    ("홀딩 + 주봉붕괴", "홀딩형 + 주봉 붕괴(5주선<10주선, 종가<10주선)면 매도", HOLD_BUY, False, "hold", {"week_exit": True}),
+    ("매도 신호에 전부", "매수·불타기에 사고, 매도·익절검토·비중축소 중 하나라도 뜨면 전부 판다", ("매수", "불타기"), False, "all", {}),
+    ("하락기에만 매수", "시장이 200일선 아래일 때만 산다(매도는 리포트 규칙)", ("매수", "불타기"), True, "half", {}),
+    ("바닥 3/3에 매수", "바닥 3/3(추세 전환)에 처음 들어선 다음 날 산다(매도는 리포트 규칙)", ("바닥3/3",), False, "half", {}),
 ]
 
 
-def simulate(states, dates, buy_cats, bear_only, sell_mode, extra_sell=()):
-    """states: {code: DataFrame(index=날짜, close, cats(set), reg)}. 반환: 잔고 Series, 거래 목록, 현금비중 Series"""
+def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
+    """states: {code: DataFrame(index=날짜, close, cats(set), reg)}. 반환: 잔고 Series, 거래 목록, 현금비중 Series, 기말 보유 수"""
+    opts = opts or {}
+    stop = opts.get("stop")
+    extra_sell = set(opts.get("extra_sell", ()))
     px = {c: s["close"].reindex(dates).ffill() for c, s in states.items()}
     cats = {c: s["cats"].reindex(dates) for c, s in states.items()}
     regs = {c: s["reg"].reindex(dates) for c, s in states.items()}
-    cash, pos = 1.0, {}          # pos[code] = {"sh", "cost", "date", "halved", "real"}
+    cash, pos = 1.0, {}          # pos[code] = {"sh", "cost", "date", "i", "halved", "real", "entry", "peak", "warn"}
     eq, cash_ratio, trades, orders = [], [], [], []
     prev = {c: set() for c in states}
+
+    def sell(c, q, p, d, i, why=""):
+        nonlocal cash
+        P = pos[c]
+        cash += q * p * (1 - SELL_COST)
+        P["real"] += q * p * (1 - SELL_COST)
+        P["sh"] -= q
+        P["halved"] = True
+        if P["sh"] <= 1e-12:
+            trades.append({"code": c, "in": P["date"], "out": d, "cost": P["cost"], "back": P["real"],
+                           "ret": (P["real"] / P["cost"] - 1) * 100, "days": i - P["i"], "why": why})
+            del pos[c]
+
     for i, d in enumerate(dates):
         # 1) 어제 신호로 만든 주문을 오늘 종가에 체결 (매도 먼저)
         for kind, c in sorted(orders, key=lambda o: o[0] != "sell"):
@@ -52,23 +81,32 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, extra_sell=()):
                 continue
             if kind in ("sell", "half") and c in pos:
                 P = pos[c]
-                q = P["sh"] if (kind == "sell" or P["halved"]) else P["sh"] / 2
-                cash += q * p * (1 - SELL_COST)
-                P["real"] += q * p * (1 - SELL_COST)
-                P["sh"] -= q
-                P["halved"] = True
-                if P["sh"] <= 1e-12:
-                    trades.append({"code": c, "in": P["date"], "out": d, "cost": P["cost"], "back": P["real"],
-                                   "ret": (P["real"] / P["cost"] - 1) * 100, "days": i - P["i"]})
-                    del pos[c]
+                sell(c, P["sh"] if (kind == "sell" or P["halved"]) else P["sh"] / 2, p, d, i, "신호")
             elif kind == "buy" and c not in pos and len(pos) < SLOTS:
                 equity = cash + sum(Q["sh"] * px[k].iloc[i] for k, Q in pos.items() if not pd.isna(px[k].iloc[i]))
                 target = equity / SLOTS
                 amt = min(target, cash)
                 if amt >= target * 0.5:
                     cash -= amt
-                    pos[c] = {"sh": amt * (1 - BUY_COST) / p, "cost": amt, "date": d, "i": i, "halved": False, "real": 0.0}
+                    pos[c] = {"sh": amt * (1 - BUY_COST) / p, "cost": amt, "date": d, "i": i, "halved": False, "real": 0.0,
+                              "entry": p, "peak": p, "warn": False}
         orders = []
+        # 1-2) 손절: 오늘 종가로 판단(오늘 산 종목은 제외)
+        if stop:
+            how, pct = stop
+            for c in list(pos):
+                P, x = pos[c], px[c].iloc[i]
+                if pd.isna(x) or P["i"] == i:
+                    continue
+                P["peak"] = max(P["peak"], x)
+                line = (P["peak"] if how == "trail" else P["entry"]) * (1 - pct / 100)
+                if how == "fix_next":
+                    if x <= line and P["warn"]:          # 어제 종가에 걸렸고 오늘도 회복 못 함 → 오늘 종가에 매도
+                        sell(c, P["sh"], x, d, i, "손절")
+                    else:
+                        P["warn"] = x <= line
+                elif x <= line:
+                    sell(c, P["sh"], x, d, i, "손절")
         # 2) 오늘 평가
         val = sum(Q["sh"] * px[k].iloc[i] for k, Q in pos.items() if not pd.isna(px[k].iloc[i]))
         eq.append(cash + val)
@@ -82,7 +120,10 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, extra_sell=()):
             if i == 0:          # 첫날은 이미 켜져 있던 신호라 '새로 켜짐'으로 보지 않음
                 continue
             if c in pos:
-                if "매도" in new or new & set(extra_sell):
+                if sell_mode == "hold":
+                    if new & set(HOLD_SELL) or new & extra_sell or (opts.get("week_exit") and "주봉붕괴" in on and i - pos[c]["i"] >= 5):
+                        orders.append(("sell", c))
+                elif "매도" in new or new & extra_sell:
                     orders.append(("sell", c))
                 elif new & set(HALF_CATS):
                     orders.append(("sell" if sell_mode == "all" else "half", c))
@@ -113,8 +154,8 @@ def run(states, names, bench, bench_name, out_path, label, note=""):
     dates = sorted(set().union(*[set(s.index) for s in states.values()]))
     dates = pd.DatetimeIndex(dates)
     rows, curves = [], {}
-    for nm, desc, buy_cats, bear_only, mode, *extra in VARIANTS:
-        eq, trades, cash, open_n = simulate(states, dates, buy_cats, bear_only, mode, extra[0] if extra else ())
+    for nm, desc, buy_cats, bear_only, mode, opts in VARIANTS:
+        eq, trades, cash, open_n = simulate(states, dates, buy_cats, bear_only, mode, opts)
         rows.append({"name": nm, "desc": desc, **metrics(eq, trades, cash, open_n), "trades": trades})
         curves[nm] = eq / eq.iloc[0]
     # 비교 대상: 지수 보유, 균등 보유
@@ -186,9 +227,9 @@ def write_html(rows, curves, names, out_path, label, dates, note=""):
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{E(label)}</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb; --buy:#d92d20; --sell:#1d5fd1;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#6250d6; --s5:#e87ba4; --s6:#008300; --s7:#eda100; --s8:#e34948; --bm1:#14181f; --bm2:#9aa0aa; --bm3:#8a5a2b; }}
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#6250d6; --s5:#e87ba4; --s6:#008300; --s7:#eda100; --s8:#e34948; --s9:#0f8b8d; --s10:#9c6644; --s11:#5c6bc0; --s12:#7cb342; --bm1:#14181f; --bm2:#9aa0aa; --bm3:#8a5a2b; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --sell:#6ea2ff; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#9085e9; --s5:#d55181; --s6:#008300; --s7:#c98500; --s8:#e66767; --bm1:#eceff4; --bm2:#6b7380; --bm3:#c9965f; }} }}
+  --buy:#ff6b5e; --sell:#6ea2ff; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#9085e9; --s5:#d55181; --s6:#008300; --s7:#c98500; --s8:#e66767; --s9:#2bb5b8; --s10:#c48b62; --s11:#8e99f3; --s12:#9ccc65; --bm1:#eceff4; --bm2:#6b7380; --bm3:#c9965f; }} }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0 auto; padding:14px; max-width:980px; line-height:1.5; }}
 h1 {{ font-size:1.3rem; margin:4px 0; }} h2 {{ font-size:1rem; margin:18px 0 6px; }} .t, .note {{ color:var(--mut); font-size:.8rem; }}
 .wrap {{ overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; }}
@@ -198,6 +239,7 @@ tr.bm td {{ background:var(--bg); }} td.mut {{ color:var(--mut); text-align:cent
 .chart {{ background:var(--card); border:1px solid var(--line); border-radius:12px; padding:10px; position:relative; }}
 .lg {{ display:flex; flex-wrap:wrap; gap:4px 14px; font-size:.78rem; color:var(--mut); margin-bottom:4px; }}
 .lg i {{ display:inline-block; width:14px; height:2px; vertical-align:middle; margin-right:4px; }}
+  .lg .li {{ cursor:pointer; user-select:none; }} .lg .li.off {{ opacity:.35; text-decoration:line-through; }}
 .lg i.dash {{ background:none !important; border-top:2px dashed; height:0; }}
 svg {{ width:100%; height:auto; display:block; }} .ax {{ fill:var(--mut); font-size:10px; }} .grid {{ stroke:var(--line); }}
 .zero {{ stroke:var(--mut); stroke-dasharray:3 3; }} .ln {{ fill:none; stroke-width:2; stroke-linejoin:round; }}
@@ -224,6 +266,7 @@ a {{ color:inherit; }}
 <p class="note">최근 1·3·5년 구간 첫날을 0%로 본 수익률. 전략은 전체 기간을 이어서 매매한 계좌의 그 구간 성과(구간 첫날 이미 들고 있던 종목 포함). 종목 목록은 이 실행의 시작일 기준 그대로 — 1·3년을 그때의 상위 종목으로 보려면 1년·3년 실행 결과를 볼 것.
 코스피·나스닥 보유는 지수 그대로(배당 제외) — 코스피 종목 백테스트에 나스닥은 참고용.</p>
 <h2>계좌 잔고 <small id="wl"></small></h2>
+<p class="note">범례를 누르면 선을 켜고 끕니다. 처음엔 리포트 규칙·홀딩형·홀딩 + 손절8%와 지수·균등 보유만 보입니다.</p>
 <div class="seg" id="seg"></div>
 <div class="chart" id="ch"><div class="lg" id="lg"></div><svg id="sv" viewBox="0 0 900 320" role="img" aria-label="계좌 잔고 곡선"></svg><div class="tip" id="tip"></div></div>
 <h2>거래 목록 · 리포트 규칙</h2>
@@ -233,11 +276,16 @@ const D = {json.dumps(data, ensure_ascii=False)};
 const W = 900, H = 320, L = 48, R = 12, T = 10, B = 24;
 const sv = document.getElementById('sv'), tip = document.getElementById('tip'), lg = document.getElementById('lg'), seg = document.getElementById('seg');
 const color = s => s.bm ? (s.name === '균등 보유' ? 'var(--bm2)' : s.name.startsWith('나스닥') ? 'var(--bm3)' : 'var(--bm1)') : 'var(--s' + s.slot + ')';
-D.s.forEach(s => lg.insertAdjacentHTML('beforeend', `<span><i class="${{s.bm ? 'dash' : ''}}" style="background:${{color(s)}};border-color:${{color(s)}}"></i>${{s.name}}</span>`));
-let cur = null;
+const SHOW = new Set(['리포트 규칙', '홀딩형', '홀딩 + 손절8%']);     // 처음에 보이는 선(범례를 눌러 켜고 끔). 지수·균등 보유는 항상 처음에 보임
+D.s.forEach((s, k) => {{ s.off = !s.bm && !SHOW.has(s.name);
+  lg.insertAdjacentHTML('beforeend', `<span class="li${{s.off ? ' off' : ''}}" data-k="${{k}}"><i class="${{s.bm ? 'dash' : ''}}" style="background:${{color(s)}};border-color:${{color(s)}}"></i>${{s.name}}</span>`); }});
+let cur = null, curW = null;
+lg.addEventListener('click', e => {{ const el = e.target.closest('.li'); if (!el) return; const s = D.s[+el.dataset.k];
+  s.off = !s.off; el.classList.toggle('off', s.off); draw(curW); }});
 function draw(w) {{
   const i0 = w.i, n = D.d.length - i0;
-  const S = D.s.map(s => {{ const b = s.v.slice(i0).find(v => v !== null);
+  curW = w;
+  const S = D.s.filter(s => !s.off).map(s => {{ const b = s.v.slice(i0).find(v => v !== null);
     return {{ ...s, p: s.v.slice(i0).map(v => v === null || !b ? null : Math.round((v / b - 1) * 1000) / 10) }}; }});
   let lo = 0, hi = 0; S.forEach(s => s.p.forEach(v => {{ if (v !== null) {{ lo = Math.min(lo, v); hi = Math.max(hi, v); }} }}));
   const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;

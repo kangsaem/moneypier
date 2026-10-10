@@ -98,6 +98,9 @@ def categories_of(r, feat=None):
             on.add(f"{nm}X{k2}·짧게")
     if len(r["sig"]["sell_c"]) >= 2:
         on.add("과열")
+    wk = r.get("week") or {}
+    if wk.get("ok") and not wk.get("above") and r.get("w10") and r["close"] < r["w10"]:
+        on.add("주봉붕괴")                      # 계좌 시뮬레이션 '홀딩형 + 주봉 붕괴'용 상태(5주<10주 + 종가<10주선)
     if r.get("bottom"):
         on.add(f"바닥{r['bottom']}/3")
     if r.get("top"):
