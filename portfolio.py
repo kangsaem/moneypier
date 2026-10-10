@@ -34,13 +34,13 @@ _V1 = "v1 규칙: 매수검토에 사고, 매도검토가 뜨면 전부 판다 +
 VARIANTS = [
     ("리포트 + 손절8%", "구버전: 매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 + 손절8% (비교 기준)", ("매수", "불타기"), False, "half",
      {"stops": STOP8}),
-    ("v1 ●1+", _V1 + " — 매수검토 ●1 이상 / 매도검토 ●1 이상", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
-    ("v1 매수●2+", _V1 + " — 매수검토 ●2 이상만 매수", ("v1·매수검토●2",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
-    ("v1 매수●3+", _V1 + " — 매수검토 ●3만 매수", ("v1·매수검토●3",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
-    ("v1 매도●2+", _V1 + " — 매도검토 ●2 이상일 때만 매도", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토●2",)}),
-    ("v1 매도●3+", _V1 + " — 매도검토 ●3일 때만 매도", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토●3",)}),
+    ("v1 ●1+", _V1 + " — 매수검토만 매수", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
+    ("v1+상승중 전부", _V1 + " — 매수검토·상승중에 매수, 매도검토에 전부 매도", ("v1·매수검토", "불타기"), False, "v1",
+     {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
+    ("v1+상승중 절반", "매수검토·상승중에 사고, 매도검토가 뜨면 절반(이미 절반 팔았으면 나머지) 매도 + 손절8%", ("v1·매수검토", "불타기"), False, "v1",
+     {"stops": STOP8, "sell_cats": ("v1·매도검토",), "sell_half": True}),
 ]
-# 이전에 시험하고 뺀 변형(2026-10-10 결과 참고): 리포트 규칙(손절 없음), 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
+# 이전에 시험하고 뺀 변형(2026-10-10~11 결과 참고): v1 매수●2+·●3+·매도●2+·●3+(강도 필터 — 구간마다 들쭉날쭉, 매도 강도는 대부분 악화), 리포트 규칙(손절 없음), 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
 # 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수, 손절8%+고점 대비 -8·10·12% 매도, 손절8%+추세이탈 매도 — HANDOFF.md 참고
 
 
@@ -118,9 +118,9 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
             if i == 0:          # 첫날은 이미 켜져 있던 신호라 '새로 켜짐'으로 보지 않음
                 continue
             if c in pos:
-                if sell_mode == "v1":            # v1: 매도검토(지정 강도 이상)가 새로 켜지면 전부
+                if sell_mode == "v1":            # v1: 매도검토가 새로 켜지면 전부(sell_half면 절반 → 다음에 나머지)
                     if new & set(opts.get("sell_cats", ())):
-                        orders.append(("sell", c))
+                        orders.append(("half" if opts.get("sell_half") else "sell", c))
                 elif sell_mode == "hold":
                     if new & set(HOLD_SELL) or new & extra_sell or (opts.get("week_exit") and "주봉붕괴" in on and i - pos[c]["i"] >= 5):
                         orders.append(("sell", c))
