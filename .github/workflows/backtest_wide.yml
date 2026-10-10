@@ -1,21 +1,24 @@
 name: backtest-wide
 
-# 넓은 백테스트: 코스피 시가총액 상위 또는 나스닥 대형주 · 최근 약 5년 (30~60분 걸려서 필요할 때만 수동 실행)
-# 결과는 results/backtest_wide.html(코스피) / results/backtest_nasdaq.html(나스닥)로 커밋되고, 끝나면 daily-report를 다시 돌려 페이지에 올린다.
+# 넓은 백테스트: 코스피 시가총액 상위 / 나스닥 대형주 / 내 종목 · 기간 지정 (필요할 때만 수동 실행)
+# 결과는 실행 시각 버전을 붙여 results/에 쌓이고(최신본은 원래 이름으로도 복사), backtests.html 목록에서 지난 실행과 비교.
 on:
   workflow_dispatch:
     inputs:
       market:
-        description: "시장"
+        description: "대상"
         type: choice
-        options: [kospi, nasdaq]
+        options: [kospi, nasdaq, mine]
         default: kospi
       top:
-        description: "상위 몇 개 (나스닥은 최대 50)"
+        description: "상위 몇 개 (나스닥은 최대 50, 내 종목이면 무시)"
         default: "50"
       days:
-        description: "기간(거래일, 1260 ≈ 5년)"
+        description: "기간(거래일, 1260 ≈ 5년, 252 ≈ 1년)"
         default: "1260"
+      memo:
+        description: "이번에 바꾼 로직 메모 (기록 목록에 표시)"
+        default: ""
 
 permissions:
   contents: write    # 결과 파일 커밋
@@ -31,19 +34,32 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python backtest.py
+      - name: 백테스트
+        run: |
+          case "${{ inputs.market }}" in
+            nasdaq) export BT_UNIVERSE=nasdaq BT_OUT=results/backtest_nasdaq ;;
+            mine)   export BT_UNIVERSE=tickers BT_OUT=results/backtest_mine ;;
+            *)      export BT_UNIVERSE=kospi BT_OUT=results/backtest_wide ;;
+          esac
+          export BT_VERSION=$(TZ=Asia/Seoul date +%Y%m%d-%H%M)
+          python backtest.py
         env:
-          BT_UNIVERSE: ${{ inputs.market }}
           BT_TOP: ${{ inputs.top }}
           BT_DAYS: ${{ inputs.days }}
-          BT_OUT: ${{ inputs.market == 'nasdaq' && 'results/backtest_nasdaq' || 'results/backtest_wide' }}
+          BT_MEMO: ${{ inputs.memo }}
+          TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
+      - run: python bt_index.py
       - name: 결과 커밋
+        env:
+          MARKET: ${{ inputs.market }}
+          MEMO: ${{ inputs.memo }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           git add results/
-          git commit -m "넓은 백테스트 결과 갱신 (${{ inputs.market }})" || exit 0
-          git pull --rebase origin ${{ github.ref_name }}   # 실행 중에 다른 파일이 올라왔어도 저장되도록
+          git commit -m "백테스트 결과 ($MARKET) $MEMO" || exit 0
+          git pull --rebase origin ${{ github.ref_name }}
+          python bt_index.py && git add results/backtests.html && git commit -m "백테스트 목록 갱신" || true
           git push
       - name: 리포트 다시 배포
         run: gh workflow run daily.yml --ref ${{ github.ref_name }}
