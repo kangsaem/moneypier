@@ -653,6 +653,111 @@ def credit_info(df):
             "spark": [round(float(x), 2) for x in r.tail(120)]}
 
 
+def _pctl(r):
+    cur = float(r.iloc[-1])
+    return float((r <= cur).mean() * 100)
+
+
+def _series_info(r, spark_n=120):
+    """시계열 공통 요약: 현재·과거 백분위·최고·최저·20일 변화·추이선"""
+    cur = float(r.iloc[-1])
+    return {"cur": cur, "date": r.index[-1], "pct": _pctl(r), "max": float(r.max()), "min": float(r.min()),
+            "since": r.index[0], "n": len(r), "chg20": float(cur - r.iloc[-21]) if len(r) > 20 else None,
+            "spark": [round(float(x), 3) for x in r.tail(spark_n)]}
+
+
+def kospi_credit_series(years=5):
+    """금융투자협회 통계(freesis) '신용공여 잔고 추이'에서 유가증권(코스피) 신용거래융자 잔고(억원).
+    응답 열 이름이 TMPV2.. 같은 일련번호라, 첫 행에서 '전체 = 유가증권 + 코스닥'이 맞는 첫 세 칸을 찾아 둘째 칸(유가증권)을 씀"""
+    import requests
+    url = "https://freesis.kofia.or.kr/meta/getMetaDataList.do"
+    hdr = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json; charset=UTF-8",
+           "Referer": "https://freesis.kofia.or.kr/stat/FreeSIS.do?parentDivId=MSIS10000000000000&serviceId=STATSCU0100000070"}
+    end = datetime.today()
+    rows, diag = [], ""
+    for k in range(years):
+        e = end - timedelta(days=365 * k)
+        st = e - timedelta(days=364)
+        body = {"dmSearch": {"tmpV40": "1000000", "tmpV41": "1", "tmpV1": "D", "tmpV45": f"{st:%Y%m%d}",
+                             "tmpV46": f"{e:%Y%m%d}", "OBJ_NM": "STATSCU0100000070BO"}}
+        resp = requests.post(url, json=body, headers=hdr, timeout=15)
+        try:
+            ds = resp.json().get("ds1") or []
+        except Exception:
+            ds = []
+        if k == 0:
+            diag = f"HTTP {resp.status_code} · {len(resp.content)}바이트 · 행 {len(ds)}개 · 첫 행 {str(ds[0])[:150] if ds else resp.text[:120]!r}"
+        rows += ds
+        if not ds:
+            break
+    if len(rows) < 20:
+        raise ValueError(f"{len(rows)}일치만 읽음 — {diag}")
+    keys = sorted([k for k in rows[0] if k.upper().startswith("TMPV") and k.upper() != "TMPV1"], key=lambda k: int(k[4:]))
+
+    def num(v):
+        try:
+            return float(str(v).replace(",", ""))
+        except Exception:
+            return None
+    first = [num(rows[0].get(k)) for k in keys]
+    pick = None
+    for i in range(len(keys) - 2):
+        a, b, c = first[i:i + 3]
+        if a and b and c and abs(a - (b + c)) <= a * 0.005:
+            pick = keys[i + 1]
+            break
+    if pick is None:
+        raise ValueError(f"전체=유가+코스닥 열을 못 찾음 — {diag}")
+    data = {}
+    for r in rows:
+        d, v = str(r.get("TMPV1", r.get("tmpV1", ""))).replace("-", "").replace(".", "")[:8], num(r.get(pick))
+        if len(d) == 8 and v:
+            data[pd.Timestamp(d)] = v
+    sr = pd.Series(data).sort_index()
+    if sr.median() > 1e6:          # 백만원 단위 → 억원
+        sr = sr / 100
+    if not 5_000 < sr.median() < 1_000_000:
+        raise ValueError(f"코스피 신용잔고 값 이상 {sr.median():,.0f}억 — {diag}")
+    return sr
+
+
+def kospi_pbr_series(years=10):
+    """한국거래소 정보데이터시스템: 코스피 지수 PBR(일별). 한 번에 1년씩 받음"""
+    import requests
+    url = "http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd"
+    hdr = {"User-Agent": "Mozilla/5.0", "Referer": "http://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"}
+    end = datetime.today()
+    data, diag = {}, ""
+    for k in range(years):
+        e = end - timedelta(days=365 * k)
+        st = e - timedelta(days=364)
+        resp = requests.post(url, data={"bld": "dbms/MDC/STAT/standard/MDCSTAT00702", "indIdx": "1", "indIdx2": "001",
+                                        "strtDd": f"{st:%Y%m%d}", "endDd": f"{e:%Y%m%d}", "csvxls_isNo": "false"},
+                             headers=hdr, timeout=15)
+        try:
+            out = resp.json().get("output") or []
+        except Exception:
+            out = []
+        if k == 0:
+            diag = f"HTTP {resp.status_code} · {len(resp.content)}바이트 · 행 {len(out)}개 · {str(out[0])[:150] if out else resp.text[:120]!r}"
+        if not out:
+            break
+        for r in out:
+            v = str(r.get("WT_STKPRC_NETASST_RTO", "")).replace(",", "")
+            try:
+                v = float(v)
+            except ValueError:
+                continue
+            if v > 0:
+                data[pd.Timestamp(str(r.get("TRD_DD", "")).replace("/", "-"))] = v
+    if len(data) < 20:
+        raise ValueError(f"{len(data)}일치만 읽음 — {diag}")
+    sr = pd.Series(data).sort_index()
+    if not 0.3 < sr.median() < 5:
+        raise ValueError(f"PBR 값 이상 {sr.median():.2f} — {diag}")
+    return sr
+
+
 def market_snapshot():
     snap = {"ks": None, "vix": None, "y10": None, "y30": None, "idx": {}, "err": []}
     for key, nm, fc, yc in INDEXES:         # 코스피·코스닥·S&P500·나스닥 (카드 + 차트용)
@@ -687,6 +792,12 @@ def market_snapshot():
     except Exception as e:
         snap["credit"] = None
         snap["err"].append(f"신용/예탁금 ({type(e).__name__}: {str(e)[:220]})")
+    for key, nm, fn in (("credit_ks", "코스피 신용잔고", kospi_credit_series), ("pbr", "코스피 PBR", kospi_pbr_series)):
+        try:
+            snap[key] = _series_info(fn())
+        except Exception as e:
+            snap[key] = None
+            snap["err"].append(f"{nm} ({type(e).__name__}: {str(e)[:220]})")
     return snap
 
 
@@ -700,7 +811,7 @@ def _level(score, total, kind):
 
 def market_signals(snap, results):
     """시장 위험 / 시장 바닥 체크리스트. 항목 = (설명, 현재값, True|False|None(데이터없음))"""
-    ks, vix, y10, cr = snap.get("ks"), snap.get("vix"), snap.get("y10"), snap.get("credit")
+    ks, vix, y10, cr, pb = snap.get("ks"), snap.get("vix"), snap.get("y10"), snap.get("credit"), snap.get("pbr")
     n = len(results)
     bear = sum(1 for r in results if r["day"]["ok"] and not r["day"]["above"]) / n if n else None
     weak = sum(1 for r in results if r["rsi"] <= 35) / n if n else None
@@ -726,6 +837,8 @@ def market_signals(snap, results):
          f"{ks['from_high']:.1f}% · 저점 {ks['days_since_low']}일 전" if ks else "-",
          (ks["from_high"] <= -20 and ks["days_since_low"] >= 20) if ks else None),
         ("VIX 30 이상 (공포 극단)", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
+        (f"코스피 PBR 과거 하위 {100 - CREDIT_TOP}% (싸다)", f"{pb['cur']:.2f} · 하위 {pb['pct']:.0f}%" if pb else "-",
+         (pb["pct"] <= 100 - CREDIT_TOP) if pb else None),
         ("내 종목 30% 이상이 RSI 35 이하", f"{weak:.0%}" if weak is not None else "-",
          (weak >= 0.3) if weak is not None else None),
     ]
@@ -757,6 +870,12 @@ def market_text(snap):
     if cr:
         L.append(f"신용잔고/고객예탁금 {cr['ratio']:.1f}% (신용 {cr['cred'] / 1e4:,.1f}조 / 예탁금 {cr['dep'] / 1e4:,.1f}조, {cr['date']:%m-%d})"
                  f" · {cr['since']:%Y-%m} 이후 상위 {max(100 - cr['pct'], 0):.0f}%")
+    ck, pb = snap.get("credit_ks"), snap.get("pbr")
+    if ck:
+        L.append(f"코스피 신용잔고 {ck['cur'] / 1e4:,.1f}조 ({ck['date']:%m-%d}) · {ck['since']:%Y-%m} 이후 상위 {max(100 - ck['pct'], 0):.0f}%")
+    if pb:
+        L.append(f"코스피 PBR {pb['cur']:.2f} ({pb['date']:%m-%d}) · {pb['since']:%Y-%m} 이후 최저 {pb['min']:.2f} / 최고 {pb['max']:.2f}"
+                 f" · 하위 {pb['pct']:.0f}%")
     for e in snap.get("err", []):
         L.append(f"가져오기 실패: {e}")
     return "\n".join(L)

@@ -111,6 +111,20 @@ def credit_tags(cr):
             f'<span class="mt n">{cr["min"]:.0f}~{cr["max"]:.0f}%</span></div>{spark(cr.get("spark"))}')
 
 
+def series_tags(v, rng, hot_high=True):
+    """코스피 신용잔고·PBR 카드: 과거 대비 위치 + 범위 + 추이선. hot_high=False(PBR)면 하위 쪽을 강조"""
+    p = v["pct"]
+    top = 100 - p
+    txt = "과거 최고" if top < 0.5 else "과거 최저" if p < 0.5 else f"과거 상위 {top:.0f}%" if p >= 50 else f"과거 하위 {p:.0f}%"
+    if hot_high:
+        cls = "hot" if p >= m.CREDIT_TOP else "h1" if p >= 75 else "l1" if p <= 25 else "n"
+    else:
+        cls = "cold" if p <= 100 - m.CREDIT_TOP else "l1" if p <= 25 else "h1" if p >= 75 else "n"
+    tip = f"{v['since']:%Y-%m} 이후 {v['n']}거래일 기준 ({v['date']:%m-%d})"
+    return (f'<div class="mtags" title="{E(tip)}"><span class="mt {cls}">{E(txt)}</span>'
+            f'<span class="mt n">{E(rng)}</span></div>{spark(v.get("spark"))}')
+
+
 def mcard(name, value, chg_txt, ud, extra=""):
     return (f'<div class="mc {ud}"><span class="mn">{E(name)}</span>'
             f'<div class="mv"><b>{E(value)}</b><span class="mg">{E(chg_txt)}</span></div>{extra}</div>')
@@ -132,6 +146,15 @@ if cr:
     cards.append(mcard("신용/예탁금", f"{cr['ratio']:.1f}%",
                        f"{cr['chg20']:+.1f}%p·20일" if cr.get("chg20") is not None else "",
                        updown(cr.get("chg20") or 0), credit_tags(cr)))
+ck = snap.get("credit_ks")
+if ck:
+    c20 = ck["chg20"] / (ck["cur"] - ck["chg20"]) * 100 if ck.get("chg20") is not None else None
+    cards.append(mcard("코스피 신용잔고", f"{ck['cur'] / 1e4:,.1f}조", f"{c20:+.1f}%·20일" if c20 is not None else "",
+                       updown(c20 or 0), series_tags(ck, f"{ck['min'] / 1e4:.0f}~{ck['max'] / 1e4:.0f}조", hot_high=True)))
+pb = snap.get("pbr")
+if pb:
+    cards.append(mcard("코스피 PBR", f"{pb['cur']:.2f}", f"{pb['chg20']:+.2f}·20일" if pb.get("chg20") is not None else "",
+                       updown(pb.get("chg20") or 0), series_tags(pb, f"{pb['min']:.2f}~{pb['max']:.2f}", hot_high=False)))
 for e in snap.get("err", []):
     cards.append(f'<div class="mc bad"><span class="mn">실패</span><b>{E(e)}</b></div>')
 
