@@ -9,7 +9,7 @@ on:
   workflow_dispatch:          # 수동 실행 버튼
 
 permissions:
-  contents: read
+  contents: write    # 신호 기록(history/) 커밋
   pages: write
   id-token: write
 
@@ -34,6 +34,18 @@ jobs:
           TICKERS_JSON: ${{ secrets.TICKERS_JSON }}        # (선택) 종목을 비공개로 쓰고 싶을 때
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}    # (선택) 텔레그램 알림
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+      - name: 신호 기록 저장 (history/ 커밋 — 실패해도 리포트는 배포)
+        continue-on-error: true
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          git add history/ 2>/dev/null || exit 0
+          git commit -q -m "신호 기록 $(TZ=Asia/Seoul date +%F)" || exit 0
+          for i in 1 2 3 4 5; do
+            git pull -q --rebase --autostash origin ${{ github.ref_name }} && git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
       - run: python backtest.py            # 최근 12개월 시그널 백테스트 → docs/backtest.html (약 6~10분)
         continue-on-error: true            # 실패해도 리포트는 그대로 배포
         timeout-minutes: 30
