@@ -108,7 +108,7 @@ def metrics(eq, trades=None, cash=None, open_n=None):
     return out
 
 
-def run(states, names, bench, bench_name, out_path, label):
+def run(states, names, bench, bench_name, out_path, label, note=""):
     """states가 비어 있지 않을 때 계좌 시뮬레이션을 돌려 out_path(.html)에 저장"""
     dates = sorted(set().union(*[set(s.index) for s in states.values()]))
     dates = pd.DatetimeIndex(dates)
@@ -118,19 +118,22 @@ def run(states, names, bench, bench_name, out_path, label):
         rows.append({"name": nm, "desc": desc, **metrics(eq, trades, cash, open_n), "trades": trades})
         curves[nm] = eq / eq.iloc[0]
     # 비교 대상: 지수 보유, 균등 보유
-    if bench is not None and len(bench):
-        b = bench.reindex(dates, method="ffill").dropna()
+    benches = bench if isinstance(bench, list) else ([(bench_name, bench)] if bench is not None else [])
+    for bname, bser in benches:                    # 지수 보유: 이 대상의 시장 지수가 먼저, 다른 시장 지수도 참고로
+        if bser is None or not len(bser):
+            continue
+        b = bser.reindex(dates, method="ffill").dropna()
         if len(b) > 1:
             b = b / b.iloc[0]
-            rows.append({"name": f"{bench_name} 보유", "desc": "같은 기간 지수를 그냥 들고 있기", **metrics(b)})
-            curves[f"{bench_name} 보유"] = b
+            rows.append({"name": f"{bname} 보유", "desc": "같은 기간 지수를 그냥 들고 있기(배당 제외)", **metrics(b)})
+            curves[f"{bname} 보유"] = b
     px = pd.DataFrame({c: s["close"].reindex(dates).ffill() for c, s in states.items()})
     first = px.iloc[0].dropna()
     if len(first):
         ew = (px[first.index] / first).mean(axis=1) * (1 - BUY_COST)
         rows.append({"name": "균등 보유", "desc": f"첫날 {len(first)}종목을 똑같이 나눠 사서 들고 있기", **metrics(ew)})
         curves["균등 보유"] = ew
-    write_html(rows, curves, names, out_path, label, dates)
+    write_html(rows, curves, names, out_path, label, dates, note)
     return rows
 
 
@@ -140,7 +143,7 @@ def _f(v, plus=True, unit="%"):
     return (f"{v:+.1f}" if plus else f"{v:.0f}") + unit
 
 
-def write_html(rows, curves, names, out_path, label, dates):
+def write_html(rows, curves, names, out_path, label, dates, note=""):
     E = html.escape
     kst = datetime.now(timezone.utc) + timedelta(hours=9)
     strat = [r["name"] for r in rows if "n" in r]
@@ -152,17 +155,28 @@ def write_html(rows, curves, names, out_path, label, dates):
                 + (f'<td>{r["n"]}</td><td>{_f(r["win"], False)}</td><td>{_f(r["avg"])}</td>'
                    f'<td>{_f(r["hold"], False, "일")}</td><td>{_f(r["cash"], False)}</td><td>{r["open"]}</td>' if is_s
                    else '<td colspan="6" class="mut">-</td>') + "</tr>")
-    # 잔고 곡선 데이터 (주 1회로 줄여서)
-    step = max(1, len(dates) // 260)
-    idx = list(range(0, len(dates), step))
-    if idx[-1] != len(dates) - 1:
-        idx.append(len(dates) - 1)
+    # 잔고 곡선 데이터(일별, 배수) — 화면에서 고른 구간(1·3·5년) 첫날을 0%로 다시 맞춰 그림
     series = []
-    for k, (nm, cv) in enumerate(curves.items()):
+    for nm, cv in curves.items():
         cv = cv.reindex(dates).ffill()
         series.append({"name": nm, "bm": nm not in strat, "slot": strat.index(nm) + 1 if nm in strat else 0,
-                       "v": [None if pd.isna(cv.iloc[j]) else round(float(cv.iloc[j]) * 100 - 100, 2) for j in idx]})
-    data = {"d": [dates[j].strftime("%y.%m.%d") for j in idx], "s": series}
+                       "v": [None if pd.isna(x) else round(float(x), 5) for x in cv]})
+    years = (dates[-1] - dates[0]).days / 365.25
+    wins = [w for w in (1, 3, 5) if w < years - 0.2] + ["전체"]
+    data = {"d": [d.strftime("%y.%m.%d") for d in dates], "s": series,
+            "w": [{"k": str(w), "label": f"{w}년" if w != "전체" else f"전체({years:.1f}년)",
+                   "i": int(dates.searchsorted(dates[-1] - pd.DateOffset(years=w))) if w != "전체" else 0} for w in wins]}
+    # 구간별 수익률 표(최근 1·3·5년, 구간 첫날 = 0%)
+    head = "".join(f"<th>{E(w['label'])}</th>" for w in data["w"])
+    wtr = ""
+    for sr in series:
+        cells = ""
+        for w in data["w"]:
+            v = [x for x in sr["v"][w["i"]:] if x is not None]
+            r = (v[-1] / v[0] - 1) * 100 if len(v) > 1 else None
+            cells += f'<td class="{"up" if r and r > 0 else "dn" if r and r < 0 else ""}">{_f(r)}</td>'
+        wtr += f'<tr class="{"bm" if sr["bm"] else ""}"><td class="c">{E(sr["name"])}</td>{cells}</tr>'
+    wtable = f'<div class="wrap"><table><tr><th class="c">방식</th>{head}</tr>{wtr}</table></div>'
     tr0 = rows[0].get("trades") or []
     tl = "".join(
         f'<tr><td class="c">{E(names.get(t["code"], t["code"]))}</td><td>{t["in"]:%y.%m.%d}</td><td>{t["out"]:%y.%m.%d}</td>'
@@ -172,9 +186,9 @@ def write_html(rows, curves, names, out_path, label, dates):
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>{E(label)}</title>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb; --buy:#d92d20; --sell:#1d5fd1;
-  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#6250d6; --s5:#e87ba4; --s6:#008300; --s7:#eda100; --s8:#e34948; --bm1:#14181f; --bm2:#9aa0aa; }}
+  --s1:#2a78d6; --s2:#eb6834; --s3:#1baf7a; --s4:#6250d6; --s5:#e87ba4; --s6:#008300; --s7:#eda100; --s8:#e34948; --bm1:#14181f; --bm2:#9aa0aa; --bm3:#8a5a2b; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
-  --buy:#ff6b5e; --sell:#6ea2ff; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#9085e9; --s5:#d55181; --s6:#008300; --s7:#c98500; --s8:#e66767; --bm1:#eceff4; --bm2:#6b7380; }} }}
+  --buy:#ff6b5e; --sell:#6ea2ff; --s1:#3987e5; --s2:#d95926; --s3:#199e70; --s4:#9085e9; --s5:#d55181; --s6:#008300; --s7:#c98500; --s8:#e66767; --bm1:#eceff4; --bm2:#6b7380; --bm3:#c9965f; }} }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0 auto; padding:14px; max-width:980px; line-height:1.5; }}
 h1 {{ font-size:1.3rem; margin:4px 0; }} h2 {{ font-size:1rem; margin:18px 0 6px; }} .t, .note {{ color:var(--mut); font-size:.8rem; }}
 .wrap {{ overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; }}
@@ -192,53 +206,70 @@ svg {{ width:100%; height:auto; display:block; }} .ax {{ fill:var(--mut); font-s
 .tip b {{ display:block; margin-bottom:2px; }} .xh {{ stroke:var(--mut); }}
 details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin:6px 0; }} summary {{ cursor:pointer; padding:9px 12px; }}
 a {{ color:inherit; }}
+.seg {{ display:flex; gap:6px; margin:0 0 6px; }} .seg button {{ font:inherit; font-size:.8rem; padding:4px 12px; border-radius:999px; border:1px solid var(--line);
+  background:var(--card); color:var(--fg); cursor:pointer; }} .seg button.on {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
 </style></head><body>
 <h1>{E(label)}</h1>
 <div class="t">{dates[0]:%Y-%m-%d} ~ {dates[-1]:%Y-%m-%d} · 계좌 {SLOTS}칸(한 종목 1칸) · 신호 다음 날 종가에 체결 · 비용 매수 {BUY_COST*100:.2f}% / 매도 {SELL_COST*100:.2f}% · 계산 {kst:%Y-%m-%d %H:%M} KST</div>
+<div class="t">대상: {E(note or "-")}</div>
 <h2>결과</h2>
 <div class="wrap"><table>
 <tr><th class="c">방식</th><th>총수익</th><th>연평균</th><th>최대 하락</th><th>매매</th><th>승률</th><th>평균 수익</th><th>평균 보유</th><th>현금 비중</th><th>기말 보유</th></tr>
 {trs}</table></div>
 <p class="note">총수익·연평균·최대 하락은 계좌 전체 기준. 매매·승률·평균 수익·평균 보유는 사서 다 판 종목 기준(기말에 남은 종목은 '기말 보유'로 따로).
 현금 비중 = 기간 평균으로 계좌 중 놀고 있던 현금 비율 — 높을수록 신호가 적어 돈이 덜 일했다는 뜻.
-한계: 지금 종목 목록 기준(생존 편향), 배당 미반영, 체결은 종가 가정.</p>
-<h2>계좌 잔고 (시작 = 0%)</h2>
+한계: 배당 미반영, 체결은 종가 가정. 대상이 '지금 목록'이면 생존 편향(그동안 커진 종목만 담김)이 있어 '균등 보유'가 지수보다 크게 높게 나옴 — 이때는 지수 대신 균등 보유와 비교.</p>
+<h2>구간별 수익률</h2>
+{wtable}
+<p class="note">최근 1·3·5년 구간 첫날을 0%로 본 수익률. 전략은 전체 기간을 이어서 매매한 계좌의 그 구간 성과(구간 첫날 이미 들고 있던 종목 포함).
+코스피·나스닥 보유는 지수 그대로(배당 제외) — 코스피 종목 백테스트에 나스닥은 참고용.</p>
+<h2>계좌 잔고 <small id="wl"></small></h2>
+<div class="seg" id="seg"></div>
 <div class="chart" id="ch"><div class="lg" id="lg"></div><svg id="sv" viewBox="0 0 900 320" role="img" aria-label="계좌 잔고 곡선"></svg><div class="tip" id="tip"></div></div>
 <h2>거래 목록 · 리포트 규칙</h2>
 <details><summary>다 판 종목 {len(tr0)}건</summary><div class="wrap"><table><tr><th class="c">종목</th><th>산 날</th><th>판 날</th><th>보유</th><th>수익</th></tr>{tl}</table></div></details>
 <script>
 const D = {json.dumps(data, ensure_ascii=False)};
-const W = 900, H = 320, L = 44, R = 12, T = 10, B = 24;
-const sv = document.getElementById('sv'), tip = document.getElementById('tip'), lg = document.getElementById('lg');
-const color = s => s.bm ? (s.slot === 0 && s.name === '균등 보유' ? 'var(--bm2)' : 'var(--bm1)') : 'var(--s' + s.slot + ')';
-let lo = 0, hi = 0; D.s.forEach(s => s.v.forEach(v => {{ if (v !== null) {{ lo = Math.min(lo, v); hi = Math.max(hi, v); }} }}));
-const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
-const n = D.d.length, x = i => L + (W - L - R) * i / (n - 1), y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
-let g = '';
-const stepv = [5,10,20,25,50,100,200,500][[5,10,20,25,50,100,200,500].findIndex(s => (hi - lo) / s <= 6)] || 1000;
-for (let v = Math.ceil(lo / stepv) * stepv; v <= hi; v += stepv) {{
-  g += `<line class="${{v === 0 ? 'zero' : 'grid'}}" x1="${{L}}" x2="${{W - R}}" y1="${{y(v)}}" y2="${{y(v)}}"/><text class="ax" x="${{L - 6}}" y="${{y(v) + 3}}" text-anchor="end">${{v > 0 ? '+' : ''}}${{v}}%</text>`;
+const W = 900, H = 320, L = 48, R = 12, T = 10, B = 24;
+const sv = document.getElementById('sv'), tip = document.getElementById('tip'), lg = document.getElementById('lg'), seg = document.getElementById('seg');
+const color = s => s.bm ? (s.name === '균등 보유' ? 'var(--bm2)' : s.name.startsWith('나스닥') ? 'var(--bm3)' : 'var(--bm1)') : 'var(--s' + s.slot + ')';
+D.s.forEach(s => lg.insertAdjacentHTML('beforeend', `<span><i class="${{s.bm ? 'dash' : ''}}" style="background:${{color(s)}};border-color:${{color(s)}}"></i>${{s.name}}</span>`));
+let cur = null;
+function draw(w) {{
+  const i0 = w.i, n = D.d.length - i0;
+  const S = D.s.map(s => {{ const b = s.v.slice(i0).find(v => v !== null);
+    return {{ ...s, p: s.v.slice(i0).map(v => v === null || !b ? null : Math.round((v / b - 1) * 1000) / 10) }}; }});
+  let lo = 0, hi = 0; S.forEach(s => s.p.forEach(v => {{ if (v !== null) {{ lo = Math.min(lo, v); hi = Math.max(hi, v); }} }}));
+  const pad = (hi - lo) * 0.05 || 1; lo -= pad; hi += pad;
+  const x = i => L + (W - L - R) * i / Math.max(n - 1, 1), y = v => T + (H - T - B) * (1 - (v - lo) / (hi - lo));
+  let g = '';
+  const steps = [2,5,10,20,25,50,100,200,500,1000], stepv = steps.find(s => (hi - lo) / s <= 6) || 2000;
+  for (let v = Math.ceil(lo / stepv) * stepv; v <= hi; v += stepv)
+    g += `<line class="${{v === 0 ? 'zero' : 'grid'}}" x1="${{L}}" x2="${{W - R}}" y1="${{y(v)}}" y2="${{y(v)}}"/><text class="ax" x="${{L - 6}}" y="${{y(v) + 3}}" text-anchor="end">${{v > 0 ? '+' : ''}}${{v}}%</text>`;
+  [0, Math.floor(n / 2), n - 1].forEach(i => g += `<text class="ax" x="${{x(i)}}" y="${{H - 6}}" text-anchor="${{i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}}">${{D.d[i0 + i]}}</text>`);
+  S.forEach(s => {{
+    let p = '', pen = false;
+    s.p.forEach((v, i) => {{ if (v === null) {{ pen = false; return; }} p += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); pen = true; }});
+    g += `<path class="ln" d="${{p}}" stroke="${{color(s)}}" ${{s.bm ? 'stroke-dasharray="5 4"' : ''}}/>`;
+  }});
+  g += '<line class="xh" id="xh" y1="' + T + '" y2="' + (H - B) + '" style="display:none"/>';
+  sv.innerHTML = g;
+  document.getElementById('wl').textContent = `${{D.d[i0]}} ~ ${{D.d[D.d.length - 1]}} · 구간 첫날 = 0%`;
+  cur = {{ S, n, x, i0 }};
+  [...seg.children].forEach(b => b.classList.toggle('on', b.dataset.k === w.k));
 }}
-[0, Math.floor(n / 2), n - 1].forEach(i => g += `<text class="ax" x="${{x(i)}}" y="${{H - 6}}" text-anchor="${{i === 0 ? 'start' : i === n - 1 ? 'end' : 'middle'}}">${{D.d[i]}}</text>`);
-D.s.forEach(s => {{
-  let p = '', pen = false;
-  s.v.forEach((v, i) => {{ if (v === null) {{ pen = false; return; }} p += (pen ? 'L' : 'M') + x(i).toFixed(1) + ',' + y(v).toFixed(1); pen = true; }});
-  g += `<path class="ln" d="${{p}}" stroke="${{color(s)}}" ${{s.bm ? 'stroke-dasharray="5 4"' : ''}}/>`;
-  lg.insertAdjacentHTML('beforeend', `<span><i class="${{s.bm ? 'dash' : ''}}" style="background:${{color(s)}};border-color:${{color(s)}}"></i>${{s.name}}</span>`);
-}});
-g += '<line class="xh" id="xh" y1="' + T + '" y2="' + (H - B) + '" style="display:none"/>';
-sv.innerHTML = g;
-const xh = document.getElementById('xh');
+D.w.forEach(w => {{ const b = document.createElement('button'); b.textContent = w.label; b.dataset.k = w.k; b.onclick = () => draw(w); seg.appendChild(b); }});
+draw(D.w[D.w.length - 1]);
 sv.addEventListener('pointermove', e => {{
-  const r = sv.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
+  const {{ S, n, x, i0 }} = cur, r = sv.getBoundingClientRect(), px = (e.clientX - r.left) * W / r.width;
   const i = Math.max(0, Math.min(n - 1, Math.round((px - L) / (W - L - R) * (n - 1))));
-  xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.style.display = '';
-  tip.innerHTML = '<b>' + D.d[i] + '</b>' + D.s.map(s => `<span style="color:${{color(s)}}">●</span> ${{s.name}} ${{s.v[i] === null ? '-' : (s.v[i] > 0 ? '+' : '') + s.v[i].toFixed(1) + '%'}}`).join('<br>');
+  const xh = document.getElementById('xh'); xh.setAttribute('x1', x(i)); xh.setAttribute('x2', x(i)); xh.style.display = '';
+  tip.innerHTML = '<b>' + D.d[i0 + i] + '</b>' + S.map(s => `<span style="color:${{color(s)}}">●</span> ${{s.name}} ${{s.p[i] === null ? '-' : (s.p[i] > 0 ? '+' : '') + s.p[i].toFixed(1) + '%'}}`).join('<br>');
   tip.style.display = 'block';
   const cw = document.getElementById('ch').clientWidth, tx = (e.clientX - r.left) + 16;
   tip.style.left = (tx + tip.offsetWidth > cw ? tx - tip.offsetWidth - 32 : tx) + 'px'; tip.style.top = '40px';
 }});
-sv.addEventListener('pointerleave', () => {{ tip.style.display = 'none'; xh.style.display = 'none'; }});
+sv.addEventListener('pointerleave', () => {{ tip.style.display = 'none'; const xh = document.getElementById('xh'); if (xh) xh.style.display = 'none'; }});
 </script>
 <p class="t"><a href="./">리포트로</a></p>
 </body></html>"""

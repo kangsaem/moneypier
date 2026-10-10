@@ -49,7 +49,10 @@ VARIANTS = [("골든X3·짧게", "up"), ("골든X2·짧게", "up"), ("데드X3·
             ("익절검토·거래량폭증", "down"), ("과열·거래량폭증", "down"),
             ("매도·상대강도↓", "down"), ("비중축소·상대강도↓", "down"),
             ("골든X2·거래량↑", "up"), ("데드X2·거래량↑", "down"),
-            ("매수·트리거X2", "up")]
+            ("매수·트리거X2", "up"),
+            ("클라이맥스꼭지", "down"), ("RSI상승다이버전스", "up"), ("RSI하락다이버전스", "down"),
+            ("지지선반등", "up"), ("저항선실패", "down"), ("저항선돌파", "up")]
+EXTRA = ("클라이맥스꼭지", "RSI상승다이버전스", "RSI하락다이버전스", "지지선반등", "저항선실패", "저항선돌파")
 VOL_UP = 1.5       # 거래량 증가 = 20일 평균의 1.5배 이상
 VOL_SPIKE = 2.5    # 거래량 폭증 = 20일 평균의 2.5배 이상
 RS_DAYS = 60       # 상대강도 = 최근 60거래일 수익률 - 같은 기간 시장(코스피, 미국 종목은 S&P500) 수익률
@@ -71,6 +74,14 @@ COMPARE = [
      ["매도", "매도·상대강도↓", "비중축소", "비중축소·상대강도↓"]),
     ("골든·데드X2 보완", f"거래량↑ = 최근 5일 중 거래량이 20일 평균의 {VOL_UP}배 이상인 날이 있음",
      ["골든X2", "골든X2·거래량↑", "데드X2", "데드X2·거래량↑"]),
+    ("저점 쪽 새 후보 (2026-10-10)", f"RSI상승다이버전스 = 최근 5일 저점이 10~60일 전 저점보다 낮은데 RSI는 {m.DIV_RSI} 이상 높음(앞 저점 RSI ≤ {m.RSI_LO}) + 오늘 반등 / "
+     f"지지선반등 = 20~250일 전 의미 있는 저점(앞뒤 {m.SR_SWING}일 최저) ±{m.SR_BAND:.0f}%까지 내려왔다가 그 위에서 상승 마감",
+     ["바닥1/3", "RSI상승다이버전스", "지지선반등", "눌림진행"]),
+    ("고점 쪽 새 후보 (2026-10-10)", f"클라이맥스꼭지 = 60일 신고가 고점 ±3일에 거래량 {m.CLX_VOL}배 이상 + 고점 뒤 5~10일 신고가 없음 + 최근 5일 거래량 평균 아래 / "
+     f"RSI하락다이버전스 = 고점은 더 높은데 RSI는 낮음(앞 고점 RSI ≥ {m.RSI_HI}) + 오늘 하락 / 저항선실패 = 의미 있는 고점 ±{m.SR_BAND:.0f}%에서 밀림",
+     ["꼭지1/3", "클라이맥스꼭지", "RSI하락다이버전스", "저항선실패", "익절검토"]),
+    ("저항선 돌파 (모멘텀 확인)", "저항선돌파 = 의미 있는 고점을 처음으로 2% 넘게 넘은 날 — '고점 근처는 판다'는 지금 규칙과 반대 방향 가설",
+     ["저항선돌파", "골든X3", "불타기"]),
 ]
 REGIMES = ("상승기", "하락기")
 
@@ -106,6 +117,9 @@ def categories_of(r, feat=None):
         for nm in ("골든X2", "데드X2"):
             if nm in on and vr5 is not None and vr5 >= VOL_UP:
                 on.add(f"{nm}·거래량↑")
+    for nm in EXTRA:
+        if f.get(nm):
+            on.add(nm)
     if rs is not None:
         if "불타기" in on and rs > 0:
             on.add("불타기·상대강도↑")
@@ -153,6 +167,12 @@ def run_stock(code, name):
         up = (b >= b.rolling(REGIME_MA).mean()).reindex(c.index, method="ffill")
         reg = up.map({True: "상승기", False: "하락기"})
 
+    try:
+        ex = m.extra_signals(df)          # 후보 신호 3종(그날까지 데이터만 사용) — 한 번에 계산
+    except Exception as e:
+        print(f"{name} 후보 신호 실패: {e}")
+        ex = None
+
     def val(sr, t):
         if sr is None:
             return None
@@ -162,7 +182,8 @@ def run_stock(code, name):
     last_on = {}                                                 # 분류별로 마지막으로 켜져 있던 날(t)
     for t in range(start - COOLDOWN, n):                         # 앞쪽 며칠은 '최근에 켜져 있었나' 판단용
         r = m.analyze_df(df.iloc[: t + 1], code, name, light=True)
-        on = categories_of(r, {"vr": val(vr, t), "vr5": val(vr5, t), "rs": val(rs, t)})
+        on = categories_of(r, {"vr": val(vr, t), "vr5": val(vr5, t), "rs": val(rs, t),
+                               **({k: bool(ex[k].iloc[t]) for k in EXTRA} if ex is not None else {})})
         if t >= start:
             rets = {h: (None if pd.isna(fwd[h].iloc[t]) else float(fwd[h].iloc[t])) for h in HORIZONS}
             rg = val(reg, t)
@@ -187,16 +208,55 @@ NASDAQ_LARGE = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA",
                 "MAR", "ORLY", "CSX", "CTAS", "ASML", "FTNT", "MNST", "ABNB", "CRWD", "PDD"]
 
 
+UNIVERSE_NOTE = ""      # 결과 페이지에 적을 대상 설명(시작일 기준 목록인지, 지금 목록인지)
+MARCAP_URL = "https://raw.githubusercontent.com/FinanceData/marcap/master/data/marcap-{y}.parquet"   # 날짜별 전 종목 시가총액(공개 데이터, 매일 갱신)
+
+
+def kospi_top_at(day, top):
+    """그날(또는 그 뒤 첫 거래일) 코스피 시가총액 상위 top개 — 생존 편향 없이 '그때의 대형주'로 시작.
+    FinanceData/marcap 공개 데이터(연도별 parquet, 약 20MB)를 받음"""
+    import tempfile
+    import requests
+    day = pd.Timestamp(day)
+    for y in (day.year, day.year + 1):
+        r = requests.get(MARCAP_URL.format(y=y), timeout=120)
+        r.raise_for_status()
+        with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
+            f.write(r.content)
+            f.flush()
+            d = pd.read_parquet(f.name, columns=["Date", "Code", "Name", "Marcap", "Market"])
+        d["Date"] = pd.to_datetime(d["Date"])
+        d = d[(d["Date"] >= day) & (d["Market"] == "KOSPI")]
+        if len(d):
+            d0 = d["Date"].min()
+            x = d[d["Date"] == d0].sort_values("Marcap", ascending=False).head(top)
+            return d0, [{"code": str(c).zfill(6), "name": n} for c, n in zip(x["Code"], x["Name"])]
+    raise ValueError(f"{day:%Y-%m-%d} 이후 시가총액 자료 없음")
+
+
 def load_universe():
-    """백테스트 대상: 내 종목(tickers.json) / 코스피 시가총액 상위 TOP개 / 나스닥 대형주 TOP개"""
+    """백테스트 대상: 내 종목(tickers.json) / 코스피 시가총액 상위 TOP개(시작일 기준) / 나스닥 대형주 TOP개(지금 목록)"""
+    global UNIVERSE_NOTE
     if UNIVERSE == "nasdaq":
+        UNIVERSE_NOTE = ("지금의 나스닥 대형주 목록(생존 편향 있음: 5년 사이 커진 종목만 담김 → '균등 보유'가 지수보다 크게 높게 나옴). "
+                         "그때 목록은 무료 자료가 없어 그대로 둠 — 계좌 결과는 지수 대신 '균등 보유'와 비교할 것")
         return [{"code": t, "name": t} for t in NASDAQ_LARGE[:TOP]]
     if UNIVERSE == "kospi":
+        try:
+            ks = m._index_close("KS11", "^KS11")
+            day = ks.index[-min(BT_DAYS, len(ks) - 1)]          # 백테스트 시작일(지수 거래일 기준)
+            d0, lst = kospi_top_at(day, TOP)
+            UNIVERSE_NOTE = f"{d0:%Y-%m-%d} 당시 코스피 시가총액 상위 {TOP}종목(그때 기준 목록 · 생존 편향 제거)"
+            return lst
+        except Exception as e:
+            print(f"시작일 기준 목록 실패 → 지금 목록 사용: {e}")
+            UNIVERSE_NOTE = f"지금 코스피 시가총액 상위 {TOP}(시작일 기준 목록을 못 받아 대신 사용 · 생존 편향 있음: {type(e).__name__})"
         lst = m.fdr.StockListing("KOSPI")
         cap = "Marcap" if "Marcap" in lst.columns else next(c for c in lst.columns if "cap" in c.lower())
         code = "Code" if "Code" in lst.columns else "Symbol"
         lst = lst.sort_values(cap, ascending=False).head(TOP)
         return [{"code": str(c), "name": n} for c, n in zip(lst[code], lst["Name"])]
+    UNIVERSE_NOTE = "내 종목(지금 보유·관심 목록)"
     return [t for t in m.resolve_codes(m.load_tickers()) if t.get("code")]
 
 
@@ -278,12 +338,16 @@ def main():
     # 계좌 시뮬레이션: 리포트 규칙대로 사고팔았을 때 vs 지수·균등 보유
     try:
         if states:
-            bname, bcodes = {"nasdaq": ("나스닥", ("IXIC", "^IXIC"))}.get(UNIVERSE, ("코스피", ("KS11", "^KS11")))
-            try:
-                bser = m._index_close(*bcodes)
-            except Exception:
-                bser = None
-            prow = portfolio.run(states, names, bser, bname, BASE + "_portfolio.html", label_of() + " · 계좌 시뮬레이션")
+            idxs = [("코스피", ("KS11", "^KS11")), ("나스닥", ("IXIC", "^IXIC"))]
+            if UNIVERSE == "nasdaq":                       # 이 대상의 시장 지수를 먼저(기록 목록의 '지수 보유' 칸)
+                idxs.reverse()
+            benches = []
+            for bname, bcodes in idxs:
+                try:
+                    benches.append((bname, m._index_close(*bcodes)))
+                except Exception as e:
+                    print(f"{bname} 지수 실패: {e}")
+            prow = portfolio.run(states, names, benches, None, BASE + "_portfolio.html", label_of() + " · 계좌 시뮬레이션", UNIVERSE_NOTE)
             print(f"{BASE}_portfolio.html 생성 완료")
     except Exception as e:
         prow = []
@@ -296,7 +360,7 @@ def save_version(rows, B, period, n_stocks, prow):
     """요약 json 저장 + 버전 실행이면 최신본 이름으로도 복사(링크는 최신본끼리 연결)"""
     import json
     import shutil
-    summ = {"kind": "backtest", "universe": UNIVERSE, "label": label_of(), "version": VERSION or "latest", "memo": MEMO,
+    summ = {"kind": "backtest", "universe": UNIVERSE, "label": label_of(), "note": UNIVERSE_NOTE, "version": VERSION or "latest", "memo": MEMO,
             "commit": COMMIT, "period": period, "stocks": n_stocks,
             "base": {str(h): (B[h]["mean"] if B.get(h) else None) for h in HORIZONS},
             "cats": {r["cat"]: {"n": r["n"], "d": {str(h): ((r["S"][h]["mean"] - B[h]["mean"]) if r["S"][h] and B.get(h) and r["S"][h]["n"] >= MIN_N else None)
@@ -348,7 +412,7 @@ def ret_td(v):
 def label_of():
     years = BT_DAYS / 252
     return {"tickers": "시그널 백테스트 · 내 종목", "nasdaq": f"시그널 백테스트 · 나스닥 대형 {TOP}"}.get(
-        UNIVERSE, f"시그널 백테스트 · 코스피 시총 상위 {TOP}") + \
+        UNIVERSE, f"시그널 백테스트 · 코스피 시총 상위 {TOP}(시작일 기준)") + \
         (f" · {years:.0f}년" if years >= 1.5 else f" · {BT_DAYS / 21:.0f}개월")
 
 
@@ -432,6 +496,7 @@ a {{ color:inherit; }}
 </style></head><body>
 <h1>{E(label)}</h1>
 <div class="t">{E(period)} · 종목 {n_stocks}개 · 신호가 처음 뜬 날 종가 기준 · 계산 {kst:%Y-%m-%d %H:%M} KST ({secs:.0f}초) · <a href="./">리포트로</a></div>
+<div class="t">대상: {E(UNIVERSE_NOTE)}</div>
 <div class="base"><b><a href="{os.path.basename(BASE)}_portfolio.html">계좌 시뮬레이션 보기 →</a></b> · <a href="backtests.html">지난 백테스트와 비교 →</a> 리포트 규칙(매수·불타기에 사고 익절검토·비중축소·매도에 판다)대로 매매했을 때의 계좌 잔고를 지수·균등 보유와 비교</div>
 <div class="base"><b>기준선</b> (같은 기간 아무 날이나 샀을 때) — {base}</div>
 <div class="wrap"><table>
