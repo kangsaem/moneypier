@@ -208,6 +208,8 @@ NASDAQ_LARGE = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA",
                 "MAR", "ORLY", "CSX", "CTAS", "ASML", "FTNT", "MNST", "ABNB", "CRWD", "PDD"]
 
 
+N100_RENAME = {"FB": "META", "FISV": "FI"}   # 그 뒤 기호가 바뀐 종목(야후 시세는 새 기호로)
+N100_DUP = {"GOOG", "FOX", "FOXA"}           # GOOGL과 같은 회사(GOOG) · 폭스 두 종류는 뺌
 UNIVERSE_NOTE = ""      # 결과 페이지에 적을 대상 설명(시작일 기준 목록인지, 지금 목록인지)
 MARCAP_URL = "https://raw.githubusercontent.com/FinanceData/marcap/master/data/marcap-{y}.parquet"   # 날짜별 전 종목 시가총액(공개 데이터, 매일 갱신)
 
@@ -238,8 +240,19 @@ def load_universe():
     """백테스트 대상: 내 종목(tickers.json) / 코스피 시가총액 상위 TOP개(시작일 기준) / 나스닥 대형주 TOP개(지금 목록)"""
     global UNIVERSE_NOTE
     if UNIVERSE == "nasdaq":
-        UNIVERSE_NOTE = ("지금의 나스닥 대형주 목록(생존 편향 있음: 5년 사이 커진 종목만 담김 → '균등 보유'가 지수보다 크게 높게 나옴). "
-                         "그때 목록은 무료 자료가 없어 그대로 둠 — 계좌 결과는 지수 대신 '균등 보유'와 비교할 것")
+        try:
+            from nasdaq_100_ticker_history import tickers_as_of     # 날짜별 나스닥100 구성 종목(공개 자료, MIT)
+            ix = m._index_close("IXIC", "^IXIC")
+            day = ix.index[-min(BT_DAYS, len(ix) - 1)]
+            tk = sorted(tickers_as_of(day.year, day.month, day.day))
+            tk = [t for t in tk if t not in N100_DUP]                # 같은 회사 두 종류 주식은 하나만
+            UNIVERSE_NOTE = (f"{day:%Y-%m-%d} 당시 나스닥100 구성 종목 {len(tk)}개 전체(그때 기준 목록 · 생존 편향 제거). "
+                             f"그 뒤 인수·상장폐지돼 시세가 없는 종목은 빠짐(아래 실패 목록)")
+            return [{"code": N100_RENAME.get(t, t), "name": t} for t in tk]
+        except Exception as e:
+            print(f"그때 나스닥100 목록 실패 → 지금 목록 사용: {e}")
+            UNIVERSE_NOTE = (f"지금의 나스닥 대형주 목록(그때 목록을 못 받아 대신 사용 · 생존 편향 있음: {type(e).__name__}) "
+                             "— 계좌 결과는 지수 대신 '균등 보유'와 비교할 것")
         return [{"code": t, "name": t} for t in NASDAQ_LARGE[:TOP]]
     if UNIVERSE == "kospi":
         try:
@@ -411,7 +424,7 @@ def ret_td(v):
 
 def label_of():
     years = BT_DAYS / 252
-    return {"tickers": "시그널 백테스트 · 내 종목", "nasdaq": f"시그널 백테스트 · 나스닥 대형 {TOP}"}.get(
+    return {"tickers": "시그널 백테스트 · 내 종목", "nasdaq": "시그널 백테스트 · 나스닥100(시작일 기준)"}.get(
         UNIVERSE, f"시그널 백테스트 · 코스피 시총 상위 {TOP}(시작일 기준)") + \
         (f" · {years:.0f}년" if years >= 1.5 else f" · {BT_DAYS / 21:.0f}개월")
 
