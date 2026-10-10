@@ -1,5 +1,5 @@
 """
-신호 기록: 리포트를 만들 때마다 그날 종목별 리포트 칸(매수검토·매도검토·추격매수 주의·홀딩 유지·상승중·대기·하락-대기)을
+신호 기록: 리포트를 만들 때마다 그날 종목별 리포트 칸(매수검토·매도검토·매수보류·홀딩·상승중·반등대기·하락중)을
 history/<날짜>_<kr|us>.json 으로 남기고(daily.yml이 저장소에 커밋), 지난 기록을 모아 docs/history.html 을 만든다.
 - 20·60거래일 뒤 수익률은 지금 받아 둔 일봉으로 계산(그날 종가 기준). 기준선 = 같은 날 기록된 전 종목 평균.
 - 월별 요약: 칸별 건수·20일 뒤 평균(기준선 대비) + 그 달 내 종목(균등) vs 코스피 vs 나스닥 수익률.
@@ -68,6 +68,9 @@ def fwd(c, asof, h):
     return float((c.iloc[i + h] / c.iloc[i] - 1) * 100)
 
 
+OLD_NAME = {"추격매수 주의": "매수보류", "홀딩 유지·순항": "홀딩·순항", "홀딩 유지·눌림": "홀딩·눌림", "대기": "반등대기", "하락-대기": "하락중"}
+
+
 def rows_of(recs, closes):
     """기록 → 줄 목록. 같은 종목·같은 asof는 마지막 기록 하나만(국장·미장 리포트가 같은 봉을 두 번 기록하는 경우)"""
     by = {}
@@ -77,7 +80,8 @@ def rows_of(recs, closes):
     rows = []
     for (code, asof), (rec, it) in by.items():
         c = closes.get(code)
-        row = {"date": asof, "code": code, "name": it["name"], "groups": it.get("groups", []), "close": it.get("close")}
+        groups = [dict(x, g=OLD_NAME.get(x["g"], x["g"])) for x in it.get("groups", [])]    # 2026-10-11 이전 기록은 옛 이름
+        row = {"date": asof, "code": code, "name": it["name"], "groups": groups, "close": it.get("close")}
         for h in HORIZONS:
             row[h] = fwd(c, asof, h)
         rows.append(row)
@@ -103,8 +107,8 @@ def month_ret(c, ym):
 
 
 # ---------------------------------------------------------------- 페이지
-GROUP_ORDER = ["매수검토", "매도검토", "추격매수 주의", "홀딩 유지·순항", "홀딩 유지·눌림", "상승중", "대기", "하락-대기"]
-GROUP_WAY = {"매수검토": 1, "매도검토": -1, "추격매수 주의": -1, "홀딩 유지·순항": 1, "홀딩 유지·눌림": 1, "상승중": 1, "대기": 1, "하락-대기": 1}
+GROUP_ORDER = ["매수검토", "매도검토", "매수보류", "홀딩·순항", "홀딩·눌림", "상승중", "반등대기", "하락중"]
+GROUP_WAY = {"매수검토": 1, "매도검토": -1, "매수보류": -1, "홀딩·순항": 1, "홀딩·눌림": 1, "상승중": 1, "반등대기": 1, "하락중": 1}
 
 
 def _p(v, d=1):
@@ -183,7 +187,7 @@ small {{ color:var(--mut); }} a {{ color:inherit; }}
 <h1>신호 기록</h1>
 <div class="t">리포트가 만들어질 때마다 그날 종목별 칸을 저장 · 기록 {len(days)}일({days[0] if days else '-'} ~ {days[-1] if days else '-'}) · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
 <p class="note">20·60일 뒤 = 그날 종가 대비 20·60거래일 뒤 수익률. 기준선 대비 = 같은 날 기록된 내 종목 전체 평균보다 몇 %p 나았나.
-초록 = 칸의 뜻대로 맞음(매수검토·홀딩 유지·상승중은 오르면, 매도검토·추격매수 주의는 덜 오르거나 내리면), 빨강 = 반대. 아직 기간이 안 지났으면 '-'.</p>
+초록 = 칸의 뜻대로 맞음(매수검토·홀딩·상승중은 오르면, 매도검토·매수보류는 덜 오르거나 내리면), 빨강 = 반대. 아직 기간이 안 지났으면 '-'.</p>
 <h2>월별 요약 <small>(칸별 건수 · 20일 뒤 기준선 대비 평균, 그 달 수익률)</small></h2>
 <div class="wrap"><table>
 <tr><th class="c" rowspan="2">월</th>{ghead}<th class="g" rowspan="2">내 종목<br>(균등)</th><th rowspan="2">코스피</th><th rowspan="2">나스닥</th></tr>

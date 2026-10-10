@@ -35,7 +35,9 @@ COOLDOWN = 5           # 신호가 꺼진 뒤 이 거래일 수 이상 지나야
 NEUTRAL = {5: 0.5, 20: 1.0, 60: 2.0}   # 기준선과 차이가 이 %p 미만이면 '차이 없음'
 
 # 분류: (이름, 기대 방향) — up = 신호 뒤 오르면 맞음, down = 내리거나 덜 오르면 맞음
-CATEGORIES = [("v1·매수검토", "up"), ("v1·매도검토", "down"), ("v1·추격매수주의", "down"), ("v1·홀딩유지", "up")] + \
+CATEGORIES = [("v1·매수검토", "up"), ("v1·매수검토●2", "up"), ("v1·매수검토●3", "up"),
+              ("v1·매도검토", "down"), ("v1·매도검토●2", "down"), ("v1·매도검토●3", "down"),
+              ("v1·매수보류", "down"), ("v1·홀딩", "up")] + \
     [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") for nm, _, _, tone in m.SIGNAL_GROUPS] + [
     ("골든X3", "up"), ("골든X2", "up"), ("데드X3", "down"), ("데드X2", "down"), ("과열", "down"),
     ("바닥1/3", "up"), ("바닥2/3", "up"), ("바닥3/3", "up"),
@@ -120,13 +122,16 @@ def categories_of(r, feat=None):
             on.add("추세이탈·상대강도↓")          # + 최근 60거래일 지수보다 약함
             if len(r["sig"]["sell_c"]) < 2:
                 on.add("추세이탈·상대강도↓·과열없음")   # 지금 매도검토가 못 잡는 경우(과열 조건 2개 미만)만
-    # v1 리포트 칸(매수검토·매도검토·추격매수 주의·홀딩 유지) — 리포트와 같은 판정(market_report.review)을 그날 값으로
+    # v1 리포트 칸(매수검토·매도검토·매수보류·홀딩) — 리포트와 같은 판정(market_report.review)을 그날 값으로
     try:
         r["rs60"], r["vol5"] = (feat or {}).get("rs"), (feat or {}).get("vr5")
         rv = m.review(r)
-        for k, nm in (("buy", "v1·매수검토"), ("sell", "v1·매도검토"), ("caution", "v1·추격매수주의"), ("hold", "v1·홀딩유지")):
+        for k, nm in (("buy", "v1·매수검토"), ("sell", "v1·매도검토"), ("caution", "v1·매수보류"), ("hold", "v1·홀딩")):
             if rv.get(k):
                 on.add(nm)
+                for lv in (2, 3):                       # 강도 칸: ●2 = 2개 이상, ●3 = 3개
+                    if k in ("buy", "sell") and rv[k]["score"] >= lv:
+                        on.add(f"{nm}●{lv}")
     except Exception:
         pass
     if r.get("bottom"):

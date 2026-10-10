@@ -29,12 +29,18 @@ HALF_CATS = ("익절검토", "비중축소")
 #        week_exit = 주봉 붕괴(5주<10주 + 종가<10주선)면 다음 날 매도(산 지 5거래일 뒤부터) · extra_sell = 이 분류가 새로 켜지면 전부 매도 · state_sell = 켜져 있는 동안 매도(산 지 5일 뒤부터)
 HOLD_BUY = ("매수", "눌림진행")
 HOLD_SELL = ("매도·상대강도↓", "비중축소·상대강도↓")
+STOP8 = [("fix_next", 8)]
+_V1 = "v1 규칙: 매수검토에 사고, 매도검토가 뜨면 전부 판다 + 손절8%(종가가 매수가 -8%면 다음 날 종가도 회복 못 할 때)"
 VARIANTS = [
-    ("리포트 규칙", "매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 판다(구버전)", ("매수", "불타기"), False, "half", {}),
-    ("리포트 + 손절8%", "리포트 규칙 + 종가가 매수가 -8%면 다음 날 종가도 회복 못 할 때 매도 (기준)", ("매수", "불타기"), False, "half",
-     {"stops": [("fix_next", 8)]}),
+    ("리포트 + 손절8%", "구버전: 매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 + 손절8% (비교 기준)", ("매수", "불타기"), False, "half",
+     {"stops": STOP8}),
+    ("v1 ●1+", _V1 + " — 매수검토 ●1 이상 / 매도검토 ●1 이상", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
+    ("v1 매수●2+", _V1 + " — 매수검토 ●2 이상만 매수", ("v1·매수검토●2",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
+    ("v1 매수●3+", _V1 + " — 매수검토 ●3만 매수", ("v1·매수검토●3",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
+    ("v1 매도●2+", _V1 + " — 매도검토 ●2 이상일 때만 매도", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토●2",)}),
+    ("v1 매도●3+", _V1 + " — 매도검토 ●3일 때만 매도", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토●3",)}),
 ]
-# 이전에 시험하고 뺀 변형(2026-10-10 결과 참고): 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
+# 이전에 시험하고 뺀 변형(2026-10-10 결과 참고): 리포트 규칙(손절 없음), 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
 # 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수, 손절8%+고점 대비 -8·10·12% 매도, 손절8%+추세이탈 매도 — HANDOFF.md 참고
 
 
@@ -112,7 +118,10 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
             if i == 0:          # 첫날은 이미 켜져 있던 신호라 '새로 켜짐'으로 보지 않음
                 continue
             if c in pos:
-                if sell_mode == "hold":
+                if sell_mode == "v1":            # v1: 매도검토(지정 강도 이상)가 새로 켜지면 전부
+                    if new & set(opts.get("sell_cats", ())):
+                        orders.append(("sell", c))
+                elif sell_mode == "hold":
                     if new & set(HOLD_SELL) or new & extra_sell or (opts.get("week_exit") and "주봉붕괴" in on and i - pos[c]["i"] >= 5):
                         orders.append(("sell", c))
                 elif "매도" in new or new & extra_sell or (on & state_sell and i - pos[c]["i"] >= 5):
@@ -210,7 +219,7 @@ def write_html(rows, curves, names, out_path, label, dates, note=""):
             cells += f'<td class="{"up" if r and r > 0 else "dn" if r and r < 0 else ""}">{_f(r)}</td>'
         wtr += f'<tr class="{"bm" if sr["bm"] else ""}"><td class="c">{E(sr["name"])}</td>{cells}</tr>'
     wtable = f'<div class="wrap"><table><tr><th class="c">방식</th>{head}</tr>{wtr}</table></div>'
-    tr0 = rows[0].get("trades") or []
+    tr0 = (rows[1] if len(rows) > 1 and rows[1].get("trades") is not None else rows[0]).get("trades") or []   # v1 ●1+ 거래
     tl = "".join(
         f'<tr><td class="c">{E(names.get(t["code"], t["code"]))}</td><td>{t["in"]:%y.%m.%d}</td><td>{t["out"]:%y.%m.%d}</td>'
         f'<td>{t["days"]}일</td><td class="{"up" if t["ret"] > 0 else "dn"}">{t["ret"]:+.1f}%</td></tr>'
@@ -261,7 +270,7 @@ a {{ color:inherit; }}
 <p class="note">범례를 누르면 선을 켜고 끕니다.</p>
 <div class="seg" id="seg"></div>
 <div class="chart" id="ch"><div class="lg" id="lg"></div><svg id="sv" viewBox="0 0 900 320" role="img" aria-label="계좌 잔고 곡선"></svg><div class="tip" id="tip"></div></div>
-<h2>거래 목록 · 리포트 규칙</h2>
+<h2>거래 목록 · v1 ●1+</h2>
 <details><summary>다 판 종목 {len(tr0)}건</summary><div class="wrap"><table><tr><th class="c">종목</th><th>산 날</th><th>판 날</th><th>보유</th><th>수익</th></tr>{tl}</table></div></details>
 <script>
 const D = {json.dumps(data, ensure_ascii=False)};

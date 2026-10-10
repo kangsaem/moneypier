@@ -599,11 +599,12 @@ def stock_signals(r):
 # 매수검토 = 매수 또는 눌림진행 (+ 근거 수로 강도) / 매도검토 = 아래 3개 중 하나 이상 (걸린 수로 강도)
 #   ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증
 #   (60거래일 최고 종가 대비 -8%는 2026-10-10 넣었다가 뺌: 시장 조정기에 대부분 걸리고, 백테스트에서도 고점 대비 매도는 수익을 줄임)
-# 추격매수 주의 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 (매도검토에 이미 있으면 제외)
-# 상승중 = 불타기 · 대기 = 반등대기 · 하락-대기 = 하락진행
-# 홀딩 유지 = 주봉·월봉 정배열 + 종가 10주선 위 + 매도검토·추격매수 주의 없음 (순항 = 일봉도 정배열 / 눌림 = 일봉만 역배열)
-REVIEW = (("buy", "매수검토", "buy"), ("sell", "매도검토", "sell"), ("caution", "추격매수 주의", "warn"),
-          ("hold", "홀딩 유지", "hold"), ("up", "상승중", "buy"), ("wait", "대기", "watch"), ("waitdn", "하락-대기", "watch"))
+# 매수보류 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 (매도검토에 이미 있으면 제외)
+# 상승중 = 불타기 · 반등대기 = 반등대기 · 하락중 = 하락진행
+# 홀딩 = 주봉·월봉 정배열 + 종가 10주선 위 + 매도검토·매수보류 없음 (순항 = 일봉도 정배열 / 눌림 = 일봉만 역배열)
+REVIEW = (("buy", "매수검토", "buy"), ("sell", "매도검토", "sell"), ("caution", "매수보류", "warn"),
+          ("hold", "홀딩", "hold"), ("up", "상승중", "buy"), ("wait", "반등대기", "watch"), ("waitdn", "하락중", "watch"))
+STRENGTH_MAX = 3      # 매수검토·매도검토 강도 ●1~3 (겹친 근거 수, 3개 이상은 3)
 
 
 def review(r):
@@ -621,7 +622,7 @@ def review(r):
             why.append("장기 추세 상승")
         if r.get("bottom_near"):
             why.append("바닥근접")
-        out["buy"] = {"score": len(why), "why": why}
+        out["buy"] = {"score": min(len(why), STRENGTH_MAX), "why": why}
     # 매도검토
     why, warn = [], []
     if sg["sell"] == "타점":
@@ -631,7 +632,17 @@ def review(r):
     if sg["sell"] == "과열":
         (why if spike else warn).append(f"익절검토 + 거래량폭증({vol:.1f}배)" if spike else "익절검토(거래량 폭증 없음)")
     if why:
-        out["sell"] = {"score": len(why), "why": why}
+        # 강도: 기본 근거 1개 + 겹친 근거(상대강도↓·거래량폭증 중 기본에 안 쓴 것, 10주선 이탈, 꼭지근접)
+        base = why[0]
+        if weak and "상대강도" not in base:
+            why.append(f"상대강도↓({rs:+.1f}%p)")
+        if spike and "거래량" not in base:
+            why.append(f"거래량폭증({vol:.1f}배)")
+        if r.get("w10") and r["close"] < r["w10"]:
+            why.append("10주선 이탈")
+        if r.get("top_near"):
+            why.append("꼭지근접")
+        out["sell"] = {"score": min(len(why), STRENGTH_MAX), "why": why}
     elif warn:
         out["caution"] = {"score": 0, "why": warn}
     if out["caution"]:
@@ -949,7 +960,7 @@ def market_signals(snap, results):
     weak = sum(1 for r in results if r["rsi"] <= 35) / n if n else None
 
     risk = [
-        ("코스피 50일 이격도 120 이상 (과열)", f"{ks['disp']:.1f}" if ks else "-", ks["disp"] >= 120 if ks else None),
+        ("코스피 50일 이격도 120 이상", f"{ks['disp']:.1f}" if ks else "-", ks["disp"] >= 120 if ks else None),
         ("코스피 RSI 70 이상", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] >= 70 if ks else None),
         ("VIX 25 이상 또는 10일간 30% 이상 급등", f"{vix['last']:.1f}" if vix else "-",
          (vix["last"] >= 25 or (vix["pct10"] is not None and vix["pct10"] >= 30)) if vix else None),
@@ -957,8 +968,8 @@ def market_signals(snap, results):
          (y10["chg10"] >= 0.3) if y10 and y10["chg10"] is not None else None),
         ("내 종목 70% 이상이 일봉 역배열", f"{bear:.0%}" if bear is not None else "-",
          (bear >= 0.7) if bear is not None else None),
-        (f"신용잔고/예탁금 비율 과거 상위 {100 - CREDIT_TOP}% (빚투 과열)",
-         f"{cr['ratio']:.1f}% · 상위 {max(100 - cr['pct'], 0):.0f}%" if cr else "-",
+        (f"신용잔고/예탁금 비율 5년 중 높은 {100 - CREDIT_TOP}%",
+         f"{cr['ratio']:.1f}% (5년 최대 {cr['max']:.1f}%)" if cr else "-",
          (cr["pct"] >= CREDIT_TOP) if cr else None),
     ]
     bottom = [
@@ -968,7 +979,7 @@ def market_signals(snap, results):
         ("코스피 52주 고점 대비 -20% 이하 + 최근 20거래일 신저점 없음",
          f"{ks['from_high']:.1f}% · 저점 {ks['days_since_low']}일 전" if ks else "-",
          (ks["from_high"] <= -20 and ks["days_since_low"] >= 20) if ks else None),
-        ("VIX 30 이상 (공포 극단)", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
+        ("VIX 30 이상", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
         ("내 종목 30% 이상이 RSI 35 이하", f"{weak:.0%}" if weak is not None else "-",
          (weak >= 0.3) if weak is not None else None),
     ]
