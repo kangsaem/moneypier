@@ -40,7 +40,6 @@ jobs:
           BT_NAME: ${{ inputs.name }}
           BT_DAYS: ${{ inputs.days }}
           BT_OUT_DIR: results
-      - run: python bt_index.py
       - name: 결과 커밋
         env:
           CODE: ${{ inputs.code }}
@@ -48,11 +47,24 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git add results/
-          git commit -m "바닥·꼭지 추적 ($CODE) $MEMO" || exit 0
-          git pull --rebase origin ${{ github.ref_name }}
-          python bt_index.py && git add results/backtests.html && git commit -m "백테스트 목록 갱신" || true
-          git push
+          # 이번 실행이 만든 결과 파일만 따로 보관 → 최신 저장소 위에 다시 얹고 목록(backtests.html)은 그때 새로 만듦
+          # (여러 실행이 동시에 끝나도 목록 파일 충돌이 나지 않게, 밀어넣기 실패 시 5번까지 다시 시도)
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep -v 'backtests.html$' > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          cat /tmp/list
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in 1 2 3 4 5; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            python bt_index.py || echo "목록 만들기 실패(bt_index.py 확인)"
+            git add results/
+            git commit -q -m "바닥·꼭지 추적 ($CODE) $MEMO" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 7))
+          done
+          exit 1
       - name: 리포트 다시 배포
         run: gh workflow run daily.yml --ref ${{ github.ref_name }}
         env:
