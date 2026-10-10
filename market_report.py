@@ -28,6 +28,9 @@ RSI_HI_STRONG = 80  # 일·주·월 모두 정배열(정·정·정, 강한 상�
 RSI_LO = 35         # 매수 '싸다' 기준 RSI (기본)
 RSI_LO_WEAK = 30    # 일·주·월 모두 역배열(역·역·역, 하락 추세)일 때의 매수 기준
 CHART_DAYS = 132    # 차트에 보여줄 기간(거래일). 큰 차트·소형 차트·코스피 공통
+BOTTOM_DROP = 25.0  # 바닥 단계: 1년 고점 대비 이 % 이상 빠진 저점이 있어야 '바닥'을 따짐
+BOTTOM_WIN = 120    # 바닥 단계: 저점 뒤 이 거래일까지만 바닥 단계로 봄
+BOTTOM_QUIET = 20   # 바닥 단계: 저점 뒤 이 거래일 동안 신저가가 없어야 '하락 멈춤'
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
 
 
@@ -175,6 +178,7 @@ def analyze_df(df, code, name, light=False):
     r["chart"] = chart_data(c, rs, with_proj=not light)
     newlow = c <= c.shift(1).rolling(20).min()          # 직전 20일 저가를 깬 날
     r["new_low3"] = bool(newlow.tail(3).any())          # 최근 3일 안에 신저가를 냈는가
+    r["bottom"], r["bottom_info"] = bottom_stage(c, rs, r)
     r["sig"] = stock_signals(r)
     return r
 
@@ -207,6 +211,52 @@ def resolve_codes(items):
         if not t.get("code"):
             t["code"] = names.get(t["name"], "")
     return items
+
+
+def bottom_stage(c, rs, r):
+    """차트상 바닥 단계 0~3 (종가 기준).
+    전제: 최근 1년 고점 이후의 최저 종가(첫 저점)가 그 고점 대비 BOTTOM_DROP% 이상 빠졌고, 그 저점이 BOTTOM_WIN거래일 이내.
+    1/3 하락 멈춤   = 첫 저점 뒤 BOTTOM_QUIET거래일 이상 신저가 없음 + 종가 ≥ 10일선
+    2/3 바닥 다지기 = 1/3 + (쌍바닥: 저점에서 10% 이상 반등 → 반등폭 60% 이상 되돌려 첫 저점의 110% 이내로 다시 내려옴
+                       또는 RSI 상승 다이버전스: 그 두 번째 저점이 첫 저점 105% 이내인데 RSI는 5 이상 높음) + 20일선 상승 전환
+    3/3 추세 전환   = 1/3 조건 + 주봉 정배열(5주>10주) + 종가 ≥ 10주선 + 10주선 하락 멈춤(5거래일 전보다 같거나 높음)"""
+    info = {}
+    if len(c) < 260:
+        return 0, info
+    yr = c.iloc[-250:]
+    dH, H = yr.idxmax(), float(yr.max())             # 최근 1년 고점
+    after_h = c.loc[dH:]
+    d1, L1 = after_h.idxmin(), float(after_h.min())  # 그 고점 이후의 최저 종가 = 첫 저점(창이 밀려도 바뀌지 않음)
+    drop = (L1 / H - 1) * 100
+    since = len(c.loc[d1:]) - 1
+    if drop > -BOTTOM_DROP or since > BOTTOM_WIN:    # 충분히 안 빠졌거나, 저점이 너무 오래전이면 바닥 단계로 보지 않음
+        return 0, info
+    cl = float(c.iloc[-1])
+    m10 = float(c.iloc[-10:].mean())
+    m20 = c.rolling(20).mean()
+    info = {"drop": drop, "low": L1, "low_date": d1, "since": since}
+    quiet = since >= BOTTOM_QUIET
+    stage = 1 if (quiet and cl >= m10) else 0
+    retest = div = False
+    seg = c.loc[d1:]
+    dp, P = seg.idxmax(), float(seg.max())         # 저점 뒤 반등 고점
+    after = seg.loc[dp:].iloc[1:]
+    if P >= L1 * 1.10 and len(after):               # 10% 이상 반등한 뒤에야 '두 번째 저점'을 봄
+        d2, L2 = after.idxmin(), float(after.min())
+        pulled = L2 <= P - (P - L1) * 0.6            # 반등폭의 60% 이상 되돌림
+        retest = pulled and L2 <= L1 * 1.10          # 첫 저점 근처(110% 이내)까지 다시 내려옴 = 쌍바닥
+        div = pulled and L2 <= L1 * 1.05 and float(rs.loc[d2]) > float(rs.loc[d1]) + 5
+    m20_up = bool(m20.iloc[-1] > m20.iloc[-6])
+    info.update({"retest": retest, "div": div, "m20_up": m20_up})
+    if stage == 1 and (retest or div) and m20_up:
+        stage = 2
+    wk, w10s = r["week"], r["chart"]["w10"]
+    w10 = w10s[-1]
+    w10_up = w10 is not None and len(w10s) > 5 and w10s[-6] is not None and w10 >= w10s[-6]   # 10주선 하락 멈춤
+    info["w10_up"] = bool(w10_up)
+    if quiet and cl >= m10 and wk.get("ok") and wk.get("above") and w10 is not None and cl >= w10 and w10_up:
+        stage = 3
+    return stage, info
 
 
 def long_up(r):
@@ -287,7 +337,7 @@ def stock_signals(r):
         touched = min(gaps) <= ADD_TOUCH and gaps[-1] >= 0     # 닿았지만 종가는 20일선 위 유지
         bounce = cl[-1] > cl[-2] and gaps[-1] > min(gaps)
         if trend:
-            add_c.append("주봉 정배열 · 20일선 상승 중" + (" · 5월선 위" if mm5[-1] is not None else "")); ak["day"] = "c"
+            add_c.append("주봉 정배열 · 20일선 상승 중" + (" · 5월선 위" if mm5[-1] is not None else "")); ak["week"] = "c"   # 추세 조건의 핵심은 주봉 정배열 → '주' 칸 강조
         if calm:
             add_c.append("과열 아님 (이격도·RSI)"); ak["disp"] = "c"
         if touched:
@@ -350,6 +400,8 @@ def flags(r):
         f.append("이격도상단")
     if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
         f.append("이격도하단")
+    if r.get("bottom"):
+        f.append(f"바닥{r['bottom']}/3")
     return [nm for nm, _ in sig_groups(r)] + f
 
 
