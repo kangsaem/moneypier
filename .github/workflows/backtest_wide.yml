@@ -14,8 +14,8 @@ on:
         description: "상위 몇 개 (나스닥은 최대 50, 내 종목이면 무시)"
         default: "50"
       days:
-        description: "기간(거래일, 1260 ≈ 5년, 252 ≈ 1년)"
-        default: "1260"
+        description: "기간(거래일). 쉼표로 여러 개 = 각각 따로 실행(코스피는 기간마다 그 시작일의 상위 종목). 252≈1년 756≈3년 1260≈5년"
+        default: "252,756,1260"
       memo:
         description: "이번에 바꾼 로직 메모 (기록 목록에 표시)"
         default: ""
@@ -27,25 +27,34 @@ permissions:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      - name: 나스닥100 과거 구성 종목 자료(실패해도 계속 — 그때는 지금 목록 사용)
+        run: pip install "git+https://github.com/jmccarrell/n100tickers" || echo "나스닥100 목록 설치 실패"
       - name: 백테스트
         run: |
           case "${{ inputs.market }}" in
-            nasdaq) export BT_UNIVERSE=nasdaq BT_OUT=results/backtest_nasdaq ;;
-            mine)   export BT_UNIVERSE=tickers BT_OUT=results/backtest_mine ;;
-            *)      export BT_UNIVERSE=kospi BT_OUT=results/backtest_wide ;;
+            nasdaq) export BT_UNIVERSE=nasdaq OUTB=results/backtest_nasdaq ;;
+            mine)   export BT_UNIVERSE=tickers OUTB=results/backtest_mine ;;
+            *)      export BT_UNIVERSE=kospi OUTB=results/backtest_wide ;;
           esac
           export BT_VERSION=$(TZ=Asia/Seoul date +%Y%m%d-%H%M)
-          python backtest.py
+          # 기간마다 따로 실행: 5년(1260)은 원래 이름, 나머지는 _<거래일>d 이름(예: backtest_wide_252d.html)
+          fail=0
+          for d in $(echo "$DAYS" | tr ',' ' '); do
+            if [ "$d" = "1260" ]; then export BT_OUT=$OUTB; else export BT_OUT=${OUTB}_${d}d; fi
+            echo "=== $d 거래일 → $BT_OUT ==="
+            BT_DAYS=$d python backtest.py || { echo "!!! $d 거래일 실패"; fail=1; }
+          done
+          ls results/ >/dev/null && [ "$fail" = 0 ] || echo "일부 기간 실패 — 성공한 결과만 저장"
         env:
           BT_TOP: ${{ inputs.top }}
-          BT_DAYS: ${{ inputs.days }}
+          DAYS: ${{ inputs.days }}
           BT_MEMO: ${{ inputs.memo }}
           TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
       - name: 결과 커밋
