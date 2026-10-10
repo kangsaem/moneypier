@@ -38,6 +38,8 @@ TOP_HOLD = "low"    # 꼭지 단계: 고점을 넘기 전까지 유지
 TOP_FAST = True     # 꼭지 1/3 빠른 판정: 고점 무렵(고점 포함 6거래일) RSI 과열(70 이상)이거나 50일 이격도가 과거 최대 근접(×NEAR_MAX)이면
                     #   기다리지 않고 10일선 아래 첫 종가에 1/3
 BOTTOM_FAST = False # 바닥 1/3 빠른 판정(이격도 과거 최소 근접 시 기다리지 않음) — LS 시험에서 폭락 중 반등마다 켜져 꺼 둠(2026-10-10)
+NEAR_BOTTOM = 30.0  # '바닥근접' 표시: 바닥 단계가 켜져 있고 종가가 저점의 +30% 이내일 때만 (멀어지면 세부내용에만 단계 표시)
+NEAR_TOP = 20.0     # '꼭지근접' 표시: 꼭지 단계가 켜져 있고 종가가 고점의 -20% 이내일 때만
 BOTTOM_HOLD = "low"  # 바닥 단계 유지 방식: "low" = 저점을 깨기 전까지 유지 / "ma20" = 종가가 20일선 아래로 가면 해제 / "" = 매일 새로 판정
 HI_DAYS = 60       # 정리 신호: 최근 60거래일 최고 종가 대비
 HI_DROP = 8.0      # (현재 미사용) 고점 대비 하락 매도 — 백테스트에서 효과 없어 리포트에서 뺌
@@ -242,6 +244,10 @@ def analyze_df(df, code, name, light=False):
             r["top"], r["top_info"] = 0, {}
         else:
             r["bottom"], r["bottom_info"] = 0, {}
+    # 표시용 '근접': 단계가 켜져 있어도 가격이 극점에서 멀어졌으면 근접이 아님(단계 자체는 그대로 — 백테스트 분류는 r['bottom']·r['top'])
+    bi, ti = r.get("bottom_info") or {}, r.get("top_info") or {}
+    r["bottom_near"] = bool(r["bottom"] and bi.get("low") and r["close"] <= bi["low"] * (1 + NEAR_BOTTOM / 100))
+    r["top_near"] = bool(r["top"] and ti.get("high") and r["close"] >= ti["high"] * (1 - NEAR_TOP / 100))
     r["sig"] = stock_signals(r)
     return r
 
@@ -613,7 +619,7 @@ def review(r):
             why.append("싼 조건 3개 모두")
         if long_up(r):
             why.append("장기 추세 상승")
-        if r.get("bottom"):
+        if r.get("bottom_near"):
             why.append("바닥근접")
         out["buy"] = {"score": len(why), "why": why}
     # 매도검토
@@ -700,9 +706,9 @@ def flags(r):
         f.append("이격도상단")
     if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
         f.append("이격도하단")
-    if r.get("bottom"):
+    if r.get("bottom_near"):
         f.append("바닥근접")
-    if r.get("top"):
+    if r.get("top_near"):
         f.append("꼭지근접")
     return f
 
@@ -1149,8 +1155,8 @@ def detail_text(r):
         if r.get(key):
             i = r.get(key + "_info") or {}
             ext = i.get("low" if key == "bottom" else "high")
-            L.append(f"{nm}근접: 단계 {r[key]}/3 · {'저점' if key == 'bottom' else '고점'} {fmt_price(ext)}"
-                     f" ({i['ext_date']:%Y-%m-%d}, 1년 {'고점' if key == 'bottom' else '저점'} 대비 {i['move']:+.0f}%, {i['since']}거래일 전)")
+            L.append(f"{nm} 단계 {r[key]}/3{' (근접)' if r.get(key + '_near') else ''} · {'저점' if key == 'bottom' else '고점'} {fmt_price(ext)}"
+                     f" ({i['ext_date']:%Y-%m-%d}, 지금 {(r['close'] / ext - 1) * 100:+.0f}% · 1년 {'고점' if key == 'bottom' else '저점'} 대비 {i['move']:+.0f}%, {i['since']}거래일 전)")
     L.append(f"최근 5거래일 등락률: {r['ret5']:+.2f}%  (일별 " + ", ".join(f"{x:+.1f}%" for x in r["rets"]) + ")")
     return "\n".join(L)
 
