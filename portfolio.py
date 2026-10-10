@@ -34,14 +34,129 @@ _V1 = "v1 규칙: 매수검토에 사고, 매도검토가 뜨면 전부 판다 +
 VARIANTS = [
     ("리포트 + 손절8%", "구버전: 매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 + 손절8% (비교 기준)", ("매수", "불타기"), False, "half",
      {"stops": STOP8}),
-    ("v1 ●1+", _V1 + " — 매수검토만 매수", ("v1·매수검토",), False, "v1", {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
-    ("v1+상승중 전부", _V1 + " — 매수검토·상승중에 매수, 매도검토에 전부 매도", ("v1·매수검토", "불타기"), False, "v1",
+    ("v1+상승중 전부", _V1 + " — 매수검토·상승중에 계좌 10칸 중 1칸 매수, 매도검토에 전부 매도", ("v1·매수검토", "불타기"), False, "v1",
      {"stops": STOP8, "sell_cats": ("v1·매도검토",)}),
-    ("v1+상승중 절반", "매수검토·상승중에 사고, 매도검토가 뜨면 절반(이미 절반 팔았으면 나머지) 매도 + 손절8%", ("v1·매수검토", "불타기"), False, "v1",
-     {"stops": STOP8, "sell_cats": ("v1·매도검토",), "sell_half": True}),
 ]
-# 이전에 시험하고 뺀 변형(2026-10-10~11 결과 참고): v1 매수●2+·●3+·매도●2+·●3+(강도 필터 — 구간마다 들쭉날쭉, 매도 강도는 대부분 악화), 리포트 규칙(손절 없음), 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
+# 이전에 시험하고 뺀 변형(2026-10-10~11 결과 참고): v1 ●1+(매수검토만), v1+상승중 절반, v1 매수●2+·●3+·매도●2+·●3+(강도 필터 — 구간마다 들쭉날쭉, 매도 강도는 대부분 악화), 리포트 규칙(손절 없음), 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
 # 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수, 손절8%+고점 대비 -8·10·12% 매도, 손절8%+추세이탈 매도 — HANDOFF.md 참고
+
+# 비율 매수: 매수 신호(매수검토·상승중)가 새로 켜질 때마다 그날 계좌 평가액의 pct%를 산다(보유 중이어도 같은 비율로 추가).
+# 한 종목은 계좌의 CAP%까지. 매도검토 또는 손절8%(평균 매수가 기준) → 전량 매도. 칸 제한 없음.
+ALLOC_BUY = ("v1·매수검토", "불타기")
+ALLOC_SELL = ("v1·매도검토",)
+ALLOC_CAP = 10.0
+ALLOC_PCTS = (1, 2, 5, 10)
+
+
+def simulate_alloc(states, dates, pct, cap=ALLOC_CAP):
+    """반환: 잔고 Series, 거래 목록, 현금비중 Series, 기말 보유 수, 기록(dict)"""
+    px = {c: s["close"].reindex(dates).ffill() for c, s in states.items()}
+    cats = {c: s["cats"].reindex(dates) for c, s in states.items()}
+    cash, pos, eq, cash_ratio, trades, orders = 1.0, {}, [], [], [], []
+    prev = {c: set() for c in states}
+    opened = {c: 0 for c in states}           # 종목별 새로 진입한 횟수(첫 진입 포함)
+    buys_n = {c: 0 for c in states}           # 종목별 실제 매수 횟수(추가 매수 포함)
+    sig_n = {c: 0 for c in states}            # 종목별 매수 신호(새로 켜짐) 횟수
+    skip_cash = skip_cap = 0
+    low, runs, cur = [], [], None             # 현금 부족 상태(한 번 살 금액의 절반 미만) 구간
+
+    def equity_at(i):
+        return cash + sum(Q["sh"] * px[k].iloc[i] for k, Q in pos.items() if not pd.isna(px[k].iloc[i]))
+
+    def sell_all(c, p, d, i, why):
+        nonlocal cash
+        P = pos.pop(c)
+        back = P["sh"] * p * (1 - SELL_COST)
+        cash += back
+        trades.append({"code": c, "in": P["date"], "out": d, "cost": P["cost"], "back": back,
+                       "ret": (back / P["cost"] - 1) * 100, "days": i - P["i"], "why": why, "buys": P["n"]})
+
+    for i, d in enumerate(dates):
+        # 1) 어제 신호 → 오늘 종가 체결 (매도 먼저)
+        for kind, c in sorted(orders, key=lambda o: o[0] != "sell"):
+            p = px[c].iloc[i]
+            if pd.isna(p) or p <= 0:
+                continue
+            if kind == "sell" and c in pos:
+                sell_all(c, p, d, i, "신호")
+            elif kind == "buy":
+                E_ = equity_at(i)
+                want = E_ * pct / 100
+                have = pos[c]["sh"] * p if c in pos else 0.0
+                room = E_ * cap / 100 - have
+                amt = min(want, room)
+                if amt < want * 0.25:                  # 상한에 거의 닿음
+                    skip_cap += 1
+                    continue
+                if cash < amt * 0.5:                   # 현금 부족
+                    skip_cash += 1
+                    continue
+                amt = min(amt, cash)
+                cash -= amt
+                sh = amt * (1 - BUY_COST) / p
+                if c in pos:
+                    P = pos[c]
+                    P["entry"] = (P["entry"] * P["sh"] + p * sh) / (P["sh"] + sh)    # 평균 매수가
+                    P["sh"] += sh; P["cost"] += amt; P["n"] += 1
+                else:
+                    pos[c] = {"sh": sh, "cost": amt, "date": d, "i": i, "entry": p, "warn": False, "n": 1, "last": i}
+                    opened[c] += 1
+                pos[c]["last"] = i
+                buys_n[c] += 1
+        orders = []
+        # 1-2) 손절8%: 종가가 평균 매수가 -8% 이하가 이틀 연속(오늘 산 종목 제외)
+        for c in list(pos):
+            P, x = pos[c], px[c].iloc[i]
+            if pd.isna(x) or P["last"] == i:
+                continue
+            if x <= P["entry"] * 0.92:
+                if P["warn"]:
+                    sell_all(c, x, d, i, "손절")
+                    continue
+                P["warn"] = True
+            else:
+                P["warn"] = False
+        # 2) 평가 + 현금 부족 구간
+        E_ = equity_at(i)
+        eq.append(E_)
+        cash_ratio.append(cash / E_ if E_ > 0 else 1.0)
+        is_low = cash < E_ * pct / 100 * 0.5
+        if is_low and cur is None:
+            cur = [d, d, 0]
+        if is_low:
+            cur[1] = d; cur[2] += 1
+        elif cur is not None:
+            runs.append(cur); cur = None
+        # 3) 오늘 신호 → 내일 주문
+        for c in states:
+            on = cats[c].iloc[i]
+            on = on if isinstance(on, (set, frozenset)) else set()
+            new = on - prev[c]
+            prev[c] = on
+            if i == 0:
+                continue
+            if new & set(ALLOC_BUY):
+                sig_n[c] += 1
+            if c in pos and new & set(ALLOC_SELL):
+                orders.append(("sell", c))
+            elif new & set(ALLOC_BUY) and not (on & set(ALLOC_SELL)):
+                orders.append(("buy", c))
+    if cur is not None:
+        runs.append(cur)
+
+    def dist(vals, top=3):
+        out = {}
+        for v in vals:
+            k = str(v) if v < top else f"{top}+"
+            out[k] = out.get(k, 0) + 1
+        return dict(sorted(out.items()))
+    longest = max(runs, key=lambda r: r[2]) if runs else None
+    rec = {"sig": dist([v for v in sig_n.values()], 5), "reentry": dist([v - 1 for v in opened.values() if v > 0], 3),
+           "buys": dist([v for v in buys_n.values() if v > 0], 5),
+           "skip_cash": skip_cash, "skip_cap": skip_cap, "low_runs": len(runs), "low_days": sum(r[2] for r in runs),
+           "low_longest": (f"{longest[0]:%y.%m.%d}~{longest[1]:%y.%m.%d} ({longest[2]}일)" if longest else "-"),
+           "invested": float((1 - pd.Series(cash_ratio).mean()) * 100)}
+    return pd.Series(eq, index=dates), trades, pd.Series(cash_ratio, index=dates), len(pos), rec
 
 
 def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
@@ -159,6 +274,12 @@ def run(states, names, bench, bench_name, out_path, label, note=""):
         eq, trades, cash, open_n = simulate(states, dates, buy_cats, bear_only, mode, opts)
         rows.append({"name": nm, "desc": desc, **metrics(eq, trades, cash, open_n), "trades": trades})
         curves[nm] = eq / eq.iloc[0]
+    for pc in ALLOC_PCTS:
+        eq, trades, cash, open_n, rec = simulate_alloc(states, dates, pc)
+        nm = f"비율 {pc}%"
+        rows.append({"name": nm, "desc": f"매수검토·상승중마다 계좌의 {pc}% 매수(다시 뜨면 또, 종목당 {ALLOC_CAP:.0f}% 상한), 매도검토·손절8%(평균가)에 전량",
+                     **metrics(eq, trades, cash, open_n), "trades": trades, "x": rec})
+        curves[nm] = eq / eq.iloc[0]
     # 비교 대상: 지수 보유, 균등 보유
     benches = bench if isinstance(bench, list) else ([(bench_name, bench)] if bench is not None else [])
     for bname, bser in benches:                    # 지수 보유: 이 대상의 시장 지수가 먼저, 다른 시장 지수도 참고로
@@ -219,7 +340,21 @@ def write_html(rows, curves, names, out_path, label, dates, note=""):
             cells += f'<td class="{"up" if r and r > 0 else "dn" if r and r < 0 else ""}">{_f(r)}</td>'
         wtr += f'<tr class="{"bm" if sr["bm"] else ""}"><td class="c">{E(sr["name"])}</td>{cells}</tr>'
     wtable = f'<div class="wrap"><table><tr><th class="c">방식</th>{head}</tr>{wtr}</table></div>'
-    tr0 = (rows[1] if len(rows) > 1 and rows[1].get("trades") is not None else rows[0]).get("trades") or []   # v1 ●1+ 거래
+    xr = [r for r in rows if r.get("x")]
+    alloc_html = ""
+    if xr:
+        dfmt = lambda dd: " · ".join(f"{k}회 {v}" for k, v in dd.items()) or "-"
+        alloc_html = ('<h2>비율 매수 기록</h2><div class="wrap"><table><tr><th class="c">방식</th><th>평균 투자 비중</th><th>투자 비중 대비 수익(대략)</th>'
+                      '<th>현금 부족으로 못 산 횟수</th><th>상한(10%) 때문에 건너뜀</th><th>현금 부족 구간</th><th>현금 부족 총 일수</th><th>가장 긴 현금 부족</th></tr>'
+                      + "".join(f'<tr><td class="c"><b>{E(r["name"])}</b></td><td>{_f(r["x"]["invested"], False)}</td>'
+                                f'<td>{_f(r["tot"] / max(r["x"]["invested"], 1) * 100)}</td><td>{r["x"]["skip_cash"]}</td><td>{r["x"]["skip_cap"]}</td>'
+                                f'<td>{r["x"]["low_runs"]}</td><td>{r["x"]["low_days"]}일</td><td>{E(r["x"]["low_longest"])}</td></tr>' for r in xr)
+                      + '</table></div>'
+                      '<div class="wrap" style="margin-top:6px"><table><tr><th class="c">방식</th><th class="c">종목별 실제 매수 횟수 (횟수 종목수)</th><th class="c">종목별 재진입 횟수 (다 판 뒤 다시 산 횟수)</th></tr>'
+                      + "".join(f'<tr><td class="c"><b>{E(r["name"])}</b></td><td class="c">{E(dfmt(r["x"]["buys"]))}</td><td class="c">{E(dfmt(r["x"]["reentry"]))}</td></tr>' for r in xr)
+                      + f'</table></div><p class="note">종목별 매수 신호(매수검토·상승중이 새로 켜진) 횟수 분포: {E(dfmt(xr[0]["x"]["sig"]))} (기간 전체, 매매와 무관). '
+                      '현금 부족 = 현금이 한 번 살 금액의 절반 미만인 날. 투자 비중 대비 수익 = 총수익 ÷ 평균 투자 비중(놀던 현금을 뺀 대략적 효율).</p>')
+    tr0 = (rows[1] if len(rows) > 1 and rows[1].get("trades") is not None else rows[0]).get("trades") or []   # v1+상승중 전부 거래
     tl = "".join(
         f'<tr><td class="c">{E(names.get(t["code"], t["code"]))}</td><td>{t["in"]:%y.%m.%d}</td><td>{t["out"]:%y.%m.%d}</td>'
         f'<td>{t["days"]}일</td><td class="{"up" if t["ret"] > 0 else "dn"}">{t["ret"]:+.1f}%</td></tr>'
@@ -253,7 +388,7 @@ a {{ color:inherit; }}
   background:var(--card); color:var(--fg); cursor:pointer; }} .seg button.on {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
 </style></head><body>
 <h1>{E(label)}</h1>
-<div class="t">{dates[0]:%Y-%m-%d} ~ {dates[-1]:%Y-%m-%d} · 계좌 {SLOTS}칸(한 종목 1칸) · 신호 다음 날 종가에 체결 · 비용 매수 {BUY_COST*100:.2f}% / 매도 {SELL_COST*100:.2f}% · 계산 {kst:%Y-%m-%d %H:%M} KST</div>
+<div class="t">{dates[0]:%Y-%m-%d} ~ {dates[-1]:%Y-%m-%d} · 계좌 {SLOTS}칸(한 종목 1칸, 비율 매수 제외) · 신호 다음 날 종가에 체결 · 비용 매수 {BUY_COST*100:.2f}% / 매도 {SELL_COST*100:.2f}% · 계산 {kst:%Y-%m-%d %H:%M} KST</div>
 <div class="t">대상: {E(note or "-")}</div>
 <h2>결과</h2>
 <div class="wrap"><table>
@@ -262,6 +397,7 @@ a {{ color:inherit; }}
 <p class="note">총수익·연평균·최대 하락은 계좌 전체 기준. 매매·승률·평균 수익·평균 보유는 사서 다 판 종목 기준(기말에 남은 종목은 '기말 보유'로 따로).
 현금 비중 = 기간 평균으로 계좌 중 놀고 있던 현금 비율 — 높을수록 신호가 적어 돈이 덜 일했다는 뜻.
 한계: 배당 미반영, 체결은 종가 가정. 대상이 '지금 목록'이면 생존 편향(그동안 커진 종목만 담김)이 있어 '균등 보유'가 지수보다 크게 높게 나옴 — 이때는 지수 대신 균등 보유와 비교.</p>
+{alloc_html}
 <h2>구간별 수익률</h2>
 {wtable}
 <p class="note">최근 1·3·5년 구간 첫날을 0%로 본 수익률. 전략은 전체 기간을 이어서 매매한 계좌의 그 구간 성과(구간 첫날 이미 들고 있던 종목 포함). 종목 목록은 이 실행의 시작일 기준 그대로 — 1·3년을 그때의 상위 종목으로 보려면 1년·3년 실행 결과를 볼 것.
@@ -270,7 +406,7 @@ a {{ color:inherit; }}
 <p class="note">범례를 누르면 선을 켜고 끕니다.</p>
 <div class="seg" id="seg"></div>
 <div class="chart" id="ch"><div class="lg" id="lg"></div><svg id="sv" viewBox="0 0 900 320" role="img" aria-label="계좌 잔고 곡선"></svg><div class="tip" id="tip"></div></div>
-<h2>거래 목록 · v1 ●1+</h2>
+<h2>거래 목록 · v1+상승중 전부</h2>
 <details><summary>다 판 종목 {len(tr0)}건</summary><div class="wrap"><table><tr><th class="c">종목</th><th>산 날</th><th>판 날</th><th>보유</th><th>수익</th></tr>{tl}</table></div></details>
 <script>
 const D = {json.dumps(data, ensure_ascii=False)};

@@ -414,7 +414,7 @@ def save_version(rows, B, period, n_stocks, prow):
             "base": {str(h): (B[h]["mean"] if B.get(h) else None) for h in HORIZONS},
             "cats": {r["cat"]: {"n": r["n"], "d": {str(h): ((r["S"][h]["mean"] - B[h]["mean"]) if r["S"][h] and B.get(h) and r["S"][h]["n"] >= MIN_N else None)
                                                     for h in HORIZONS}} for r in rows},
-            "port": [{k: p.get(k) for k in ("name", "tot", "cagr", "mdd", "n", "win")} for p in prow],
+            "port": [{k: p.get(k) for k in ("name", "tot", "cagr", "mdd", "n", "win", "cash", "x")} for p in prow],
             "files": {"html": os.path.basename(BASE) + ".html", "portfolio": os.path.basename(BASE) + "_portfolio.html",
                       "csv": os.path.basename(BASE) + ".csv"},
             "time": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
