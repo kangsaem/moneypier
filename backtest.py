@@ -16,6 +16,7 @@ from datetime import datetime, timedelta, timezone
 import pandas as pd
 
 import market_report as m
+import portfolio
 
 BT_DAYS = int(os.environ.get("BT_DAYS", 252))         # 백테스트 기간(거래일). 252 ≈ 12개월, 1260 ≈ 5년
 UNIVERSE = os.environ.get("BT_UNIVERSE", "tickers")    # tickers = 내 종목 / kospi = 코스피 시가총액 상위 / nasdaq = 나스닥 대형주
@@ -139,7 +140,7 @@ def run_stock(code, name):
             return None
         x = sr.iloc[t]
         return None if pd.isna(x) else (x if isinstance(x, str) else float(x))
-    events, base = [], []
+    events, base, st = [], [], []
     last_on = {}                                                 # 분류별로 마지막으로 켜져 있던 날(t)
     for t in range(start - COOLDOWN, n):                         # 앞쪽 며칠은 '최근에 켜져 있었나' 판단용
         r = m.analyze_df(df.iloc[: t + 1], code, name, light=True)
@@ -148,6 +149,7 @@ def run_stock(code, name):
             rets = {h: (None if pd.isna(fwd[h].iloc[t]) else float(fwd[h].iloc[t])) for h in HORIZONS}
             rg = val(reg, t)
             base.append({**rets, "reg": rg})
+            st.append((c.index[t], float(c.iloc[t]), frozenset(on), rg))   # 계좌 시뮬레이션용 날짜별 상태
             for cat in sorted(on):
                 if t - last_on.get(cat, -10 ** 9) > COOLDOWN:    # 최근 COOLDOWN일 동안 꺼져 있다가 새로 켜진 경우만
                     events.append({"date": c.index[t], "code": code, "name": name, "cat": cat,
@@ -155,7 +157,8 @@ def run_stock(code, name):
                                    **{f"r{h}": rets[h] for h in HORIZONS}})
         for cat in on:
             last_on[cat] = t
-    return events, base
+    states = pd.DataFrame(st, columns=["date", "close", "cats", "reg"]).set_index("date")
+    return events, base, states
 
 
 # 나스닥 대형주(2026년 기준 시가총액 상위권, 고정 목록 — 라이브러리가 미국 시총 순위를 주지 않아서 직접 적음)
@@ -191,11 +194,13 @@ def main():
     t0 = time.time()
     tickers = load_universe()
     events, base, failed = [], [], []
+    states, names = {}, {}
     for i, t in enumerate(tickers, 1):
         try:
-            ev, bs = run_stock(t["code"], t["name"])
+            ev, bs, stt = run_stock(t["code"], t["name"])
             events += ev
             base += bs
+            states[t["code"]], names[t["code"]] = stt, t["name"]
             print(f"[{i}/{len(tickers)}] {t['name']}: 신호 {len(ev)}건")
         except Exception as e:
             failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
@@ -224,6 +229,18 @@ def main():
         ds = [e["date"] for e in events]
         period = f"{min(ds):%Y-%m-%d} ~ {max(ds):%Y-%m-%d}" if ds else ""
     write_html(rows, B, len(tickers) - len(failed), failed, period, time.time() - t0, reg_days)
+    # 계좌 시뮬레이션: 리포트 규칙대로 사고팔았을 때 vs 지수·균등 보유
+    try:
+        if states:
+            bname, bcodes = {"nasdaq": ("나스닥", ("IXIC", "^IXIC"))}.get(UNIVERSE, ("코스피", ("KS11", "^KS11")))
+            try:
+                bser = m._index_close(*bcodes)
+            except Exception:
+                bser = None
+            portfolio.run(states, names, bser, bname, OUT + "_portfolio.html", label_of() + " · 계좌 시뮬레이션")
+            print(f"{OUT}_portfolio.html 생성 완료")
+    except Exception as e:
+        print(f"계좌 시뮬레이션 실패: {type(e).__name__}: {e}")
     print(f"{OUT}.html 생성 완료 ({time.time() - t0:.0f}초, 신호 {len(events)}건)")
 
 
@@ -255,12 +272,16 @@ def ret_td(v):
     return f'<td class="{"up" if v > 0 else "dn"}">{v:+.1f}%</td>'
 
 
-def write_html(rows, B, n_stocks, failed, period, secs, reg_days=None):
-    E = html.escape
+def label_of():
     years = BT_DAYS / 252
-    label = {"tickers": "시그널 백테스트 · 내 종목", "nasdaq": f"시그널 백테스트 · 나스닥 대형 {TOP}"}.get(
+    return {"tickers": "시그널 백테스트 · 내 종목", "nasdaq": f"시그널 백테스트 · 나스닥 대형 {TOP}"}.get(
         UNIVERSE, f"시그널 백테스트 · 코스피 시총 상위 {TOP}") + \
         (f" · {years:.0f}년" if years >= 1.5 else f" · {BT_DAYS / 21:.0f}개월")
+
+
+def write_html(rows, B, n_stocks, failed, period, secs, reg_days=None):
+    E = html.escape
+    label = label_of()
     kst = datetime.now(timezone.utc) + timedelta(hours=9)
     vcls = lambda v: "ok" if v.startswith("맞음") else "bad" if v.startswith("틀림") else "mut"
     byname = {r["cat"]: r for r in rows}
@@ -338,6 +359,7 @@ a {{ color:inherit; }}
 </style></head><body>
 <h1>{E(label)}</h1>
 <div class="t">{E(period)} · 종목 {n_stocks}개 · 신호가 처음 뜬 날 종가 기준 · 계산 {kst:%Y-%m-%d %H:%M} KST ({secs:.0f}초) · <a href="./">리포트로</a></div>
+<div class="base"><b><a href="{os.path.basename(OUT)}_portfolio.html">계좌 시뮬레이션 보기 →</a></b> 리포트 규칙(매수·불타기에 사고 익절검토·비중축소·매도에 판다)대로 매매했을 때의 계좌 잔고를 지수·균등 보유와 비교</div>
 <div class="base"><b>기준선</b> (같은 기간 아무 날이나 샀을 때) — {base}</div>
 <div class="wrap"><table>
 <tr><th class="c" rowspan="2">분류</th><th rowspan="2">신호</th>{head1}</tr>
