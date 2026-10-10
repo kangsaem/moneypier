@@ -1137,8 +1137,20 @@ def detail_text(r):
     if d:
         L.append(f"50일 이격도: 현재 {d['cur']:.1f} (과거 분포 하위 {d['pct']:.0f}%)")
         L.append(f"  최대 {d['max']:.1f} ({d['max_date']:%Y-%m-%d}) / 최소 {d['min']:.1f} ({d['min_date']:%Y-%m-%d})")
-        L.append(f"  현재는 최대의 {d['up']:.0%} (기준 {d['max_thr']:.1f}) / 최소의 {d['down']:.0%} (기준 {d['min_thr']:.1f})  (자료 {d['since']:%Y-%m-%d}~)")
+        L.append(f"  높음 기준 {d['max_thr']:.1f} 이상 / 낮음 기준 {d['min_thr']:.1f} 이하  (자료 {d['since']:%Y-%m-%d}~)")
     L.append(f"52주 최고가(장중): {fmt_price(r['high52'])} → 현재 {r['from_high']:+.1f}%")
+    if r.get("from_low") is not None:
+        L.append(f"52주 최저가(장중): {fmt_price(r['low52'])} → 현재 {r['from_low']:+.1f}%")
+    if r.get("rs60") is not None:
+        L.append(f"상대강도(60거래일, 지수 대비): {r['rs60']:+.1f}%p" + ("  (지수보다 약함)" if r["rs60"] < 0 else ""))
+    if r.get("vol5") is not None:
+        L.append(f"거래량: 최근 5일 중 최대 20일 평균의 {r['vol5']:.1f}배" + ("  (폭증)" if r["vol5"] >= VOL_SPIKE else ""))
+    for key, nm in (("bottom", "바닥"), ("top", "꼭지")):
+        if r.get(key):
+            i = r.get(key + "_info") or {}
+            ext = i.get("low" if key == "bottom" else "high")
+            L.append(f"{nm}근접: 단계 {r[key]}/3 · {'저점' if key == 'bottom' else '고점'} {fmt_price(ext)}"
+                     f" ({i['ext_date']:%Y-%m-%d}, 1년 {'고점' if key == 'bottom' else '저점'} 대비 {i['move']:+.0f}%, {i['since']}거래일 전)")
     L.append(f"최근 5거래일 등락률: {r['ret5']:+.2f}%  (일별 " + ", ".join(f"{x:+.1f}%" for x in r["rets"]) + ")")
     return "\n".join(L)
 

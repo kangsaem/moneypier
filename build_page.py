@@ -620,6 +620,16 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 </body></html>"""
 
 os.makedirs("docs", exist_ok=True)
+# 머니파이 분석 탭용 시장 자료(브라우저에서 직접 못 받는 신용잔고·고객예탁금) — docs/market.json
+def _market_json():
+    def ser(v):
+        if not v:
+            return None
+        return {k: (f"{x:%Y-%m-%d}" if hasattr(x, "strftime") else x) for k, x in v.items() if k != "spark"}
+    with open("docs/market.json", "w", encoding="utf-8") as f:
+        json.dump({"time": stamp, "credit": ser(snap.get("credit")), "credit_ks": ser(snap.get("credit_ks")),
+                   "credit_top": m.CREDIT_TOP, "pbr_link": m.PBR_LINK}, f, ensure_ascii=False)
+guard("시장 자료 내보내기", _market_json)
 # 신호 기록: 오늘 칸을 history/에 저장(daily.yml이 커밋) + 지난 기록으로 docs/history.html
 import history
 guard("신호 기록 저장", lambda: history.save(history.record(results, msig, "us" if IS_US else "kr")))
