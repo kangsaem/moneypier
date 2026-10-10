@@ -35,7 +35,8 @@ COOLDOWN = 5           # 신호가 꺼진 뒤 이 거래일 수 이상 지나야
 NEUTRAL = {5: 0.5, 20: 1.0, 60: 2.0}   # 기준선과 차이가 이 %p 미만이면 '차이 없음'
 
 # 분류: (이름, 기대 방향) — up = 신호 뒤 오르면 맞음, down = 내리거나 덜 오르면 맞음
-CATEGORIES = [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") for nm, _, _, tone in m.SIGNAL_GROUPS] + [
+CATEGORIES = [("v1·매수검토", "up"), ("v1·매도검토", "down"), ("v1·추격매수주의", "down"), ("v1·홀딩유지", "up")] + \
+    [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") for nm, _, _, tone in m.SIGNAL_GROUPS] + [
     ("골든X3", "up"), ("골든X2", "up"), ("데드X3", "down"), ("데드X2", "down"), ("과열", "down"),
     ("바닥1/3", "up"), ("바닥2/3", "up"), ("바닥3/3", "up"),
     ("꼭지1/3", "down"), ("꼭지2/3", "down"), ("꼭지3/3", "down")]
@@ -53,6 +54,12 @@ VARIANTS = [("골든X3·짧게", "up"), ("골든X2·짧게", "up"), ("데드X3·
             ("클라이맥스꼭지", "down"), ("RSI상승다이버전스", "up"), ("RSI하락다이버전스", "down"),
             ("지지선반등", "up"), ("저항선실패", "down"), ("저항선돌파", "up")]
 VARIANTS += [("추세이탈", "down"), ("추세이탈·상대강도↓", "down"), ("추세이탈·상대강도↓·과열없음", "down")]
+# 2026-10-10 시험 끝난 후보(효과 없음): 후보 3종(클라이맥스꼭지·RSI 다이버전스·지지/저항)과 추세이탈. 다시 보려면 True
+CANDIDATES_ON = os.environ.get("BT_CANDIDATES", "") == "1"
+_CAND = {"클라이맥스꼭지", "RSI상승다이버전스", "RSI하락다이버전스", "지지선반등", "저항선실패", "저항선돌파",
+         "추세이탈", "추세이탈·상대강도↓", "추세이탈·상대강도↓·과열없음"}
+if not CANDIDATES_ON:
+    VARIANTS = [v for v in VARIANTS if v[0] not in _CAND]
 EXTRA = ("클라이맥스꼭지", "RSI상승다이버전스", "RSI하락다이버전스", "지지선반등", "저항선실패", "저항선돌파")
 VOL_UP = 1.5       # 거래량 증가 = 20일 평균의 1.5배 이상
 VOL_SPIKE = 2.5    # 거래량 폭증 = 20일 평균의 2.5배 이상
@@ -87,6 +94,8 @@ COMPARE = [
     ("저항선 돌파 (모멘텀 확인)", "저항선돌파 = 의미 있는 고점을 처음으로 2% 넘게 넘은 날 — '고점 근처는 판다'는 지금 규칙과 반대 방향 가설",
      ["저항선돌파", "골든X3", "불타기"]),
 ]
+if not CANDIDATES_ON:      # 시험 끝난 후보 표는 숨김
+    COMPARE = [c for c in COMPARE if not set(c[2]) & _CAND]
 REGIMES = ("상승기", "하락기")
 
 
@@ -105,11 +114,21 @@ def categories_of(r, feat=None):
     wk = r.get("week") or {}
     if wk.get("ok") and not wk.get("above") and r.get("w10") and r["close"] < r["w10"]:
         on.add("주봉붕괴")                      # 상태(5주<10주 + 종가<10주선) — 아래 '추세이탈' 후보의 재료
-        on.add("추세이탈")                      # 과열과 상관없이 중기 추세가 꺾임(신호표용, 새로 켜진 날 기준)
-        if (feat or {}).get("rs") is not None and feat["rs"] < 0:
+        if CANDIDATES_ON:
+            on.add("추세이탈")                  # 과열과 상관없이 중기 추세가 꺾임(신호표용, 새로 켜진 날 기준)
+        if CANDIDATES_ON and (feat or {}).get("rs") is not None and feat["rs"] < 0:
             on.add("추세이탈·상대강도↓")          # + 최근 60거래일 지수보다 약함
             if len(r["sig"]["sell_c"]) < 2:
                 on.add("추세이탈·상대강도↓·과열없음")   # 지금 매도검토가 못 잡는 경우(과열 조건 2개 미만)만
+    # v1 리포트 칸(매수검토·매도검토·추격매수 주의·홀딩 유지) — 리포트와 같은 판정(market_report.review)을 그날 값으로
+    try:
+        r["rs60"], r["vol5"] = (feat or {}).get("rs"), (feat or {}).get("vr5")
+        rv = m.review(r)
+        for k, nm in (("buy", "v1·매수검토"), ("sell", "v1·매도검토"), ("caution", "v1·추격매수주의"), ("hold", "v1·홀딩유지")):
+            if rv.get(k):
+                on.add(nm)
+    except Exception:
+        pass
     if r.get("bottom"):
         on.add(f"바닥{r['bottom']}/3")
     if r.get("top"):
@@ -129,7 +148,7 @@ def categories_of(r, feat=None):
         for nm in ("골든X2", "데드X2"):
             if nm in on and vr5 is not None and vr5 >= VOL_UP:
                 on.add(f"{nm}·거래량↑")
-    for nm in EXTRA:
+    for nm in EXTRA if CANDIDATES_ON else ():
         if f.get(nm):
             on.add(nm)
     if rs is not None:
@@ -180,7 +199,7 @@ def run_stock(code, name):
         reg = up.map({True: "상승기", False: "하락기"})
 
     try:
-        ex = m.extra_signals(df)          # 후보 신호 3종(그날까지 데이터만 사용) — 한 번에 계산
+        ex = m.extra_signals(df) if CANDIDATES_ON else None   # 후보 신호 3종(그날까지 데이터만 사용) — 한 번에 계산
     except Exception as e:
         print(f"{name} 후보 신호 실패: {e}")
         ex = None

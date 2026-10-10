@@ -615,11 +615,15 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <h2>종목별 세부내용</h2>
 <div class="dgrid">{detail_html}</div>
-<div class="legend" style="margin-top:14px"><a href="backtest.html">시그널 백테스트 · 내 종목 12개월 →</a>{wide_link}</div>
+<div class="legend" style="margin-top:14px"><a href="history.html"><b>신호 기록(지난 신호와 그 뒤 결과) →</b></a> &nbsp;·&nbsp; <a href="backtest.html">시그널 백테스트 · 내 종목 12개월 →</a>{wide_link}</div>
 {extra}
 </body></html>"""
 
 os.makedirs("docs", exist_ok=True)
+# 신호 기록: 오늘 칸을 history/에 저장(daily.yml이 커밋) + 지난 기록으로 docs/history.html
+import history
+guard("신호 기록 저장", lambda: history.save(history.record(results, msig, "us" if IS_US else "kr")))
+guard("신호 기록 페이지", history.build, results)
 with open("docs/index.html", "w", encoding="utf-8") as f:
     f.write(page)
 print("docs/index.html 생성 완료")

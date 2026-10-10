@@ -179,6 +179,7 @@ def rel_strength(c, b, n=RS_DAYS):
 def analyze(code, name):
     df = load_prices(code)
     r = analyze_df(df, code, name)
+    r["_c"] = df["Close"].dropna()          # 신호 기록 페이지에서 20·60일 뒤 수익률 계산용(화면엔 안 씀)
     try:
         r["rs60"] = rel_strength(df["Close"].dropna(), bench_close(code))
     except Exception:
