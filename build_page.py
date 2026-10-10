@@ -247,7 +247,10 @@ def _metrics_html(r, side, lv):
                            f"종가가 {lab}선보다 {abs(gp):.1f}% {'위' if gp >= 0 else '아래 (위쪽 저항 가능)'}"))
     out.append(tag("rsi", f"RSI {r['rsi']:.0f}{rsi_note}", "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else "n"))
     out.append(tag("ret5", f"5일 {r['ret5']:+.1f}%", "up" if r["ret5"] > 0 else "dn"))
-    out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "dn" if r["from_high"] <= -20 else "n"))
+    out.append(tag("high", f"52주 고점 {r['from_high']:+.0f}%", "dn" if r["from_high"] <= -20 else "n",
+                   f"52주 최고가 {m.fmt_price(r['high52'])}"))
+    if r.get("from_low") is not None:
+        out.append(tag("", f"52주 저점 {r['from_low']:+.0f}%", "n", f"52주 최저가 {m.fmt_price(r['low52'])}"))
     bs = r.get("bottom") or 0
     if bs:
         bi = r.get("bottom_info") or {}
@@ -384,11 +387,12 @@ def metrics_html(r, side, lv):
         return ""
 
 
-REV_SIDE = {"buy": "buy", "sell": "sell", "caution": "sell", "up": "add", "wait": "buy", "waitdn": "buy"}
-REV_CLS = {"buy": "buy strong", "sell": "sell strong", "caution": "tp", "up": "add", "wait": "hold", "waitdn": "hold"}
+REV_SIDE = {"buy": "buy", "sell": "sell", "caution": "sell", "hold": "buy", "up": "add", "wait": "buy", "waitdn": "buy"}
+REV_CLS = {"buy": "buy strong", "sell": "sell strong", "caution": "warn", "hold": "hold-ok", "up": "add", "wait": "hold", "waitdn": "hold"}
 REV_NOTE = {"buy": "매수 신호 또는 눌림진행 · ● = 근거 수(매수 신호/눌림진행 · 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접)",
-            "sell": "● = 걸린 정리 근거 수(매도+상대강도↓ · 비중축소+상대강도↓ · 익절검토+거래량폭증 · 60일 고점 대비 -8%)",
-            "caution": "과열·경고는 떴지만 정리 근거(상대강도↓·거래량폭증)는 없음 — 팔 이유는 아니고 새로 사지는 말 것",
+            "sell": "● = 걸린 정리 근거 수(매도+상대강도↓ · 비중축소+상대강도↓ · 익절검토+거래량폭증)",
+            "caution": "과열·경고는 떴지만 정리 근거(상대강도↓·거래량폭증)는 없음 — 보유는 유지, 추가 매수는 하지 말 것",
+            "hold": "주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 그냥 들고 가기. 진한 연두 = 일봉도 정배열(순항), 옅은 연두 = 일봉만 역배열(눌림, 팔 이유 아님)",
             "up": "상승 추세 · 과열 아님 · 20일선 눌림 뒤 반등 (백테스트상 효과는 뚜렷하지 않음 — 참고)",
             "wait": "싼 조건 2개 이상 · 하락은 멈췄지만 반등 신호 전",
             "waitdn": "싸지만 아직 하락 중이고 장기 추세도 하락 — 반등 확인 전까지 대기"}
@@ -399,6 +403,14 @@ def rev_block(key, head_txt):
     if not hit:            # 해당 종목이 없는 칸은 화면에 표시하지 않음
         return ""
     side = REV_SIDE[key]
+    if key == "hold":      # 홀딩 유지: 차트 없이 이름 칩만 한 줄로
+        chips_ = "".join(
+            f'<span class="hchip {"h2" if r["review"][key]["level"] == "순항" else "h1"}" '
+            f'title="{E(r["review"][key]["level"])} · RSI {r["rsi"]:.0f}'
+            + (f' · 이격도 {r["disp"]["cur"]:.1f}' if r.get("disp") else "") + f' · 5일 {r["ret5"]:+.1f}%">'
+            f'{E(r["name"])}</span>' for r in sorted(hit, key=lambda r: r["review"][key]["level"] != "순항"))
+        return (f'<div class="sg {REV_CLS[key]}"><h3>{head_txt} <small>{len(hit)}</small></h3>'
+                f'<div class="ex">{E(REV_NOTE[key])}</div><div class="hchips">{chips_}</div></div>')
     items = ""
     for r in hit:
         rv = r["review"][key]
@@ -425,9 +437,12 @@ detail_html = ""
 for r in results:
     fl = guard(f"{r['name']} 태그", m.flags, r, default=[])
     tone = {nm: t for nm, t, _ in m.review_groups(r)}
-    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch"}.get(tone.get(f.split(" ●")[0]), "flag")) for f in fl)
+    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch", "warn": "warn",
+                             "hold2": "hold2", "hold1": "hold1"}.get(tone.get(f.split(" ●")[0]), "flag")) for f in fl)
     tones = [t for _, t, _ in m.review_groups(r) if t != "watch"]
-    dcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"'}.get(tones[0] if tones else "", "")   # 매수 쪽 연분홍, 매도 쪽 연하늘
+    # 배경: 매수검토 연분홍 / 매도검토 연하늘 / 추격매수 주의 호박색 / 홀딩 유지 연두(순항 진하게, 눌림 옅게)
+    dcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"', "warn": ' class="dwarn"',
+            "hold2": ' class="dhold2"', "hold1": ' class="dhold1"'}.get(tones[0] if tones else "", "")
     rc = "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else ""
     detail_html += (f'<details{dcls}><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
                     f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
@@ -451,10 +466,12 @@ page = f"""<!doctype html>
 <style>
 :root {{ --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb;
   --buy:#d92d20; --buybg:#fdecea; --sell:#1d5fd1; --sellbg:#e8f0fd; --warn:#b45309; --warnbg:#fef3c7; --ok:#0f766e; --okbg:#d9f2ee; --c5:#ec4899; --c20:#dc2626; --cw5:#84cc16; --cw10:#15803d; --cm5:#2563eb; --cm10:#1e3a8a; --sky:#0ea5e9; --skybg:#e0f2fe; --skyfg:#0369a1;
-  --buyfill:#d92d20; --sellfill:#1d5fd1; --skyfill:#0284c7; --mutfill:#6b7380; }}
+  --buyfill:#d92d20; --sellfill:#1d5fd1; --skyfill:#0284c7; --mutfill:#6b7380;
+  --amber:#c27803; --amberbg:#fdf3dc; --ok2bg:#d8f0c2; --ok1bg:#eef8e4; --okfg:#3c7a13; }}
 @media (prefers-color-scheme: dark) {{ :root {{ --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38;
   --buy:#ff6b5e; --buybg:#3a1d1a; --sell:#6ea2ff; --sellbg:#182640; --warn:#fbbf24; --warnbg:#3a2e0e; --ok:#4fd1c0; --okbg:#10302c; --c5:#f472b6; --c20:#f87171; --cw5:#a3e635; --cw10:#22c55e; --cm5:#60a5fa; --cm10:#818cf8; --sky:#38bdf8; --skybg:#0c2a3d; --skyfg:#7dd3fc;
-  --buyfill:#c62a1f; --sellfill:#2856b8; --skyfill:#0369a1; --mutfill:#525a68; }} }}
+  --buyfill:#c62a1f; --sellfill:#2856b8; --skyfill:#0369a1; --mutfill:#525a68;
+  --amber:#f0b44a; --amberbg:#352a12; --ok2bg:#22381a; --ok1bg:#1a2615; --okfg:#9fd774; }} }}
 * {{ box-sizing:border-box; }}
 body {{ background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0; padding:14px; line-height:1.5; max-width:760px; margin-inline:auto; }}
 h1 {{ font-size:1.3rem; margin:4px 0 2px; }}
@@ -497,7 +514,7 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .whys {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:4px; }}
 .why {{ font-size:.72rem; padding:1px 7px; border-radius:6px; font-weight:600; border:1px solid var(--line); background:var(--card); }}
 .why.buy {{ color:var(--buy); border-color:var(--buy); }} .why.sell {{ color:var(--sell); border-color:var(--sell); }}
-.why.caution {{ color:var(--skyfg); border-color:var(--sky); }} .why.up {{ color:var(--buy); }} .why.wait, .why.waitdn {{ color:var(--mut); }}
+.why.caution {{ color:var(--amber); border-color:var(--amber); }} .why.up {{ color:var(--buy); }} .why.wait, .why.waitdn {{ color:var(--mut); }}
 .mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}
 .glink {{ display:block; margin-top:8px; font-size:.82rem; color:var(--fg); text-decoration:none; border-top:1px solid var(--line); padding-top:8px; }}
 .glink small {{ color:var(--mut); }} .glink:hover {{ text-decoration:underline; }}
@@ -548,6 +565,15 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chip.buy {{ background:var(--buybg); color:var(--buy); border-color:var(--buy); font-weight:600; }}
 .chip.sell {{ background:var(--sellbg); color:var(--sell); border-color:var(--sell); font-weight:600; }}
 .chip.flag {{ color:var(--mut); }} .chip.flag.watch {{ color:var(--fg); border-color:var(--mut); }}
+details.dwarn {{ background:var(--amberbg); }} details.dhold2 {{ background:var(--ok2bg); }} details.dhold1 {{ background:var(--ok1bg); }}
+.chip.warn {{ background:var(--amberbg); color:var(--amber); border-color:var(--amber); font-weight:600; }}
+.chip.hold2 {{ background:var(--ok2bg); color:var(--okfg); border-color:var(--okfg); font-weight:600; }}
+.chip.hold1 {{ background:var(--ok1bg); color:var(--okfg); border-color:var(--okfg); }}
+.sg.warn {{ border-left-color:var(--amber); background:var(--amberbg); }} .sg.warn h3 {{ color:var(--amber); }}
+.sg.hold-ok {{ border-left-color:var(--okfg); }} .sg.hold-ok h3 {{ color:var(--okfg); }}
+.hchips {{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }}
+.hchip {{ font-size:.82rem; padding:3px 10px; border-radius:99px; color:var(--okfg); border:1px solid var(--okfg); font-weight:600; }}
+.hchip.h2 {{ background:var(--ok2bg); }} .hchip.h1 {{ background:var(--ok1bg); font-weight:500; border-style:dashed; }}
 details.dbuy {{ background:var(--buybg); }} details.dsell {{ background:var(--sellbg); }} details.dhot {{ background:var(--warnbg); }}
 details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; }}
 summary {{ cursor:pointer; padding:10px 12px; font-size:.9rem; }} .code {{ color:var(--mut); font-size:.75rem; }}
@@ -577,8 +603,9 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
 <div class="legend">매수검토 = 매수 신호(싼 조건 2개 이상 + 반등 트리거) 또는 눌림진행(싸고 아직 빠지는 중이지만 장기 추세 상승). ● = 근거 수.
-매도검토 = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹치거나, 60거래일 최고 종가 대비 -8% 이하. ● = 걸린 근거 수 — 두 시장 백테스트에서 일관되게 맞은 경고만 모음.
-추격매수 주의 = 과열·경고는 떴지만 정리 근거는 없음(백테스트상 뒤에 더 오르는 경우도 많음 — 팔 이유는 아니고 새로 사지는 말 것).
+매도검토 = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹칠 때. ● = 걸린 근거 수 — 두 시장 백테스트에서 일관되게 맞은 경고만 모음.
+추격매수 주의(호박색) = 과열·경고는 떴지만 정리 근거는 없음(백테스트상 뒤에 더 오르는 경우도 많음 — 보유는 유지, 추가 매수는 금지).
+홀딩 유지(연두) = 주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 진한 연두 = 일봉도 정배열(순항), 옅은 연두(점선) = 일봉만 역배열(눌림, 팔 이유 아님).
 상승중 = 상승 추세 · 과열 아님 · 20일선 눌림 뒤 반등. 대기 = 싸고 하락은 멈췄지만 반등 신호 전. 하락-대기 = 싸지만 하락 중이고 장기 추세도 하락.
 바닥근접 / 꼭지근접 = 1년 고점 대비 25% 이상 빠진(오른) 종목이 하락(상승)을 멈추고 돌아서는 중(칸에 마우스를 올리면 단계·저점·고점) — 매매 신호가 아니라 참고.
 이격도 = 50일 이격도 현재값 (과거 최소~최대). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 채움 칸 = 이 판정의 조건·트리거로 쓰인 항목.</div>

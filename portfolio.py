@@ -26,22 +26,18 @@ HALF_CATS = ("익절검토", "비중축소")
 #            hold = 매도·비중축소에 상대강도↓(최근 60일 지수보다 약함)가 겹칠 때만 전부(홀딩형)
 #  옵션: stops = [(방식, %), ...] 하나라도 걸리면 매도 — fix_next = 종가가 매수가 -%면 다음 날 종가도 그 아래일 때 매도(내 손절 방식),
 #                           fix_now = 종가가 매수가 -%면 그날 종가에 매도, trail = 보유 중 최고 종가 대비 -%면 그날 매도
-#        week_exit = 주봉 붕괴(5주<10주 + 종가<10주선)면 다음 날 매도(산 지 5거래일 뒤부터) · extra_sell = 이 분류가 켜지면 전부 매도
+#        week_exit = 주봉 붕괴(5주<10주 + 종가<10주선)면 다음 날 매도(산 지 5거래일 뒤부터) · extra_sell = 이 분류가 새로 켜지면 전부 매도 · state_sell = 켜져 있는 동안 매도(산 지 5일 뒤부터)
 HOLD_BUY = ("매수", "눌림진행")
 HOLD_SELL = ("매도·상대강도↓", "비중축소·상대강도↓")
 VARIANTS = [
     ("리포트 규칙", "매수·불타기에 사고, 익절검토·비중축소에 절반, 매도에 전부 판다(구버전)", ("매수", "불타기"), False, "half", {}),
     ("리포트 + 손절8%", "리포트 규칙 + 종가가 매수가 -8%면 다음 날 종가도 회복 못 할 때 매도 (기준)", ("매수", "불타기"), False, "half",
      {"stops": [("fix_next", 8)]}),
-    ("손절8% + 고점-8%", "기준 + 산 뒤 최고 종가 대비 -8%면 그날 종가에 매도", ("매수", "불타기"), False, "half",
-     {"stops": [("fix_next", 8), ("trail", 8)]}),
-    ("손절8% + 고점-10%", "기준 + 산 뒤 최고 종가 대비 -10%면 매도", ("매수", "불타기"), False, "half",
-     {"stops": [("fix_next", 8), ("trail", 10)]}),
-    ("손절8% + 고점-12%", "기준 + 산 뒤 최고 종가 대비 -12%면 매도", ("매수", "불타기"), False, "half",
-     {"stops": [("fix_next", 8), ("trail", 12)]}),
+    ("손절8% + 추세이탈 매도", "기준 + 추세이탈·상대강도↓(5주<10주 + 종가<10주선 + 60일 지수보다 약함)가 새로 켜지면 전부 매도",
+     ("매수", "불타기"), False, "half", {"stops": [("fix_next", 8)], "state_sell": ("추세이탈·상대강도↓",)}),
 ]
 # 이전에 시험하고 뺀 변형(2026-10-10 결과 참고): 홀딩형·홀딩+손절·주봉붕괴(구간마다 들쭉날쭉), 매도 신호에 전부, 하락기에만 매수,
-# 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수 — HANDOFF.md 참고
+# 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수, 손절8%+고점 대비 -8·10·12% 매도 — HANDOFF.md 참고
 
 
 def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
@@ -49,6 +45,7 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
     opts = opts or {}
     stops = list(opts.get("stops") or ([opts["stop"]] if opts.get("stop") else []))
     extra_sell = set(opts.get("extra_sell", ()))
+    state_sell = set(opts.get("state_sell", ()))     # 이 분류가 켜져 있는 동안(산 지 5거래일 뒤부터) 매도 — 이미 켜진 상태에서 산 경우도 잡도록
     px = {c: s["close"].reindex(dates).ffill() for c, s in states.items()}
     cats = {c: s["cats"].reindex(dates) for c, s in states.items()}
     regs = {c: s["reg"].reindex(dates) for c, s in states.items()}
@@ -120,7 +117,7 @@ def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
                 if sell_mode == "hold":
                     if new & set(HOLD_SELL) or new & extra_sell or (opts.get("week_exit") and "주봉붕괴" in on and i - pos[c]["i"] >= 5):
                         orders.append(("sell", c))
-                elif "매도" in new or new & extra_sell:
+                elif "매도" in new or new & extra_sell or (on & state_sell and i - pos[c]["i"] >= 5):
                     orders.append(("sell", c))
                 elif new & set(HALF_CATS):
                     orders.append(("sell" if sell_mode == "all" else "half", c))

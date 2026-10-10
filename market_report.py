@@ -40,7 +40,7 @@ TOP_FAST = True     # 꼭지 1/3 빠른 판정: 고점 무렵(고점 포함 6거
 BOTTOM_FAST = False # 바닥 1/3 빠른 판정(이격도 과거 최소 근접 시 기다리지 않음) — LS 시험에서 폭락 중 반등마다 켜져 꺼 둠(2026-10-10)
 BOTTOM_HOLD = "low"  # 바닥 단계 유지 방식: "low" = 저점을 깨기 전까지 유지 / "ma20" = 종가가 20일선 아래로 가면 해제 / "" = 매일 새로 판정
 HI_DAYS = 60       # 정리 신호: 최근 60거래일 최고 종가 대비
-HI_DROP = 8.0      # 그 고점에서 이 % 이상 빠지면 '매도검토' 근거
+HI_DROP = 8.0      # (현재 미사용) 고점 대비 하락 매도 — 백테스트에서 효과 없어 리포트에서 뺌
 RS_DAYS = 60       # 상대강도 = 최근 60거래일 종목 수익률 - 지수 수익률
 VOL_SPIKE = 2.5    # 거래량 폭증 = 최근 5일 중 하루 거래량이 20일 평균의 이 배수 이상
 ADD_TOUCH = 2.0     # 불타기: 최근 5일 안에 종가가 20일선 위 이 % 이내까지 내려왔으면 '눌림'
@@ -213,6 +213,9 @@ def analyze_df(df, code, name, light=False):
     high = df["High"].dropna() if "High" in df else c
     h52 = float(high.rolling(250, min_periods=1).max().iloc[-1])
     r["high52"], r["from_high"] = h52, (r["close"] / h52 - 1) * 100
+    low = df["Low"].dropna() if "Low" in df else c
+    l52 = float(low.rolling(250, min_periods=1).min().iloc[-1])
+    r["low52"], r["from_low"] = l52, (r["close"] / l52 - 1) * 100 if l52 > 0 else None
 
     rets = (c.pct_change().tail(5) * 100).tolist()
     r["rets"] = rets
@@ -586,12 +589,14 @@ def stock_signals(r):
 
 
 # ---------------------------------------------------------------- 리포트 표시 분류 (2026-10-10, 백테스트 결과 반영)
-# 매수검토 = 매수 또는 눌림진행 (+ 근거 수로 강도) / 매도검토 = 아래 4개 중 하나 이상 (걸린 수로 강도)
-#   ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증  ④ 60거래일 최고 종가 대비 -8% 이하
+# 매수검토 = 매수 또는 눌림진행 (+ 근거 수로 강도) / 매도검토 = 아래 3개 중 하나 이상 (걸린 수로 강도)
+#   ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증
+#   (60거래일 최고 종가 대비 -8%는 2026-10-10 넣었다가 뺌: 시장 조정기에 대부분 걸리고, 백테스트에서도 고점 대비 매도는 수익을 줄임)
 # 추격매수 주의 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 (매도검토에 이미 있으면 제외)
 # 상승중 = 불타기 · 대기 = 반등대기 · 하락-대기 = 하락진행
-REVIEW = (("buy", "매수검토", "buy"), ("sell", "매도검토", "sell"), ("caution", "추격매수 주의", "watch"),
-          ("up", "상승중", "buy"), ("wait", "대기", "watch"), ("waitdn", "하락-대기", "watch"))
+# 홀딩 유지 = 주봉·월봉 정배열 + 종가 10주선 위 + 매도검토·추격매수 주의 없음 (순항 = 일봉도 정배열 / 눌림 = 일봉만 역배열)
+REVIEW = (("buy", "매수검토", "buy"), ("sell", "매도검토", "sell"), ("caution", "추격매수 주의", "warn"),
+          ("hold", "홀딩 유지", "hold"), ("up", "상승중", "buy"), ("wait", "대기", "watch"), ("waitdn", "하락-대기", "watch"))
 
 
 def review(r):
@@ -618,12 +623,18 @@ def review(r):
         (why if weak else warn).append(f"비중축소 + 상대강도↓({rs:+.1f}%p)" if weak else "비중축소(상대강도 양호)")
     if sg["sell"] == "과열":
         (why if spike else warn).append(f"익절검토 + 거래량폭증({vol:.1f}배)" if spike else "익절검토(거래량 폭증 없음)")
-    if r.get("from_hi60") is not None and r["from_hi60"] <= -HI_DROP:
-        why.append(f"{HI_DAYS}일 고점 대비 {r['from_hi60']:.1f}%")
     if why:
         out["sell"] = {"score": len(why), "why": why}
     elif warn:
         out["caution"] = {"score": 0, "why": warn}
+    if out["caution"]:
+        out["caution"]["why"].append("보유 유지 · 추가 매수 금지")
+    wk, mo = r["week"], r["month"]
+    if (not out["sell"] and not out["caution"] and wk.get("ok") and wk.get("above") and mo.get("ok") and mo.get("above")
+            and r.get("w10") and r["close"] > r["w10"]):
+        cruise = bool(r["day"].get("ok") and r["day"].get("above"))
+        out["hold"] = {"score": 0, "level": "순항" if cruise else "눌림",
+                       "why": ["일·주·월 정배열 — 추세 순항" if cruise else "주·월 정배열, 일봉만 역배열 — 추세 속 눌림(팔 이유 아님)"]}
     if sg["add"] == "후보":
         out["up"] = {"score": 0, "why": sg["add_c"]}
     if sg["buy"] == "관심":
@@ -636,7 +647,8 @@ def review(r):
 def review_groups(r):
     """이 종목이 들어가는 리포트 칸 [(이름, 성격, 강도), ...]"""
     rv = r.get("review") or review(r)
-    return [(nm, tone, rv[k]["score"]) for k, nm, tone in REVIEW if rv.get(k)]
+    return [(nm + ("·" + rv[k]["level"] if rv[k].get("level") else ""), tone + ("2" if rv[k].get("level") == "순항" else "1" if rv[k].get("level") else ""),
+             rv[k]["score"]) for k, nm, tone in REVIEW if rv.get(k)]
 
 
 # ---------------------------------------------------------------- 분류
@@ -1031,6 +1043,9 @@ def signals_text(results, msig):
         if not hit:            # 해당 종목이 없는 칸은 생략
             continue
         L.append(f"\n▶ {head} [{len(hit)}]")
+        if key == "hold":
+            L.append("  " + ", ".join(f"{r['name']}({r['review'][key]['level']})" for r in hit))
+            continue
         for r in hit:
             rv = r["review"][key]
             L.append(f"• {tl(r)}" + (" " + "●" * rv["score"] if rv["score"] else ""))

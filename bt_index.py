@@ -13,7 +13,7 @@ DIR = os.environ.get("BT_OUT_DIR", "results")
 # 비교표에 보여 줄 분류와 기대 방향(▲ 오르면 좋음 / ▼ 덜 오르면 좋음)
 KEY_CATS = [("매수", 1), ("눌림진행", 1), ("불타기", 1), ("골든X3", 1), ("바닥1/3", 1), ("바닥3/3", 1),
             ("매도", -1), ("익절검토", -1), ("과열", -1), ("꼭지1/3", -1), ("꼭지3/3", -1),
-            ("클라이맥스꼭지", -1), ("RSI상승다이버전스", 1), ("지지선반등", 1), ("저항선돌파", 1)]
+            ("추세이탈·상대강도↓", -1), ("추세이탈·상대강도↓·과열없음", -1)]
 E = html.escape
 
 
@@ -52,7 +52,7 @@ def bt_table(items):
         cells = "".join(cell((cats.get(c, {}).get("d") or {}).get("20"), w) for c, w in KEY_CATS)
         port = {p["name"]: p for p in d.get("port", [])}
         rep = port.get("리포트 규칙", {})
-        cols = [port.get(n, {}) for n in ("리포트 + 손절8%", "손절8% + 고점-8%", "손절8% + 고점-10%", "손절8% + 고점-12%")]
+        cols = [port.get(n, {}) for n in ("리포트 + 손절8%", "손절8% + 추세이탈 매도")]
         bm = next((p for n, p in port.items() if n.endswith("보유") and n != "균등 보유"), {})
         f = d.get("files", {})
         rows += (f'<tr><td class="c"><b>{E(d.get("time", ""))}</b><br><small>{E(d.get("version", ""))} · {E(d.get("commit", "") or "-")}</small></td>'
@@ -62,7 +62,7 @@ def bt_table(items):
                  f'{cells}<td class="g">{pct(rep.get("tot"))}</td>{"".join(f"<td>{pct(c.get('tot'))}</td>" for c in cols)}'
                  f'<td>{pct(port.get("균등 보유", {}).get("tot"))}</td><td>{pct(bm.get("tot"))}</td></tr>')
     return (f'<div class="wrap"><table><tr><th class="c">실행</th><th class="c">메모(바꾼 로직)</th><th class="c">파일</th>{head}'
-            f'<th class="g">계좌 · 리포트 규칙</th><th>+손절8%</th><th>+고점-8%</th><th>+고점-10%</th><th>+고점-12%</th><th>균등 보유</th><th>지수 보유</th></tr>{rows}</table></div>')
+            f'<th class="g">계좌 · 리포트 규칙</th><th>+손절8%</th><th>+손절8% +추세이탈</th><th>균등 보유</th><th>지수 보유</th></tr>{rows}</table></div>')
 
 
 def tr_table(items):
@@ -108,7 +108,7 @@ td.mut {{ color:var(--mut); }} .g {{ border-left:1px solid var(--line); }} a {{ 
 <h1>백테스트 기록</h1>
 <div class="t">실행할 때마다 결과가 버전별로 쌓임 · 같은 대상끼리 최신순 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
 <p class="note">분류 칸 = 신호 뒤 20거래일 평균 수익률 − 기준선(아무 날이나 샀을 때) (%p). ▲ 분류는 +, ▼ 분류는 −가 기대 방향 —
-기대 방향으로 1%p 이상이면 초록, 반대로 1%p 이상이면 빨강. 5건 미만은 '-'. 계좌 = 방식별 총수익(리포트 규칙=구버전, +손절8%=기준, 기준+고점 대비 -8·10·12% 매도)과 같은 종목 균등 보유·지수 보유 총수익.</p>
+기대 방향으로 1%p 이상이면 초록, 반대로 1%p 이상이면 빨강. 5건 미만은 '-'. 계좌 = 방식별 총수익(리포트 규칙=구버전, +손절8%=기준, 기준+추세이탈·상대강도↓ 매도)과 같은 종목 균등 보유·지수 보유 총수익.</p>
 {body or '<p class="note">아직 버전으로 저장된 실행이 없음 — backtest-wide 또는 bottom-trace를 한 번 돌리면 생김</p>'}
 </body></html>"""
     os.makedirs(DIR, exist_ok=True)
