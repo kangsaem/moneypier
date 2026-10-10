@@ -592,40 +592,54 @@ CREDIT_TOP = 90       # 신용잔고/예탁금 비율이 과거 이 백분위 �
 
 
 def credit_series(pages=CREDIT_PAGES):
-    """네이버 증시자금동향(전체 시장): 날짜별 고객예탁금·신용잔고(억원). 표 모양이 바뀌면 예외 → 상단 '실패' 카드로 보임"""
+    """네이버 증시자금동향(전체 시장): 날짜별 고객예탁금·신용잔고(억원). 표 모양이 다르면 예외(진단 내용 포함) → 상단 '실패' 카드에 표시
+    열 순서는 머리글로 판단하지 않고 크기로 판단: 각 항목이 (금액, 증감)이므로 1·3번째 숫자 중 큰 쪽 = 예탁금, 작은 쪽 = 신용잔고"""
     import re
     import requests
-    rows, hdr_ok = {}, None
-    ua = {"User-Agent": "Mozilla/5.0", "Referer": "https://finance.naver.com/sise/"}
+    rows, diag = {}, ""
+    ua = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
+          "Referer": "https://finance.naver.com/sise/", "Accept-Language": "ko-KR,ko;q=0.9"}
+    date_re = re.compile(r"(\d{2}|\d{4})[.\-/](\d{2})[.\-/](\d{2})")
+    num_re = re.compile(r"[-+]?[\d,]+(\.\d+)?")
     for p in range(1, pages + 1):
-        t = requests.get("https://finance.naver.com/sise/sise_deposit.naver", params={"page": p},
-                         headers=ua, timeout=10).content.decode("euc-kr", errors="ignore")
-        if hdr_ok is None:   # 열 순서 확인: 고객예탁금이 신용잔고보다 앞이어야 함
-            a, b = t.find("고객예탁금"), t.find("신용잔고")
-            if a < 0 or b < 0:
-                raise ValueError("증시자금동향 표 머리글 없음")
-            hdr_ok = a < b
-        new = 0
-        for tr in re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S):
-            cells = [re.sub(r"<[^>]+>|&nbsp;|\s", "", c) for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S)]
-            if len(cells) < 5 or not re.fullmatch(r"\d{2}\.\d{2}\.\d{2}", cells[0]):
+        resp = requests.get("https://finance.naver.com/sise/sise_deposit.naver", params={"page": p}, headers=ua, timeout=10)
+        enc = "utf-8" if "utf-8" in resp.headers.get("Content-Type", "").lower() else "euc-kr"
+        t = resp.content.decode(enc, errors="ignore")
+        new, trs = 0, re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S | re.I)
+        for tr in trs:
+            cells = [re.sub(r"<[^>]+>|&nbsp;|\s", "", c) for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S | re.I)]
+            if len(cells) < 4:
                 continue
-            nums = [float(x.replace(",", "")) for x in cells[1:5] if re.fullmatch(r"[-+]?[\d,]+(\.\d+)?", x)]
-            if len(nums) < 4:
+            md = date_re.fullmatch(cells[0])
+            if not md:
                 continue
-            d = pd.Timestamp("20" + cells[0].replace(".", "-"))
-            dep, cred = (nums[0], nums[2]) if hdr_ok else (nums[2], nums[0])   # 각 항목 = 금액, 증감
+            nums = []
+            for x in cells[1:]:
+                if num_re.fullmatch(x):
+                    nums.append(float(x.replace(",", "")))
+                elif x in ("", "-"):
+                    nums.append(0.0)
+            if len(nums) < 3 or nums[0] <= 0 or nums[2] <= 0:
+                continue
+            y = md.group(1)
+            d = pd.Timestamp(f"{'20' + y if len(y) == 2 else y}-{md.group(2)}-{md.group(3)}")
+            dep, cred = max(nums[0], nums[2]), min(nums[0], nums[2])
             if d not in rows:
                 new += 1
             rows[d] = (dep, cred)
-        if not new:          # 마지막 쪽을 넘김
+        if p == 1:
+            title = re.search(r"<title>(.*?)</title>", t, re.S | re.I)
+            sample = next((re.sub(r"<[^>]+>|\s+", " ", tr).strip()[:80] for tr in trs if date_re.search(re.sub(r"<[^>]+>", "", tr))), "")
+            diag = (f"HTTP {resp.status_code} · {len(t)}자 · {enc} · tr {len(trs)}개 · 제목 '{title.group(1).strip()[:30] if title else '-'}'"
+                    f" · 날짜행 예 '{sample}'")
+        if not new:          # 마지막 쪽을 넘김(빈 쪽이거나 마지막 쪽 반복)
             break
     if len(rows) < 20:
-        raise ValueError(f"증시자금동향 {len(rows)}일치뿐")
+        raise ValueError(f"{len(rows)}일치만 읽음 — {diag}")
     df = pd.DataFrame.from_dict(rows, orient="index", columns=["dep", "cred"]).sort_index()
     df["ratio"] = df["cred"] / df["dep"] * 100
-    if not 3 < df["ratio"].median() < 150:
-        raise ValueError(f"신용/예탁금 비율 이상값 {df['ratio'].median():.0f}%")
+    if not 3 < df["ratio"].median() < 100:
+        raise ValueError(f"비율 이상값 {df['ratio'].median():.0f}% — {diag}")
     return df
 
 
@@ -672,7 +686,7 @@ def market_snapshot():
         snap["credit"] = credit_info(credit_series())
     except Exception as e:
         snap["credit"] = None
-        snap["err"].append(f"신용/예탁금 ({type(e).__name__})")
+        snap["err"].append(f"신용/예탁금 ({type(e).__name__}: {str(e)[:220]})")
     return snap
 
 
