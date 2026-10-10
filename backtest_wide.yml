@@ -1,16 +1,24 @@
 name: backtest-wide
 
-# 넓은 백테스트: 코스피 시가총액 상위 종목 · 최근 약 5년 (30~60분 걸려서 매일 돌리지 않고 필요할 때만 수동 실행)
-# 결과는 results/backtest_wide.html 로 저장소에 커밋되고, 끝나면 daily-report를 다시 돌려 페이지에 올린다.
+# 넓은 백테스트: 코스피 시가총액 상위 / 나스닥 대형주 / 내 종목 · 기간 지정 (필요할 때만 수동 실행)
+# 결과는 실행 시각 버전을 붙여 results/에 쌓이고(최신본은 원래 이름으로도 복사), backtests.html 목록에서 지난 실행과 비교.
 on:
   workflow_dispatch:
     inputs:
+      market:
+        description: "대상"
+        type: choice
+        options: [kospi, nasdaq, mine]
+        default: kospi
       top:
-        description: "코스피 시가총액 상위 몇 개"
+        description: "상위 몇 개 (나스닥은 최대 50, 내 종목이면 무시)"
         default: "50"
       days:
-        description: "기간(거래일, 1260 ≈ 5년)"
-        default: "1260"
+        description: "기간(거래일). 쉼표로 여러 개 = 각각 따로 실행(코스피는 기간마다 그 시작일의 상위 종목). 252≈1년 756≈3년 1260≈5년"
+        default: "252,756,1260"
+      memo:
+        description: "이번에 바꾼 로직 메모 (기록 목록에 표시)"
+        default: ""
 
 permissions:
   contents: write    # 결과 파일 커밋
@@ -19,26 +27,61 @@ permissions:
 jobs:
   backtest:
     runs-on: ubuntu-latest
-    timeout-minutes: 180
+    timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
-      - run: python backtest.py
+      - name: 나스닥100 과거 구성 종목 자료(실패해도 계속 — 그때는 지금 목록 사용)
+        run: pip install "git+https://github.com/jmccarrell/n100tickers" || echo "나스닥100 목록 설치 실패"
+      - name: 백테스트
+        run: |
+          case "${{ inputs.market }}" in
+            nasdaq) export BT_UNIVERSE=nasdaq OUTB=results/backtest_nasdaq ;;
+            mine)   export BT_UNIVERSE=tickers OUTB=results/backtest_mine ;;
+            *)      export BT_UNIVERSE=kospi OUTB=results/backtest_wide ;;
+          esac
+          export BT_VERSION=$(TZ=Asia/Seoul date +%Y%m%d-%H%M)
+          # 기간마다 따로 실행: 5년(1260)은 원래 이름, 나머지는 _<거래일>d 이름(예: backtest_wide_252d.html)
+          fail=0
+          for d in $(echo "$DAYS" | tr ',' ' '); do
+            if [ "$d" = "1260" ]; then export BT_OUT=$OUTB; else export BT_OUT=${OUTB}_${d}d; fi
+            echo "=== $d 거래일 → $BT_OUT ==="
+            BT_DAYS=$d python backtest.py || { echo "!!! $d 거래일 실패"; fail=1; }
+          done
+          ls results/ >/dev/null && [ "$fail" = 0 ] || echo "일부 기간 실패 — 성공한 결과만 저장"
         env:
-          BT_UNIVERSE: kospi
           BT_TOP: ${{ inputs.top }}
-          BT_DAYS: ${{ inputs.days }}
-          BT_OUT: results/backtest_wide
+          DAYS: ${{ inputs.days }}
+          BT_MEMO: ${{ inputs.memo }}
+          TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
       - name: 결과 커밋
+        env:
+          MARKET: ${{ inputs.market }}
+          MEMO: ${{ inputs.memo }}
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git add results/
-          git commit -m "넓은 백테스트 결과 갱신" || exit 0
-          git push
+          # 이번 실행이 만든 결과 파일만 따로 보관 → 최신 저장소 위에 다시 얹고 목록(backtests.html)은 그때 새로 만듦
+          # (여러 실행이 동시에 끝나도 목록 파일 충돌이 나지 않게, 밀어넣기 실패 시 5번까지 다시 시도)
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep -v 'backtests.html$' > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          cat /tmp/list
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in 1 2 3 4 5; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            python bt_index.py || echo "목록 만들기 실패(bt_index.py 확인)"
+            git add results/
+            git commit -q -m "백테스트 결과 ($MARKET) $MEMO" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 7))
+          done
+          exit 1
       - name: 리포트 다시 배포
         run: gh workflow run daily.yml --ref ${{ github.ref_name }}
         env:

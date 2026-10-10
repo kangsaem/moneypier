@@ -3,4 +3,3 @@ yfinance
 pandas
 requests
 pyarrow
-nasdaq-100-ticker-history @ git+https://github.com/jmccarrell/n100tickers
