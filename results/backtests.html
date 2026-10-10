@@ -1,0 +1,19 @@
+<!doctype html><html lang="ko"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>백테스트 기록</title>
+<style>
+:root { --bg:#f6f7f9; --card:#fff; --fg:#14181f; --mut:#6b7380; --line:#e3e6eb; --ok:#0f766e; --okbg:#d9f2ee; --bad:#d92d20; --badbg:#fdecea; }
+@media (prefers-color-scheme: dark) { :root { --bg:#0f1115; --card:#181b21; --fg:#eceff4; --mut:#9aa3b2; --line:#2a2f38; --ok:#4fd1c0; --okbg:#10302c; --bad:#ff6b5e; --badbg:#3a1d1a; } }
+body { background:var(--bg); color:var(--fg); font-family:system-ui,-apple-system,"Noto Sans KR",sans-serif; margin:0 auto; padding:14px; max-width:1200px; line-height:1.5; }
+h1 { font-size:1.3rem; margin:4px 0; } h2 { font-size:1rem; margin:20px 0 6px; } .t, .note { color:var(--mut); font-size:.8rem; }
+.wrap { overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; }
+table { border-collapse:collapse; width:100%; font-size:.8rem; } th, td { padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; vertical-align:top; }
+th { color:var(--mut); font-weight:500; } td.c, th.c { text-align:left; } td.memo { white-space:normal; min-width:160px; max-width:260px; }
+small { color:var(--mut); } td.ok { background:var(--okbg); color:var(--ok); font-weight:600; } td.bad { background:var(--badbg); color:var(--bad); }
+td.mut { color:var(--mut); } .g { border-left:1px solid var(--line); } a { color:inherit; }
+</style></head><body>
+<h1>백테스트 기록</h1>
+<div class="t">실행할 때마다 결과가 버전별로 쌓임 · 같은 대상끼리 최신순 · 갱신 2026-10-10 13:54 KST · <a href="./">리포트로</a></div>
+<p class="note">분류 칸 = 신호 뒤 20거래일 평균 수익률 − 기준선(아무 날이나 샀을 때) (%p). ▲ 분류는 +, ▼ 분류는 −가 기대 방향 —
+기대 방향으로 1%p 이상이면 초록, 반대로 1%p 이상이면 빨강. 5건 미만은 '-'. 계좌 = 리포트 규칙대로 매매한 총수익과 같은 기간 지수 보유 총수익.</p>
+<h2>바닥·꼭지 추적 · LS머트리얼즈 <small>1회</small></h2><div class="wrap"><table><tr><th class="c">실행</th><th class="c">메모</th><th class="c">파일</th><th class="c">바닥 단계 (최근 3개 저점)</th><th class="c">꼭지 단계 (최근 3개 고점)</th></tr><tr><td class="c"><b>2026-10-10 13:54</b><br><small>20261010-1354 · 0385a0c</small></td><td class="c memo">-</td><td class="c"><a href="bottom_417200_20261010-1354.html">결과</a></td><td class="c">저점 25-04-09 → 1/3 05-12(저점 +20%) · 2/3 06-12(저점 +21%) · 3/3 06-24(저점 +29%)<br>저점 25-11-25 → 1/3 12-23(저점 +20%) · 3/3 12-23(저점 +20%)<br>저점 26-07-30 → 1/3 08-28(저점 +29%) · 3/3 09-18(저점 +52%)</td><td class="c">고점 26-01-30 → 1/3 02-05(고점 -13%)<br>고점 26-03-20 → 1/3 03-24(고점 -17%)<br>고점 26-04-29 → 1/3 05-07(고점 -14%) · 3/3 06-01(고점 -34%)</td></tr></table></div>
+</body></html>
