@@ -378,6 +378,76 @@ def bottom_stage_v1(c, rs, r):
     return stage, info
 
 
+# ---- 백테스트 후보 신호 3종 (2026-10-10, 리포트엔 아직 안 씀) ---------------------------------------
+CLX_VOL = 2.5        # 거래량 클라이맥스: 고점 ±3일 안에 거래량이 20일 평균의 이 배수 이상
+CLX_AFTER = (5, 10)  # 고점 뒤 이 거래일 범위 안에서 판정(신고가 없음 + 최근 5일 거래량이 평균 아래)
+DIV_LOOK = (10, 60)  # 다이버전스: 첫 저점(고점)을 찾는 구간 = 오늘로부터 10~60거래일 전
+DIV_RSI = 3          # 두 번째 저점의 RSI가 첫 저점보다 이만큼 이상 높아야(고점은 낮아야) 다이버전스
+SR_SWING = 10        # 지지·저항: 앞뒤 10거래일 중 가장 낮은(높은) 종가 = 의미 있는 저점(고점)
+SR_LOOK = (20, 250)  # 지지·저항 후보를 찾는 구간 = 오늘로부터 20~250거래일 전
+SR_BAND = 3.0        # 지지·저항 '근처' = ±3%
+
+
+def extra_signals(df):
+    """날짜별 후보 신호(그날까지 데이터만 사용, 미래 누수 없음). 반환 DataFrame(bool 열):
+    클라이맥스꼭지(▼) · RSI상승다이버전스(▲) · RSI하락다이버전스(▼) · 지지선반등(▲) · 저항선실패(▼) · 저항선돌파(▲)"""
+    import numpy as np
+    c = df["Close"].astype(float)
+    n = len(c)
+    cv = c.values
+    rv = rsi(c).values
+    out = {k: np.zeros(n, bool) for k in ("클라이맥스꼭지", "RSI상승다이버전스", "RSI하락다이버전스",
+                                          "지지선반등", "저항선실패", "저항선돌파")}
+    vr = None
+    if "Volume" in df and df["Volume"].fillna(0).sum() > 0:
+        v = df["Volume"].astype(float).replace(0, np.nan)
+        vr = (v / v.shift(1).rolling(20, min_periods=10).mean()).values
+    hi60 = c.rolling(60, min_periods=20).max().values
+    # 의미 있는 저점·고점: 앞뒤 SR_SWING일 중 최저·최고 종가(뒤 10일이 지나야 확정 → t에서는 i ≤ t-SR_SWING 만 사용)
+    w = 2 * SR_SWING + 1
+    sw_lo = (c == c.rolling(w, center=True).min()).values
+    sw_hi = (c == c.rolling(w, center=True).max()).values
+    for t in range(70, n):
+        x = cv[t]
+        # 1) 거래량 클라이맥스 꼭지: 최근 10일 최고 종가가 60일 신고가였고, 그 무렵 거래량 폭증, 그 뒤 5~10일 신고가 없음 + 거래량 줄어듦
+        if vr is not None:
+            i = t - CLX_AFTER[1] + int(np.argmax(cv[t - CLX_AFTER[1]:t + 1]))
+            if CLX_AFTER[0] <= t - i <= CLX_AFTER[1] and cv[i] >= hi60[i] and x < cv[i]:
+                spike = np.nanmax(vr[max(i - 3, 0):min(i + 4, t + 1)])
+                recent = np.nanmean(vr[t - 4:t + 1])
+                out["클라이맥스꼭지"][t] = spike >= CLX_VOL and recent < 1.0
+        # 2) RSI 다이버전스: 최근 5일 안의 저점이 10~60일 전 저점보다 낮은데 RSI는 더 높음(첫 저점 RSI는 과매도 35 이하), 오늘 반등
+        a, b = t - DIV_LOOK[1], t - DIV_LOOK[0]
+        j = t - 4 + int(np.argmin(cv[t - 4:t + 1]))           # 최근 저점
+        i = a + int(np.argmin(cv[a:b]))                         # 앞 저점
+        if cv[j] < cv[i] and rv[i] <= RSI_LO and rv[j] >= rv[i] + DIV_RSI and j < t and x > cv[j] and x > cv[t - 1]:
+            out["RSI상승다이버전스"][t] = True
+        j = t - 4 + int(np.argmax(cv[t - 4:t + 1]))
+        i = a + int(np.argmax(cv[a:b]))
+        if cv[j] > cv[i] and rv[i] >= RSI_HI and rv[j] <= rv[i] - DIV_RSI and j < t and x < cv[j] and x < cv[t - 1]:
+            out["RSI하락다이버전스"][t] = True
+        # 3) 지지·저항: 20~250일 전의 의미 있는 저점·고점 중 지금 가격에 가장 가까운 것
+        a, b = max(t - SR_LOOK[1], 0), t - SR_LOOK[0] + 1
+        lows = cv[a:b][sw_lo[a:b]]
+        highs = cv[a:b][sw_hi[a:b]]
+        lo5, hi5 = cv[t - 4:t + 1].min(), cv[t - 4:t + 1].max()
+        band = SR_BAND / 100
+        sup = lows[(lows <= x)]
+        if len(sup):
+            S = sup.max()                                        # 오늘 종가 아래 가장 가까운 지지선
+            # 최근 5일 안에 지지선 ±3%까지 내려왔다가, 오늘 지지선 위에서 상승 마감
+            out["지지선반등"][t] = abs(lo5 / S - 1) <= band and x > cv[t - 1] and x >= S
+        res = highs[(highs >= x)]
+        if len(res):
+            R = res.min()                                        # 오늘 종가 위 가장 가까운 저항선
+            out["저항선실패"][t] = abs(hi5 / R - 1) <= band and x < cv[t - 1] and x < R * (1 - band / 2)
+        brk = highs[(highs < x)]
+        if len(brk):
+            R = brk.max()                                        # 오늘 처음으로 저항선을 2% 넘게 넘은 날
+            out["저항선돌파"][t] = x >= R * 1.02 and cv[t - 1] < R * 1.02 and cv[t - 5:t].max() < R * 1.02
+    return pd.DataFrame(out, index=c.index)
+
+
 def long_up(r):
     """장기 추세 상승: 월봉 정배열(5월>10월) 또는 종가가 10월선 위"""
     mo = r["month"]
@@ -587,59 +657,97 @@ def _index_info(name, s):
             "date": s.index[-1], "chart": chart_data(s), "disp": d, "rsi": float(rsi(s).iloc[-1])}
 
 
-CREDIT_PAGES = 60     # 증시자금동향 몇 쪽까지 읽을지(쪽마다 수십 거래일 → 대략 수 년치). 백분위의 '과거' 범위
+CREDIT_YEARS = 5      # 금융투자협회 통계를 몇 년치 받을지(백분위의 '과거' 범위)
 CREDIT_TOP = 90       # 신용잔고/예탁금 비율이 과거 이 백분위 이상이면 위험 지표 켜짐(= 과거 상위 10%)
+PBR_LINK = "https://www.indexergo.com/series/?frq=D&idxDetail=20406"   # 코스피200 PBR(직접 확인용 링크). 자동 수집은 안 함(KRX 로그인 필요·사이트가 수집 차단)
 
 
-def credit_series(pages=CREDIT_PAGES):
-    """네이버 증시자금동향(전체 시장): 날짜별 고객예탁금·신용잔고(억원). 표 모양이 다르면 예외(진단 내용 포함) → 상단 '실패' 카드에 표시
-    열 순서는 머리글로 판단하지 않고 크기로 판단: 각 항목이 (금액, 증감)이므로 1·3번째 숫자 중 큰 쪽 = 예탁금, 작은 쪽 = 신용잔고"""
-    import re
+def _freesis_rows(obj, years=CREDIT_YEARS):
+    """금융투자협회 통계(freesis) 표를 1년씩 받아 행 목록으로. obj = 표 이름(OBJ_NM)"""
     import requests
-    rows, diag = {}, ""
-    ua = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36",
-          "Referer": "https://finance.naver.com/sise/", "Accept-Language": "ko-KR,ko;q=0.9"}
-    date_re = re.compile(r"(\d{2}|\d{4})[.\-/](\d{2})[.\-/](\d{2})")
-    num_re = re.compile(r"[-+]?[\d,]+(\.\d+)?")
-    for p in range(1, pages + 1):
-        resp = requests.get("https://finance.naver.com/sise/sise_deposit.naver", params={"page": p}, headers=ua, timeout=10)
-        enc = "utf-8" if "utf-8" in resp.headers.get("Content-Type", "").lower() else "euc-kr"
-        t = resp.content.decode(enc, errors="ignore")
-        new, trs = 0, re.findall(r"<tr[^>]*>(.*?)</tr>", t, re.S | re.I)
-        for tr in trs:
-            cells = [re.sub(r"<[^>]+>|&nbsp;|\s", "", c) for c in re.findall(r"<td[^>]*>(.*?)</td>", tr, re.S | re.I)]
-            if len(cells) < 4:
-                continue
-            md = date_re.fullmatch(cells[0])
-            if not md:
-                continue
-            nums = []
-            for x in cells[1:]:
-                if num_re.fullmatch(x):
-                    nums.append(float(x.replace(",", "")))
-                elif x in ("", "-"):
-                    nums.append(0.0)
-            if len(nums) < 3 or nums[0] <= 0 or nums[2] <= 0:
-                continue
-            y = md.group(1)
-            d = pd.Timestamp(f"{'20' + y if len(y) == 2 else y}-{md.group(2)}-{md.group(3)}")
-            dep, cred = max(nums[0], nums[2]), min(nums[0], nums[2])
-            if d not in rows:
-                new += 1
-            rows[d] = (dep, cred)
-        if p == 1:
-            title = re.search(r"<title>(.*?)</title>", t, re.S | re.I)
-            sample = next((re.sub(r"<[^>]+>|\s+", " ", tr).strip()[:80] for tr in trs if date_re.search(re.sub(r"<[^>]+>", "", tr))), "")
-            diag = (f"HTTP {resp.status_code} · {len(t)}자 · {enc} · tr {len(trs)}개 · 제목 '{title.group(1).strip()[:30] if title else '-'}'"
-                    f" · 날짜행 예 '{sample}'")
-        if not new:          # 마지막 쪽을 넘김(빈 쪽이거나 마지막 쪽 반복)
+    url = "https://freesis.kofia.or.kr/meta/getMetaDataList.do"
+    hdr = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json; charset=UTF-8",
+           "Referer": "https://freesis.kofia.or.kr/stat/FreeSIS.do"}
+    end = datetime.today()
+    rows, diag = [], ""
+    for k in range(years):
+        e = end - timedelta(days=365 * k)
+        st = e - timedelta(days=364)
+        body = {"dmSearch": {"tmpV40": "1000000", "tmpV41": "1", "tmpV1": "D", "tmpV45": f"{st:%Y%m%d}",
+                             "tmpV46": f"{e:%Y%m%d}", "OBJ_NM": obj}}
+        resp = requests.post(url, json=body, headers=hdr, timeout=15)
+        try:
+            ds = resp.json().get("ds1") or []
+        except Exception:
+            ds = []
+        if k == 0:
+            diag = f"HTTP {resp.status_code} · 행 {len(ds)}개 · 첫 행 {str(ds[0])[:160] if ds else resp.text[:120]!r}"
+        rows += ds
+        if not ds:
             break
     if len(rows) < 20:
         raise ValueError(f"{len(rows)}일치만 읽음 — {diag}")
-    df = pd.DataFrame.from_dict(rows, orient="index", columns=["dep", "cred"]).sort_index()
+    return rows, diag
+
+
+def _num(v):
+    try:
+        return float(str(v).replace(",", ""))
+    except Exception:
+        return None
+
+
+def _fs_keys(row):
+    return sorted([k for k in row if k.upper().startswith("TMPV") and k[4:].isdigit() and k.upper() != "TMPV1"],
+                  key=lambda k: int(k[4:]))
+
+
+def _fs_series(rows, key):
+    data = {}
+    for r in rows:
+        d = str(r.get("TMPV1", r.get("tmpV1", ""))).replace("-", "").replace(".", "").replace("/", "")[:8]
+        v = _num(r.get(key))
+        if len(d) == 8 and d.isdigit() and v:
+            data[pd.Timestamp(d)] = v
+    return pd.Series(data, dtype=float).sort_index()
+
+
+def credit_tables():
+    """신용공여 잔고(전체·코스피 신용거래융자)와 고객예탁금. 단위 억원. 반환 (DataFrame[cred, cred_ks], dep Series 또는 예외)
+    신용 표(STATSCU0100000070BO)는 열 이름이 일련번호라 첫 행에서 '전체 = 유가증권 + 코스닥'인 첫 세 칸을 찾음.
+    예탁금 표(증시자금추이, STATSCU0100000060BO)는 첫 숫자 열 = 고객예탁금으로 보고, 신용보다 커야 통과"""
+    rows, diag = _freesis_rows("STATSCU0100000070BO")
+    keys = _fs_keys(rows[0])
+    first = [_num(rows[0].get(k)) for k in keys]
+    trip = None
+    for i in range(len(keys) - 2):
+        a, b, c = first[i:i + 3]
+        if a and b and c and abs(a - (b + c)) <= a * 0.005:
+            trip = keys[i:i + 3]
+            break
+    if trip is None:
+        raise ValueError(f"신용 표에서 전체=유가+코스닥 열을 못 찾음 — {diag}")
+    tot, ks = _fs_series(rows, trip[0]), _fs_series(rows, trip[1])
+    div = 100 if tot.median() > 3e6 else 1            # 백만원 → 억원
+    cred = pd.DataFrame({"cred": tot / div, "cred_ks": ks / div}).dropna()
+    try:
+        drows, ddiag = _freesis_rows("STATSCU0100000060BO")
+        dk = _fs_keys(drows[0])
+        dep = _fs_series(drows, dk[0]) / div
+        both = dep.reindex(cred.index).dropna()
+        ratio = (cred["cred"].reindex(both.index) / both * 100).median() if len(both) else float("nan")
+        if not 3 < ratio < 100:
+            raise ValueError(f"신용/예탁금 비율 이상 {ratio:.0f}% (예탁금 열 {dk[0]}) — {ddiag}")
+    except Exception as e:
+        dep = e
+    return cred, dep
+
+
+def credit_series(cred, dep):
+    df = pd.DataFrame({"dep": dep, "cred": cred["cred"]}).dropna()
+    if len(df) < 20:
+        raise ValueError(f"예탁금·신용 날짜가 겹치는 날 {len(df)}일뿐")
     df["ratio"] = df["cred"] / df["dep"] * 100
-    if not 3 < df["ratio"].median() < 100:
-        raise ValueError(f"비율 이상값 {df['ratio'].median():.0f}% — {diag}")
     return df
 
 
@@ -664,98 +772,6 @@ def _series_info(r, spark_n=120):
     return {"cur": cur, "date": r.index[-1], "pct": _pctl(r), "max": float(r.max()), "min": float(r.min()),
             "since": r.index[0], "n": len(r), "chg20": float(cur - r.iloc[-21]) if len(r) > 20 else None,
             "spark": [round(float(x), 3) for x in r.tail(spark_n)]}
-
-
-def kospi_credit_series(years=5):
-    """금융투자협회 통계(freesis) '신용공여 잔고 추이'에서 유가증권(코스피) 신용거래융자 잔고(억원).
-    응답 열 이름이 TMPV2.. 같은 일련번호라, 첫 행에서 '전체 = 유가증권 + 코스닥'이 맞는 첫 세 칸을 찾아 둘째 칸(유가증권)을 씀"""
-    import requests
-    url = "https://freesis.kofia.or.kr/meta/getMetaDataList.do"
-    hdr = {"User-Agent": "Mozilla/5.0", "Content-Type": "application/json; charset=UTF-8",
-           "Referer": "https://freesis.kofia.or.kr/stat/FreeSIS.do?parentDivId=MSIS10000000000000&serviceId=STATSCU0100000070"}
-    end = datetime.today()
-    rows, diag = [], ""
-    for k in range(years):
-        e = end - timedelta(days=365 * k)
-        st = e - timedelta(days=364)
-        body = {"dmSearch": {"tmpV40": "1000000", "tmpV41": "1", "tmpV1": "D", "tmpV45": f"{st:%Y%m%d}",
-                             "tmpV46": f"{e:%Y%m%d}", "OBJ_NM": "STATSCU0100000070BO"}}
-        resp = requests.post(url, json=body, headers=hdr, timeout=15)
-        try:
-            ds = resp.json().get("ds1") or []
-        except Exception:
-            ds = []
-        if k == 0:
-            diag = f"HTTP {resp.status_code} · {len(resp.content)}바이트 · 행 {len(ds)}개 · 첫 행 {str(ds[0])[:150] if ds else resp.text[:120]!r}"
-        rows += ds
-        if not ds:
-            break
-    if len(rows) < 20:
-        raise ValueError(f"{len(rows)}일치만 읽음 — {diag}")
-    keys = sorted([k for k in rows[0] if k.upper().startswith("TMPV") and k.upper() != "TMPV1"], key=lambda k: int(k[4:]))
-
-    def num(v):
-        try:
-            return float(str(v).replace(",", ""))
-        except Exception:
-            return None
-    first = [num(rows[0].get(k)) for k in keys]
-    pick = None
-    for i in range(len(keys) - 2):
-        a, b, c = first[i:i + 3]
-        if a and b and c and abs(a - (b + c)) <= a * 0.005:
-            pick = keys[i + 1]
-            break
-    if pick is None:
-        raise ValueError(f"전체=유가+코스닥 열을 못 찾음 — {diag}")
-    data = {}
-    for r in rows:
-        d, v = str(r.get("TMPV1", r.get("tmpV1", ""))).replace("-", "").replace(".", "")[:8], num(r.get(pick))
-        if len(d) == 8 and v:
-            data[pd.Timestamp(d)] = v
-    sr = pd.Series(data).sort_index()
-    if sr.median() > 1e6:          # 백만원 단위 → 억원
-        sr = sr / 100
-    if not 5_000 < sr.median() < 1_000_000:
-        raise ValueError(f"코스피 신용잔고 값 이상 {sr.median():,.0f}억 — {diag}")
-    return sr
-
-
-def kospi_pbr_series(years=10):
-    """한국거래소 정보데이터시스템: 코스피 지수 PBR(일별). 한 번에 1년씩 받음"""
-    import requests
-    url = "http://data.krx.co.kr/comm/bldAttendant/getJsonData.cmd"
-    hdr = {"User-Agent": "Mozilla/5.0", "Referer": "http://data.krx.co.kr/contents/MDC/MDI/mdiLoader/index.cmd"}
-    end = datetime.today()
-    data, diag = {}, ""
-    for k in range(years):
-        e = end - timedelta(days=365 * k)
-        st = e - timedelta(days=364)
-        resp = requests.post(url, data={"bld": "dbms/MDC/STAT/standard/MDCSTAT00702", "indIdx": "1", "indIdx2": "001",
-                                        "strtDd": f"{st:%Y%m%d}", "endDd": f"{e:%Y%m%d}", "csvxls_isNo": "false"},
-                             headers=hdr, timeout=15)
-        try:
-            out = resp.json().get("output") or []
-        except Exception:
-            out = []
-        if k == 0:
-            diag = f"HTTP {resp.status_code} · {len(resp.content)}바이트 · 행 {len(out)}개 · {str(out[0])[:150] if out else resp.text[:120]!r}"
-        if not out:
-            break
-        for r in out:
-            v = str(r.get("WT_STKPRC_NETASST_RTO", "")).replace(",", "")
-            try:
-                v = float(v)
-            except ValueError:
-                continue
-            if v > 0:
-                data[pd.Timestamp(str(r.get("TRD_DD", "")).replace("/", "-"))] = v
-    if len(data) < 20:
-        raise ValueError(f"{len(data)}일치만 읽음 — {diag}")
-    sr = pd.Series(data).sort_index()
-    if not 0.3 < sr.median() < 5:
-        raise ValueError(f"PBR 값 이상 {sr.median():.2f} — {diag}")
-    return sr
 
 
 def market_snapshot():
@@ -787,17 +803,16 @@ def market_snapshot():
                          "pct10": float((h.iloc[-1] / h.iloc[-11] - 1) * 100) if n >= 11 else None}
         except Exception as e:
             snap["err"].append(f"{nm} ({type(e).__name__})")
+    snap["credit"] = snap["credit_ks"] = None
     try:
-        snap["credit"] = credit_info(credit_series())
+        cred, dep = credit_tables()
+        snap["credit_ks"] = _series_info(cred["cred_ks"])
+        if isinstance(dep, Exception):
+            snap["err"].append(f"고객예탁금 ({type(dep).__name__}: {str(dep)[:220]})")
+        else:
+            snap["credit"] = credit_info(credit_series(cred, dep))
     except Exception as e:
-        snap["credit"] = None
-        snap["err"].append(f"신용/예탁금 ({type(e).__name__}: {str(e)[:220]})")
-    for key, nm, fn in (("credit_ks", "코스피 신용잔고", kospi_credit_series), ("pbr", "코스피 PBR", kospi_pbr_series)):
-        try:
-            snap[key] = _series_info(fn())
-        except Exception as e:
-            snap[key] = None
-            snap["err"].append(f"{nm} ({type(e).__name__}: {str(e)[:220]})")
+        snap["err"].append(f"신용잔고 ({type(e).__name__}: {str(e)[:220]})")
     return snap
 
 
@@ -811,7 +826,7 @@ def _level(score, total, kind):
 
 def market_signals(snap, results):
     """시장 위험 / 시장 바닥 체크리스트. 항목 = (설명, 현재값, True|False|None(데이터없음))"""
-    ks, vix, y10, cr, pb = snap.get("ks"), snap.get("vix"), snap.get("y10"), snap.get("credit"), snap.get("pbr")
+    ks, vix, y10, cr = snap.get("ks"), snap.get("vix"), snap.get("y10"), snap.get("credit")
     n = len(results)
     bear = sum(1 for r in results if r["day"]["ok"] and not r["day"]["above"]) / n if n else None
     weak = sum(1 for r in results if r["rsi"] <= 35) / n if n else None
@@ -837,8 +852,6 @@ def market_signals(snap, results):
          f"{ks['from_high']:.1f}% · 저점 {ks['days_since_low']}일 전" if ks else "-",
          (ks["from_high"] <= -20 and ks["days_since_low"] >= 20) if ks else None),
         ("VIX 30 이상 (공포 극단)", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
-        (f"코스피 PBR 과거 하위 {100 - CREDIT_TOP}% (싸다)", f"{pb['cur']:.2f} · 하위 {pb['pct']:.0f}%" if pb else "-",
-         (pb["pct"] <= 100 - CREDIT_TOP) if pb else None),
         ("내 종목 30% 이상이 RSI 35 이하", f"{weak:.0%}" if weak is not None else "-",
          (weak >= 0.3) if weak is not None else None),
     ]
@@ -870,12 +883,9 @@ def market_text(snap):
     if cr:
         L.append(f"신용잔고/고객예탁금 {cr['ratio']:.1f}% (신용 {cr['cred'] / 1e4:,.1f}조 / 예탁금 {cr['dep'] / 1e4:,.1f}조, {cr['date']:%m-%d})"
                  f" · {cr['since']:%Y-%m} 이후 상위 {max(100 - cr['pct'], 0):.0f}%")
-    ck, pb = snap.get("credit_ks"), snap.get("pbr")
+    ck = snap.get("credit_ks")
     if ck:
         L.append(f"코스피 신용잔고 {ck['cur'] / 1e4:,.1f}조 ({ck['date']:%m-%d}) · {ck['since']:%Y-%m} 이후 상위 {max(100 - ck['pct'], 0):.0f}%")
-    if pb:
-        L.append(f"코스피 PBR {pb['cur']:.2f} ({pb['date']:%m-%d}) · {pb['since']:%Y-%m} 이후 최저 {pb['min']:.2f} / 최고 {pb['max']:.2f}"
-                 f" · 하위 {pb['pct']:.0f}%")
     for e in snap.get("err", []):
         L.append(f"가져오기 실패: {e}")
     return "\n".join(L)

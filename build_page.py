@@ -107,12 +107,13 @@ def credit_tags(cr):
     cls = "hot" if cr["pct"] >= m.CREDIT_TOP else "h1" if cr["pct"] >= 75 else "l1" if cr["pct"] <= 25 else "n"
     tip = (f"신용잔고 {cr['cred'] / 1e4:,.1f}조 / 고객예탁금 {cr['dep'] / 1e4:,.1f}조 ({cr['date']:%m-%d}) · "
            f"{cr['since']:%Y-%m} 이후 {cr['n']}거래일 중 최고 {cr['max']:.1f}% · 최저 {cr['min']:.1f}%")
-    return (f'<div class="mtags" title="{E(tip)}"><span class="mt {cls}">과거 상위 {top:.0f}%</span>'
+    txt = "과거 최고" if top < 0.5 else "과거 최저" if cr["pct"] < 0.5 else f"과거 상위 {top:.0f}%" if cr["pct"] >= 50 else f"과거 하위 {cr['pct']:.0f}%"
+    return (f'<div class="mtags" title="{E(tip)}"><span class="mt {cls}">{E(txt)}</span>'
             f'<span class="mt n">{cr["min"]:.0f}~{cr["max"]:.0f}%</span></div>{spark(cr.get("spark"))}')
 
 
 def series_tags(v, rng, hot_high=True):
-    """코스피 신용잔고·PBR 카드: 과거 대비 위치 + 범위 + 추이선. hot_high=False(PBR)면 하위 쪽을 강조"""
+    """코스피 신용잔고 카드: 과거 대비 위치 + 범위 + 추이선. hot_high=False면 하위 쪽을 강조"""
     p = v["pct"]
     top = 100 - p
     txt = "과거 최고" if top < 0.5 else "과거 최저" if p < 0.5 else f"과거 상위 {top:.0f}%" if p >= 50 else f"과거 하위 {p:.0f}%"
@@ -151,10 +152,6 @@ if ck:
     c20 = ck["chg20"] / (ck["cur"] - ck["chg20"]) * 100 if ck.get("chg20") is not None else None
     cards.append(mcard("코스피 신용잔고", f"{ck['cur'] / 1e4:,.1f}조", f"{c20:+.1f}%·20일" if c20 is not None else "",
                        updown(c20 or 0), series_tags(ck, f"{ck['min'] / 1e4:.0f}~{ck['max'] / 1e4:.0f}조", hot_high=True)))
-pb = snap.get("pbr")
-if pb:
-    cards.append(mcard("코스피 PBR", f"{pb['cur']:.2f}", f"{pb['chg20']:+.2f}·20일" if pb.get("chg20") is not None else "",
-                       updown(pb.get("chg20") or 0), series_tags(pb, f"{pb['min']:.2f}~{pb['max']:.2f}", hot_high=False)))
 for e in snap.get("err", []):
     cards.append(f'<div class="mc bad"><span class="mn">실패</span><b>{E(e)}</b></div>')
 
@@ -173,9 +170,13 @@ def gauge(key, title):
         f'<li class="{"on" if st else "na" if st is None else "off"}"><span class="dot"></span>'
         f'<span class="t">{E(lb)}</span><b>{E(val)}</b></li>' for lb, val, st in g["items"])
     pct = int(100 * g["score"] / g["total"]) if g["total"] else 0
+    extra = ""
+    if key == "bottom" and g["cls"] != "lv0":     # 바닥 신호가 켜졌을 때만: 밸류에이션은 직접 확인(자동 수집 불가)
+        extra = (f'<a class="glink" href="{E(m.PBR_LINK)}" target="_blank" rel="noopener">'
+                 f'코스피200 PBR 확인 → <small>과거 대비 싼 구간인지 (indexergo)</small></a>')
     return (f'<div class="gauge {key} {g["cls"]}"><div class="gh"><span>{title}</span>'
             f'<b>{g["score"]}/{g["total"]} · {E(g["label"])}</b></div>'
-            f'<div class="bar"><i style="width:{pct}%"></i></div><ul>{rows}</ul></div>')
+            f'<div class="bar"><i style="width:{pct}%"></i></div><ul>{rows}</ul>{extra}</div>')
 
 
 
@@ -422,7 +423,9 @@ if render_errors:
 extra = f'<pre class="warn">{E(notes.strip())}</pre>' if notes.strip() else ""
 
 wide_link = "".join(f' &nbsp;·&nbsp; <a href="{f}.html">{t} →</a>'
-                    for f, t in (("backtest_wide", "코스피 시총 상위 · 5년"), ("backtest_nasdaq", "나스닥 대형 · 5년"),
+                    for f, t in (("backtest_wide_252d", "코스피 상위 · 1년"), ("backtest_wide_756d", "코스피 상위 · 3년"),
+                                 ("backtest_wide", "코스피 상위 · 5년"), ("backtest_nasdaq_252d", "나스닥 · 1년"),
+                                 ("backtest_nasdaq_756d", "나스닥 · 3년"), ("backtest_nasdaq", "나스닥 · 5년"),
                                  ("backtest_mine", "내 종목 (수동 실행)"), ("backtests", "백테스트 기록·비교"))
                     if os.path.exists(f"results/{f}.html"))
 
@@ -475,6 +478,8 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
 .chip.cond.buy {{ border-color:var(--buy); color:var(--buy); }} .chip.cond.sell {{ border-color:var(--sell); color:var(--sell); }}
 .chip.trig.buy {{ background:var(--buy); color:#fff; border-color:var(--buy); }} .chip.trig.sell {{ background:var(--sell); color:#fff; border-color:var(--sell); }}
 .mrow {{ display:flex; flex-wrap:wrap; gap:4px; margin-top:5px; }}
+.glink {{ display:block; margin-top:8px; font-size:.82rem; color:var(--fg); text-decoration:none; border-top:1px solid var(--line); padding-top:8px; }}
+.glink small {{ color:var(--mut); }} .glink:hover {{ text-decoration:underline; }}
 .spark {{ display:block; margin-top:4px; color:var(--mut); max-width:100%; }}
 .mt {{ font-size:.72rem; padding:1px 7px; border-radius:6px; border:1.5px solid transparent; background:var(--line); color:var(--mut); white-space:nowrap; }}
 .mt.up {{ background:var(--buybg); color:var(--buy); }} .mt.dn {{ background:var(--sellbg); color:var(--sell); }}
