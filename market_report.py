@@ -602,18 +602,20 @@ def stock_signals(r):
 
 
 # ---------------------------------------------------------------- 리포트 표시 분류 (v1 확정 2026-10-11, 백테스트 결과 반영)
-# 매도(전량) = 아래 중 하나: ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증 → 전량 매도(손절 -8%와 함께)
-# 매수(바닥) / 매수(눌림) = 매수 신호 또는 눌림진행. 근거(기본 + 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접)가 3개 이상이면 바닥
+# 매도·전량 = 아래 중 하나: ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증 → 전량 매도(손절 -8%와 함께)
+# 매수·바닥 / 매수·눌림 = 매수 신호 또는 눌림진행. 근거(기본 + 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접)가 3개 이상이면 바닥
 #   (백테스트: 바닥은 1개월 반등이 강하지만 60일 뒤엔 사라짐 / 눌림은 꾸준) — 강도 ● 표시는 없앰(매도 강도는 효과 없어 근거도 원래대로)
-# 매수(추세) = 불타기(오르는 추세 속 20일선 눌림 뒤 반등) — 매수 쪽에 넣은 게 계좌 백테스트에서 가장 좋았음
+# 매수·추세 = 불타기(오르는 추세 속 20일선 눌림 뒤 반등) — 매수 쪽에 넣은 게 계좌 백테스트에서 가장 좋았음
 # 보유 = 주봉·월봉 정배열 + 종가 10주선 위 + 매도·매수보류 없음 (순항 = 일봉도 정배열 / 조정 = 일봉만 역배열)
 # 매수보류 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 → 보유 유지, 새로 사거나 더 사지 않음
 # 반등대기 = 싼 조건 2개 이상, 하락 멈춤, 반등 신호 전 · 하락 = 싸지만 아직 하락 중이고 장기 추세도 하락
 # 순서 = 화면 탭 순서
-REVIEW = (("sell", "매도(전량)", "sell"), ("buyb", "매수(바닥)", "buy"), ("buy", "매수(눌림)", "buy"), ("up", "매수(추세)", "buy"),
+REVIEW = (("sell", "매도·전량", "sell"), ("buyb", "매수·바닥", "buy"), ("buy", "매수·눌림", "buy"), ("up", "매수·추세", "buy"),
           ("hold", "보유", "hold"), ("caution", "매수보류", "warn"), ("wait", "반등대기", "wait"), ("waitdn", "하락", "down"))
-BUY_KEYS = ("buyb", "buy", "up")      # 매수 칸 전부
-BOTTOM_MIN = 3                       # 매수 근거가 이만큼 이상이면 매수(바닥)
+BUY_KEYS = ("buyb", "buy", "up")      # 매수 칸 전부(앞일수록 우선: 싼 자리 먼저)
+WATCH_KEYS = ("caution", "wait", "waitdn", "hold")   # 관찰 칸
+CATEGORY = {"sell": "sell", "buyb": "buy", "buy": "buy", "up": "buy", "hold": "watch", "caution": "watch", "wait": "watch", "waitdn": "watch"}
+BOTTOM_MIN = 3                       # 매수 근거가 이만큼 이상이면 매수·바닥
 
 
 def review(r):
@@ -622,7 +624,7 @@ def review(r):
     weak = rs is not None and rs < 0
     spike = vol is not None and vol >= VOL_SPIKE
     out = {k: None for k, _, _ in REVIEW}
-    # 매수(바닥)·매수(눌림) — score = 근거 수(백테스트 분류용, 화면엔 표시 안 함)
+    # 매수·바닥·매수·눌림 — score = 근거 수(백테스트 분류용, 화면엔 표시 안 함)
     if sg["buy"] in ("타점", "눌림"):
         why = ["매수 신호" if sg["buy"] == "타점" else "눌림진행"]
         if len(sg["buy_c"]) >= 3:
@@ -632,7 +634,7 @@ def review(r):
         if r.get("bottom_near"):
             why.append("바닥근접")
         out["buyb" if len(why) >= BOTTOM_MIN else "buy"] = {"score": len(why), "why": why}
-    # 매도(전량)
+    # 매도·전량
     why, warn = [], []
     if sg["sell"] == "타점":
         (why if weak else warn).append(f"매도 + 상대강도↓({rs:+.1f}%p)" if weak else "매도(상대강도 양호)")
@@ -659,11 +661,24 @@ def review(r):
     return out
 
 
+def display_keys(rv):
+    """화면에 보여줄 칸(겹치면 행동이 필요한 것만): 매도·매수가 있으면 관찰 칸은 숨김, 매수끼리는 하나(바닥 > 눌림 > 추세),
+    관찰끼리 보유+반등대기면 반등대기만. 신호 기록(history)에는 숨긴 칸도 모두 남김"""
+    keys = [k for k, _, _ in REVIEW if rv.get(k)]
+    act = [k for k in keys if k == "sell"] + [k for k in BUY_KEYS if k in keys][:1]
+    if act:
+        return [k for k in keys if k in act]
+    if "wait" in keys and "hold" in keys:
+        keys = [k for k in keys if k != "hold"]
+    return keys
+
+
 def review_groups(r):
     """이 종목이 들어가는 리포트 칸 [(이름, 성격, 근거 수), ...] — 성격 hold2 = 보유·순항, hold1 = 보유·조정"""
     rv = r.get("review") or review(r)
+    show = display_keys(rv)
     return [(nm + ("·" + rv[k]["level"] if rv[k].get("level") else ""), tone + ("2" if rv[k].get("level") == "순항" else "1" if rv[k].get("level") else ""),
-             rv[k]["score"]) for k, nm, tone in REVIEW if rv.get(k)]
+             rv[k]["score"]) for k, nm, tone in REVIEW if k in show]
 
 
 # ---------------------------------------------------------------- 분류
@@ -1077,7 +1092,7 @@ def signals_text(results, msig):
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
     for key, head, _ in REVIEW:
-        hit = [r for r in results if (r.get("review") or {}).get(key)]
+        hit = [r for r in results if key in display_keys(r.get("review") or {})]
         if not hit:            # 해당 종목이 없는 칸은 생략
             continue
         L.append(f"\n▶ {head} [{len(hit)}]")

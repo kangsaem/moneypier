@@ -401,7 +401,7 @@ REV_NOTE = {"sell": "매도·비중축소 + 상대강도↓ 또는 익절검토 
 
 
 def rev_block(key, head_txt):
-    hit = [r for r in results if (r.get("review") or {}).get(key)]
+    hit = [r for r in results if key in m.display_keys(r.get("review") or {})]   # 겹치면 행동이 필요한 칸에만
     if not hit:            # 해당 종목이 없는 칸은 화면에 표시하지 않음
         return ""
     side = REV_SIDE[key]
@@ -424,7 +424,7 @@ def rev_block(key, head_txt):
             f'<div class="ex">{E(REV_NOTE[key])}</div>{items}</div>')
 
 
-# 순서: 매도(전량) / 매수(바닥) / 매수(눌림) / 매수(추세) / 보유 / 매수보류 / 반등대기 / 하락  (market_report.REVIEW와 같은 순서)
+# 순서: 매도·전량 / 매수·바닥 / 매수·눌림 / 매수·추세 / 보유 / 매수보류 / 반등대기 / 하락  (market_report.REVIEW와 같은 순서)
 sig_html = "".join(rev_block(k, nm) for k, nm, _ in m.REVIEW)
 
 # 종목 스크리닝(크로스·과열·8% 변동·이격도 최대/최소권)은 2026-10-11 뺌 — 분류 탭·종목 칩과 중복
@@ -599,10 +599,11 @@ li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
   .gauges {{ grid-template-columns:1fr 1fr; align-items:start; }}
   .dgrid {{ display:grid; grid-template-columns:1fr 1fr; gap:10px; align-items:start; }}
   .dgrid details {{ margin-bottom:0; }}
+details.yrref {{ margin:18px 0 6px; }} details.yrref > summary {{ cursor:pointer; font-weight:700; font-size:.95rem; }} details.yrref > summary small {{ font-weight:400; color:var(--mut); }}
   .sgrid {{ columns:2; column-gap:10px; }} .sgrid .sg {{ break-inside:avoid; }}
 }}
 .none {{ color:var(--mut); font-size:.85rem; }}
-.chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:99px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
+.chip {{ display:inline-block; font-size:.72rem; padding:1px 8px; border-radius:6px; margin:2px 4px 2px 0; border:1px solid var(--line); background:var(--card); }}
 .chip.trig {{ background:var(--fg); color:var(--bg); border-color:var(--fg); }}
 .chip.buy {{ background:var(--buybg); color:var(--buy); border-color:var(--buy); font-weight:600; }}
 .chip.sell {{ background:var(--sellbg); color:var(--sell); border-color:var(--sell); font-weight:600; }}
@@ -623,7 +624,7 @@ details.dwarn {{ background:var(--amberbg); }} details.dhold2 {{ background:var(
 .yr th {{ color:var(--mut); font-weight:500; }} .yr td.c, .yr th.c {{ text-align:left; white-space:normal; }} .yr small {{ color:var(--mut); }}
 .yr td.up {{ color:var(--buy); }} .yr td.dn {{ color:var(--sell); }} .yr td.me {{ font-weight:700; }}
 .hchips {{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }}
-.hchip {{ font-size:.82rem; padding:3px 10px; border-radius:99px; color:var(--okfg); border:1px solid var(--okfg); font-weight:600; }}
+.hchip {{ font-size:.82rem; padding:3px 10px; border-radius:6px; color:var(--okfg); border:1px solid var(--okfg); font-weight:600; }}
 .hchip.h2 {{ background:var(--ok2bg); }} .hchip.h1 {{ background:var(--ok1bg); font-weight:500; border-style:dashed; }}
 details.dbuy {{ background:var(--buybg); }} details.dsell {{ background:var(--sellbg); }} details.dhot {{ background:var(--warnbg); }}
 details {{ background:var(--card); border:1px solid var(--line); border-radius:10px; margin-bottom:6px; }}
@@ -653,21 +654,22 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="gauges sec">{gauge("risk", "시장 과열 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">매매 규칙(v1, 백테스트로 정함): 매수(바닥)·매수(눌림)·매수(추세)에 사고, 매도(전량) 또는 손절 -8%(종가 기준, 다음 날 회복 못 하면)에 전부 판다.
+<div class="legend">매매 규칙(v1, 백테스트로 정함): 매수·바닥·매수·눌림·매수·추세에 사고, 매도·전량 또는 손절 -8%(종가 기준, 다음 날 회복 못 하면)에 전부 판다.
 국장은 신호 당일 시간외 종가(15:40 전 주문), 미장은 다음 날 LOC(지정가 = 종가 +8%). 매수보류는 보유 유지·추가 매수 없음, 보유는 그냥 들고 가기.
-매도(전량) = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹칠 때.
-매수(바닥) = 근거 3개 이상(매수 신호/눌림진행 · 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접) — 1개월 반등이 강했지만 60일 뒤엔 우위가 사라짐. 매수(눌림) = 그 외 매수 신호·눌림진행. 매수(추세) = 오르는 추세 속 20일선 눌림 뒤 반등.
+매도·전량 = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹칠 때.
+매수·바닥 = 근거 3개 이상(매수 신호/눌림진행 · 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접) — 1개월 반등이 강했지만 60일 뒤엔 우위가 사라짐. 매수·눌림 = 그 외 매수 신호·눌림진행. 매수·추세 = 오르는 추세 속 20일선 눌림 뒤 반등.
 보유(연두) = 주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 진한 연두 = 일봉도 정배열(순항), 옅은 연두(점선) = 일봉만 역배열(조정, 팔 이유 아님). 반등대기(연보라) = 싸고 하락은 멈췄지만 반등 신호 전. 하락(연하늘) = 싸지만 하락 중이고 장기 추세도 하락.
 바닥근접 / 꼭지근접 = 1년 고점 대비 25% 이상 빠진(50% 이상 오른) 종목이 돌아서는 중이고, 가격이 아직 저점 +30%(고점 -20%) 안에 있을 때만 표시 — 참고.
 이격도 = 50일 이격도 현재값 (과거 최소~최대). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 채움 칸 = 이 판정의 조건·트리거로 쓰인 항목.</div>
 
-<h2>연간 성적표</h2>
+<details class="yrref"><summary>참고: 지금 종목의 과거 성적 <small>(사후 선택 · 실제보다 좋게 나옴 · 진짜 성적은 <a href="live.html">V1 실전 기록</a>)</small></summary>
 {year_html}
+</details>
 
 
 <h2>종목별 세부내용</h2>
 <div class="dgrid">{detail_html}</div>
-<div class="legend" style="margin-top:14px"><a href="history.html"><b>신호 기록(지난 신호와 그 뒤 결과) →</b></a> &nbsp;·&nbsp; <a href="backtest.html">시그널 백테스트 · 내 종목 12개월 →</a>{wide_link}</div>
+<div class="legend" style="margin-top:14px"><a href="live.html"><b>V1 실전 기록 · 신호 추적(가상 계좌 vs 지수, 신호마다 맞았나) →</b></a> &nbsp;·&nbsp; <a href="backtest.html">시그널 백테스트 · 내 종목 12개월 →</a>{wide_link}</div>
 {extra}
 </body></html>"""
 
@@ -686,6 +688,8 @@ guard("시장 자료 내보내기", _market_json)
 import history
 guard("신호 기록 저장", lambda: history.save(history.record(results, msig, "us" if IS_US else "kr")))
 guard("신호 기록 페이지", history.build, results)
+import live
+guard("V1 실전 기록", live.build, results)          # 2026-10-12부터 신호대로 따라 한 가상 계좌 → docs/live.html
 with open("docs/index.html", "w", encoding="utf-8") as f:
     f.write(page)
 print("docs/index.html 생성 완료")
@@ -704,7 +708,7 @@ def action_text():
     for key, nm, _ in m.REVIEW:
         if key not in ("sell",) + m.BUY_KEYS:
             continue
-        hit = [r for r in mine if (r.get("review") or {}).get(key)]
+        hit = [r for r in mine if key in m.display_keys(r.get("review") or {})]
         if not hit:
             continue
         any_ = True
