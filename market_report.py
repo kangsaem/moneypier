@@ -982,7 +982,7 @@ def market_signals(snap, results):
          (y10["chg10"] >= 0.3) if y10 and y10["chg10"] is not None else None),
         ("내 종목 70% 이상이 일봉 역배열", f"{bear:.0%}" if bear is not None else "-",
          (bear >= 0.7) if bear is not None else None),
-        (f"빚투 비율 5년 중 상위 {100 - CREDIT_TOP}%" + (("\n기준 " + (f"{cr['thr']:.1f}% · " if cr.get("thr") is not None else "") + f"최고 {cr['max']:.1f}%") if cr else ""),
+        (f"신용잔고/예탁금 비율 5년 중 상위 {100 - CREDIT_TOP}%",
          f"{cr['ratio']:.1f}%" if cr else "-",
          (cr["pct"] >= CREDIT_TOP) if cr else None),
     ]
@@ -990,7 +990,7 @@ def market_signals(snap, results):
         ("코스피 50일 이격도 90 이하", f"{ks['disp']:.1f}" if ks else "-",
          (ks["disp"] <= 90) if ks else None),
         ("코스피 RSI 35 이하", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] <= 35 if ks else None),
-        ("코스피 52주 고점 대비 -20% 이하이면서\n최근 20거래일 신저점 없음" + (f" (저점 {ks['days_since_low']}일 전)" if ks else ""),
+        ("코스피 52주 고점 대비 -20% 이하이면서\n최근 20거래일 신저점 없음",
          f"{ks['from_high']:.1f}%" if ks else "-",
          (ks["from_high"] <= -20 and ks["days_since_low"] >= 20) if ks else None),
         ("VIX 30 이상", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
