@@ -314,7 +314,7 @@ draw();
 <h3>끝난 것 <small id="ndone"></small></h3><div class="card"><table id="tdone"></table></div>
 <button class="more" id="tmore">더 보기 (+20)</button>
 <p class="note">매수 추적 = 매수 신호부터 매도·전량 또는 손절까지(매수 신호가 또 뜨면 같은 추적) / 매도 추적 = 매도·전량부터 다음 매수 신호까지 /
-성공 = 매수는 끝날 때 수익, 매도는 판 뒤 다시 살 때 더 쌈 / 신호가 = 신호대로 샀다면(팔았다면): 국장 신호일 종가 · 미장 다음 날 종가 /
+성공 = 매수는 끝날 때 수익, 매도는 판 뒤 다시 살 때 더 쌈 / 실패 = 신호로 끝났는데 반대 결과(손절은 따로 셈) / 신호가 = 신호대로 샀다면(팔았다면): 국장 신호일 종가 · 미장 다음 날 종가 /
 손절 = 신호가 대비 종가 -{STOP}% 이하가 다음 날도 이어지면 그날 종가 / 성공률은 끝난 것만 /
 위 가상 계좌는 2회 분할로 평단이 섞이고 한도에 걸리면 안 사므로 같은 종목도 수익이 조금 다를 수 있음 / 기존 보유분(신호 전에 산 것)의 손절은 계좌 평단으로 직접 확인{(' / 계산 오류: ' + E(track_err)) if track_err else ''}</p>
 <script>
@@ -353,7 +353,7 @@ function rend() {{
   ['buy', 'sell'].filter(sd => !TS.side || TS.side === sd).forEach(sd => {{
     const t = inPer.filter(x => x.side === sd), d = t.filter(x => x.why === 'sig' || x.why === 'stop'), h = d.filter(x => x.hit);
     const st = d.filter(x => x.why === 'stop').length, op = t.filter(x => x.why === 'open' || x.why === 'wait').length, av = avg(d.map(x => x.ret));
-    sum += `<div class="sum ${{sd}}"><b>${{sd === 'buy' ? '매수' : '매도'}} 신호 ${{t.length}}번</b> │ ✓ ${{h.length}}${{d.length ? ' (' + Math.round(h.length / d.length * 100) + '%)' : ''}} │ ✕ ${{d.length - h.length}}${{sd === 'buy' ? ' (손절 ' + st + ')' : ''}} │ ⏳ ${{op}}${{sd === 'buy' ? ` │ 평균 <span class="${{ud(av)}}">${{av != null ? pc(av) : '-'}}</span>` : ''}}</div>`;
+    sum += `<div class="sum ${{sd}}"><b>${{sd === 'buy' ? '매수' : '매도'}} 신호 ${{t.length}}번</b> │ ✓ ${{h.length}}${{d.length ? ' (' + Math.round(h.length / d.length * 100) + '%)' : ''}} │ ✕ ${{d.length - h.length - st}}${{sd === 'buy' ? ' │ 손절 ' + st : ''}} │ ⏳ ${{op}}${{sd === 'buy' ? ` │ 평균 <span class="${{ud(av)}}">${{av != null ? pc(av) : '-'}}</span>` : ''}}</div>`;
   }});
   document.getElementById('tsum').innerHTML = sum;
   const open = sel.filter(t => t.why === 'open' || t.why === 'wait').sort((a, b) => a.sig < b.sig ? 1 : -1);

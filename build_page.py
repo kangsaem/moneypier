@@ -407,7 +407,7 @@ LOGIC_SIG = ["싼 조건 = RSI 30 이하(일·주·월 모두 역배열이면 �
 
 def logic_html():
     j = lambda xs: " / ".join(E(x) for x in xs)
-    return (f'<details class="logic"><summary>Logic V1 <small>(2026.10.11)</small></summary><div class="lbody">'
+    return (f'<details class="logic"><summary>Logic V1 <small>2026.10.11</small></summary><div class="lbody">'
             f'<p>{j(LOGIC_RULES)}</p><h4>주의</h4><p>{j(LOGIC_LIMITS)}</p><h4>신호</h4><p>{j(LOGIC_SIG)}</p></div></details>')
 
 
