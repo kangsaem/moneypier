@@ -36,7 +36,7 @@ NEUTRAL = {5: 0.5, 20: 1.0, 60: 2.0}   # 기준선과 차이가 이 %p 미만이
 
 # 분류: (이름, 기대 방향) — up = 신호 뒤 오르면 맞음, down = 내리거나 덜 오르면 맞음
 CATEGORIES = [("v1·매수검토", "up"), ("v1·매수검토●2", "up"), ("v1·매수검토●3", "up"),
-              ("v1·매도검토", "down"), ("v1·매도검토●2", "down"), ("v1·매도검토●3", "down"),
+              ("v1·매도검토", "down"),
               ("v1·매수보류", "down"), ("v1·홀딩", "up")] + \
     [(nm, "down" if tone == "sell" or nm == "하락진행" else "up") for nm, _, _, tone in m.SIGNAL_GROUPS] + [
     ("골든X3", "up"), ("골든X2", "up"), ("데드X3", "down"), ("데드X2", "down"), ("과열", "down"),
@@ -126,12 +126,15 @@ def categories_of(r, feat=None):
     try:
         r["rs60"], r["vol5"] = (feat or {}).get("rs"), (feat or {}).get("vr5")
         rv = m.review(r)
-        for k, nm in (("buy", "v1·매수검토"), ("sell", "v1·매도검토"), ("caution", "v1·매수보류"), ("hold", "v1·홀딩")):
+        bv = rv.get("buyb") or rv.get("buy")          # 매수(바닥)+매수(눌림) = 예전 매수검토 (백테스트 칸 이름은 비교를 위해 그대로)
+        if bv:
+            on.add("v1·매수검토")
+            for lv in (2, 3):                           # 근거 수 칸: ●2 = 2개 이상, ●3 = 3개 이상(= 매수(바닥))
+                if bv["score"] >= lv:
+                    on.add(f"v1·매수검토●{lv}")
+        for k, nm in (("sell", "v1·매도검토"), ("caution", "v1·매수보류"), ("hold", "v1·홀딩")):
             if rv.get(k):
                 on.add(nm)
-                for lv in (2, 3):                       # 강도 칸: ●2 = 2개 이상, ●3 = 3개
-                    if k in ("buy", "sell") and rv[k]["score"] >= lv:
-                        on.add(f"{nm}●{lv}")
     except Exception:
         pass
     if r.get("bottom"):
@@ -402,6 +405,13 @@ def main():
         prow = []
         print(f"계좌 시뮬레이션 실패: {type(e).__name__}: {e}")
     save_version(rows, B, period, len(tickers) - len(failed), prow if states else [])
+    # 폭락장 표시 뒤 지수 성과(시장 공통이라 코스피 5년 실행 때 한 번만): results/crash_study.html
+    if os.environ.get("BT_UNIVERSE") == "kospi" and str(os.environ.get("BT_DAYS", "")) == "1260":   # backtest-wide 코스피 5년 실행에서만
+        try:
+            import crash_study
+            crash_study.main()
+        except Exception as e:
+            print("폭락장 성과 계산 실패:", type(e).__name__, e)
     print(f"{OUT}.html 생성 완료 (코어 {WORKERS}개, {time.time() - t0:.0f}초, 신호 {len(events)}건)")
 
 

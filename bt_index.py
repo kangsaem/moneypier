@@ -11,9 +11,9 @@ from datetime import datetime, timedelta, timezone
 
 DIR = os.environ.get("BT_OUT_DIR", "results")
 # 비교표에 보여 줄 분류와 기대 방향(▲ 오르면 좋음 / ▼ 덜 오르면 좋음)
-PORT_COLS = ("v1+상승중 전부", "상한8%·5%", "상한5%·2.5%", "상한2%·1%", "상한8%·5% 당일종가", "상한8%·5% 깨지면 안 삼")
+PORT_COLS = ("v1+상승중 전부", "최종규칙 1회", "최종규칙 2회", "최종규칙 3회", "최종규칙 3회+입금", "상한8%·5%", "상한8%·5% 당일종가")
 PORT_PREFIX = ("N100 ", "N150 ", "N200 ")   # 종목 수 기준 상한(입금 없음)은 이름이 대상마다 달라 앞부분으로 찾음
-KEY_CATS = [("v1·매수검토", 1), ("v1·매수검토●2", 1), ("v1·매수검토●3", 1), ("v1·매도검토", -1), ("v1·매도검토●2", -1), ("v1·매수보류", -1), ("v1·홀딩", 1), ("매수", 1), ("눌림진행", 1), ("불타기", 1), ("골든X3", 1), ("바닥1/3", 1), ("바닥3/3", 1),
+KEY_CATS = [("v1·매수검토", 1), ("v1·매수검토●2", 1), ("v1·매수검토●3", 1), ("v1·매도검토", -1), ("v1·매수보류", -1), ("v1·홀딩", 1), ("매수", 1), ("눌림진행", 1), ("불타기", 1), ("골든X3", 1), ("바닥1/3", 1), ("바닥3/3", 1),
             ("매도", -1), ("익절검토", -1), ("과열", -1), ("꼭지1/3", -1), ("꼭지3/3", -1),
             ("매도·상대강도↓", -1), ("비중축소·상대강도↓", -1)]
 E = html.escape
@@ -25,6 +25,8 @@ def load():
         try:
             d = json.load(open(f, encoding="utf-8"))
         except Exception:
+            continue
+        if not isinstance(d, dict) or "files" not in d:     # 실행 기록이 아닌 자료(예: crash_study.json)는 건너뜀
             continue
         key = (d.get("kind"), d.get("label"), d.get("version"), d.get("time"))
         if key in seen:                       # 최신본 복사(같은 실행)는 한 번만
@@ -108,7 +110,7 @@ small {{ color:var(--mut); }} td.ok {{ background:var(--okbg); color:var(--ok); 
 td.mut {{ color:var(--mut); }} .g {{ border-left:1px solid var(--line); }} a {{ color:inherit; }}
 </style></head><body>
 <h1>백테스트 기록</h1>
-<div class="t">실행할 때마다 결과가 버전별로 쌓임 · 같은 대상끼리 최신순 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
+<div class="t">실행할 때마다 결과가 버전별로 쌓임 · 같은 대상끼리 최신순 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a> · <a href="crash_study.html">폭락장 표시 뒤 성과</a></div>
 <p class="note">분류 칸 = 신호 뒤 20거래일 평균 수익률 − 기준선(아무 날이나 샀을 때) (%p). ▲ 분류는 +, ▼ 분류는 −가 기대 방향 —
 기대 방향으로 1%p 이상이면 초록, 반대로 1%p 이상이면 빨강. 5건 미만은 '-'. 계좌 = 방식별 총수익(구버전+손절8% / v1 = 매수검토에 사고 매도검토·손절8%에 팔기 / +상승중 = 상승중에도 매수 / 상한a%·b% = 신호마다 계좌의 b% 매수·종목당 a% 상한)과 같은 종목 균등 보유·지수 보유 총수익.</p>
 {body or '<p class="note">아직 버전으로 저장된 실행이 없음 — backtest-wide 또는 bottom-trace를 한 번 돌리면 생김</p>'}

@@ -387,23 +387,25 @@ def metrics_html(r, side, lv):
         return ""
 
 
-REV_SIDE = {"buy": "buy", "sell": "sell", "caution": "sell", "hold": "buy", "up": "add", "wait": "buy", "waitdn": "buy"}
-REV_CLS = {"buy": "buy strong", "sell": "sell strong", "caution": "warn", "hold": "hold-ok", "up": "add", "wait": "hold", "waitdn": "hold"}
-REV_NOTE = {"buy": "매수 신호 또는 눌림진행 · ● 1~3 = 근거 수(기본 + 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접)",
-            "sell": "매도·비중축소+상대강도↓ 또는 익절검토+거래량폭증 · ● 1~3 = 겹친 근거 수(기본 + 상대강도↓·거래량폭증 · 10주선 이탈 · 꼭지근접)",
-            "caution": "과열·경고는 떴지만 정리 근거(상대강도↓·거래량폭증)는 없음 — 보유는 유지, 추가 매수는 하지 말 것",
-            "hold": "주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 그냥 들고 가기. 진한 연두 = 일봉도 정배열(순항), 옅은 연두 = 일봉만 역배열(눌림, 팔 이유 아님)",
-            "up": "상승 추세 · 과열 아님 · 20일선 눌림 뒤 반등 (백테스트상 효과는 뚜렷하지 않음 — 참고)",
+REV_SIDE = {"buyb": "buy", "buy": "buy", "up": "add", "sell": "sell", "caution": "sell", "hold": "buy", "wait": "buy", "waitdn": "buy"}
+REV_CLS = {"buyb": "buy strong", "buy": "buy strong", "up": "buy strong", "sell": "sell strong", "caution": "warn", "hold": "hold-ok",
+           "wait": "waitc", "waitdn": "downc"}
+REV_NOTE = {"sell": "매도·비중축소 + 상대강도↓ 또는 익절검토 + 거래량 폭증 → 전량 매도 (손절 -8%와 함께)",
+            "buyb": "깊이 빠졌다 돌아서는 자리(근거 3개 이상: 매수 신호/눌림진행 · 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접) — 1개월 반등이 강했지만 다시 밀릴 수 있음",
+            "buy": "매수 신호(싼 조건 2개 이상 + 반등 트리거) 또는 눌림진행(싸고 아직 빠지는 중이지만 장기 추세 상승)",
+            "up": "오르는 추세 속 20일선 눌림 뒤 반등 · 과열 아님",
+            "hold": "주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 그냥 들고 가기. 진한 연두 = 일봉도 정배열(순항), 옅은 연두 = 일봉만 역배열(조정, 팔 이유 아님)",
+            "caution": "과열 — 좋은 종목이라도 지금은 비쌈. 보유 유지, 새로 사거나 더 사지 않음",
             "wait": "싼 조건 2개 이상 · 하락은 멈췄지만 반등 신호 전",
-            "waitdn": "싸지만 아직 하락 중이고 장기 추세도 하락 — 반등 확인 전까지 대기"}
+            "waitdn": "싸지만 아직 하락 중이고 장기 추세도 하락 — 반등 확인 전까지 손대지 않음"}
 
 
 def rev_block(key, head_txt):
-    hit = sorted([r for r in results if (r.get("review") or {}).get(key)], key=lambda r: -r["review"][key]["score"])
+    hit = [r for r in results if (r.get("review") or {}).get(key)]
     if not hit:            # 해당 종목이 없는 칸은 화면에 표시하지 않음
         return ""
     side = REV_SIDE[key]
-    if key == "hold":      # 홀딩: 차트 없이 이름 칩만 한 줄로
+    if key == "hold":      # 보유: 차트 없이 이름 칩만 한 줄로
         chips_ = "".join(
             f'<span class="hchip {"h2" if r["review"][key]["level"] == "순항" else "h1"}" '
             f'title="{E(r["review"][key]["level"])} · RSI {r["rsi"]:.0f}'
@@ -414,16 +416,15 @@ def rev_block(key, head_txt):
     items = ""
     for r in hit:
         rv = r["review"][key]
-        dots = (f'<em class="dots" title="강도 {rv["score"]}">' + "●" * rv["score"] + "</em>") if rv["score"] else ""
         why = "".join(f'<span class="why {key}">{E(w)}</span>' for w in rv["why"])
         lv = r["sig"].get(side) if side != "add" else None
-        items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span>{dots}</div>'
+        items += (f'<div class="sig"><div class="sh"><b>{E(r["name"])}</b><span>{E(r["code"])}</span></div>'
                   f'<div class="whys">{why}</div>{metrics_html(r, side, lv)}<div class="chwrap sigch">{svg_chart(r["chart"])}</div></div>')
     return (f'<div class="sg {REV_CLS[key]}"><h3>{head_txt} <small>{len(hit)}</small></h3>'
             f'<div class="ex">{E(REV_NOTE[key])}</div>{items}</div>')
 
 
-# 순서: 매수검토 / 매도검토 / 매수보류 / 상승중 / 반등대기 / 하락중  (market_report.REVIEW와 같은 순서)
+# 순서: 매도(전량) / 매수(바닥) / 매수(눌림) / 매수(추세) / 보유 / 매수보류 / 반등대기 / 하락  (market_report.REVIEW와 같은 순서)
 sig_html = "".join(rev_block(k, nm) for k, nm, _ in m.REVIEW)
 
 screen_html = ""
@@ -437,16 +438,64 @@ detail_html = ""
 for r in results:
     fl = guard(f"{r['name']} 태그", m.flags, r, default=[])
     tone = {nm: t for nm, t, _ in m.review_groups(r)}
-    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "watch": "flag watch", "warn": "warn",
-                             "hold2": "hold2", "hold1": "hold1"}.get(tone.get(f.split(" ●")[0]), "flag")) for f in fl)
-    tones = [t for _, t, _ in m.review_groups(r) if t != "watch"]
-    # 배경: 매수검토 연분홍 / 매도검토 연하늘 / 매수보류 호박색 / 홀딩 연두(순항 진하게, 눌림 옅게)
+    chips = "".join(chip(f, {"buy": "buy", "sell": "sell", "wait": "wait", "down": "down", "warn": "warn",
+                             "hold2": "hold2", "hold1": "hold1"}.get(tone.get(f), "flag")) for f in fl)
+    tones = [t for _, t, _ in m.review_groups(r) if t not in ("wait", "down")]
+    # 배경: 매수 연분홍 / 매도 연하늘 / 매수보류 호박색 / 보유 연두(순항 진하게, 조정 옅게)
     dcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"', "warn": ' class="dwarn"',
             "hold2": ' class="dhold2"', "hold1": ' class="dhold1"'}.get(tones[0] if tones else "", "")
     rc = "hot" if r["rsi"] >= r["sig"]["rsi_hi"] else "cold" if r["rsi"] <= r["sig"]["rsi_lo"] else ""
     detail_html += (f'<details{dcls}><summary><b>{E(r["name"])}</b> <span class="code">{E(r["code"])}</span> '
                     f'<span class="rsi {rc}">RSI {r["rsi"]:.0f}</span> {chips}</summary>'
                     f'<div class="chwrap">{svg_chart(r["chart"])}</div><pre>{E(guard(r['name'] + " 세부내용", m.detail_text, r))}</pre></details>')
+
+# ---- 연간 성적표: 올해 1/1~오늘(12/31이면 1년)과 지난 해들 — 내 종목을 1/1에 똑같이 나눠 샀을 때 vs 주요 지수
+YEAR_IDX = (("kospi", "코스피", "KS11", "^KS11"), ("kosdaq", "코스닥", "KQ11", "^KQ11"),
+            ("spx", "S&P500", "US500", "^GSPC"), ("ndx", "나스닥", "IXIC", "^IXIC"))
+YEARS_BACK = 5
+
+
+def _year_ret(s, y):
+    """y년 수익률: 전년 마지막 종가 → y년 마지막 종가(올해면 오늘). 전년 자료가 없으면 None"""
+    s = s.dropna()
+    prev = s[s.index.year < y]
+    cur = s[s.index.year == y]
+    if not len(prev) or not len(cur):
+        return None
+    return float((cur.iloc[-1] / prev.iloc[-1] - 1) * 100)
+
+
+def year_table():
+    this = kst.year
+    years = list(range(this, this - YEARS_BACK - 1, -1))
+    idx_s = {}
+    for k, nm, fc, yc in YEAR_IDX:
+        try:
+            idx_s[k] = m._index_close(fc, yc)
+        except Exception:
+            idx_s[k] = None
+    rows = ""
+    for y in years:
+        rets = [x for x in (_year_ret(r["_c"], y) for r in results if r.get("_c") is not None) if x is not None]
+        me = sum(rets) / len(rets) if rets else None
+        cells = [(me, "me")] + [(_year_ret(idx_s[k], y) if idx_s.get(k) is not None else None, "") for k, *_ in YEAR_IDX]
+        if all(v is None for v, _ in cells):      # 자료가 없는 해는 줄을 만들지 않음
+            continue
+        beat = [k for (v, _), (k, *_) in zip(cells[1:], YEAR_IDX) if me is not None and v is not None and me > v]
+        rows += (f'<tr><td class="c"><b>{y}{" (1/1~오늘)" if y == this else ""}</b><br><small>{len(rets)}종목</small></td>'
+                 + "".join(f'<td class="{cls} {"up" if v and v > 0 else "dn" if v and v < 0 else ""}">{"-" if v is None else f"{v:+.1f}%"}</td>' for v, cls in cells)
+                 + f'<td class="c"><small>{E(", ".join(nm for k, nm, *_ in YEAR_IDX if k in beat)) or "-"}</small></td></tr>')
+    head = "".join(f"<th>{E(nm)}</th>" for _, nm, *_ in YEAR_IDX)
+    return (f'<div class="wrap yr"><table><tr><th class="c">연도</th><th>내 종목 (1/1 똑같이 나눠 보유)</th>{head}<th class="c">이긴 지수</th></tr>{rows}</table></div>'
+            '<p class="legend">내 종목 = 지금 목록의 종목을 그해 1월 1일(전년 마지막 종가)에 같은 금액씩 사서 들고 있었을 때의 평균 수익률(그때 상장 전이면 제외, 배당 제외). '
+            '지금 목록 기준이라 지난 해일수록 "결과를 알고 고른" 효과가 섞임 — 올해 칸이 진짜 성적. 로직대로 매매했을 때의 연도별 성적은 내 종목 백테스트 계좌 페이지에.</p>')
+
+
+year_html = guard("연간 성적표", year_table, default="")
+crash = guard("폭락장 판정", m.crash_info, snap, msig, default={"on": False, "why": []})
+crash_html = (f'<div class="crash">폭락장 · {E(" · ".join(crash["why"]))}'
+              '<small>지수 고점 -20%, VIX 30 이상, 시장 바닥 지표 2개 이상 중 하나라도 켜짐 — 개별 종목 신호는 그대로. 돈을 어떻게 쓸지는 직접 판단</small></div>'
+              if crash.get("on") else "")
 
 if render_errors:
     notes += "\n\n[화면 생성 중 오류]\n" + "\n".join(sorted(set(render_errors)))
@@ -456,7 +505,8 @@ wide_link = "".join(f' &nbsp;·&nbsp; <a href="{f}.html">{t} →</a>'
                     for f, t in (("backtest_wide_252d", "코스피 상위 · 1년"), ("backtest_wide_756d", "코스피 상위 · 3년"),
                                  ("backtest_wide", "코스피 상위 · 5년"), ("backtest_nasdaq_252d", "나스닥 · 1년"),
                                  ("backtest_nasdaq_756d", "나스닥 · 3년"), ("backtest_nasdaq", "나스닥 · 5년"),
-                                 ("backtest_mine", "내 종목 (수동 실행)"), ("backtests", "백테스트 기록·비교"))
+                                 ("backtest_mine", "내 종목 (수동 실행)"), ("backtests", "백테스트 기록·비교"),
+                                 ("crash_study", "폭락장 표시 뒤 성과"))
                     if os.path.exists(f"results/{f}.html"))
 
 page = f"""<!doctype html>
@@ -571,6 +621,15 @@ details.dwarn {{ background:var(--amberbg); }} details.dhold2 {{ background:var(
 .chip.hold1 {{ background:var(--ok1bg); color:var(--okfg); border-color:var(--okfg); }}
 .sg.warn {{ border-left-color:var(--amber); background:var(--amberbg); }} .sg.warn h3 {{ color:var(--amber); }}
 .sg.hold-ok {{ border-left-color:var(--okfg); }} .sg.hold-ok h3 {{ color:var(--okfg); }}
+.sg.waitc {{ border-left-color:#8b7fd6; }} .sg.waitc h3 {{ color:#7c6fd0; }} .sg.downc {{ border-left-color:#7cc3e8; }} .sg.downc h3 {{ color:#3b9bcf; }}
+.chip.wait {{ background:#efedfc; color:#6a5cc7; border-color:#8b7fd6; }} .chip.down {{ background:#e9f6fc; color:#2f8fc4; border-color:#7cc3e8; }}
+.why.buyb {{ color:var(--buy); border-color:var(--buy); }}
+.crash {{ background:var(--sellbg); border:2px solid var(--sell); color:var(--sell); border-radius:12px; padding:10px 14px; font-weight:700; margin:10px 0; }}
+.crash small {{ font-weight:500; color:var(--mut); display:block; }}
+.wrap {{ overflow-x:auto; background:var(--card); border:1px solid var(--line); border-radius:12px; }}
+.yr table {{ border-collapse:collapse; width:100%; font-size:.82rem; }} .yr th, .yr td {{ padding:6px 8px; border-bottom:1px solid var(--line); text-align:right; white-space:nowrap; }}
+.yr th {{ color:var(--mut); font-weight:500; }} .yr td.c, .yr th.c {{ text-align:left; white-space:normal; }} .yr small {{ color:var(--mut); }}
+.yr td.up {{ color:var(--buy); }} .yr td.dn {{ color:var(--sell); }} .yr td.me {{ font-weight:700; }}
 .hchips {{ display:flex; flex-wrap:wrap; gap:6px; margin-top:6px; }}
 .hchip {{ font-size:.82rem; padding:3px 10px; border-radius:99px; color:var(--okfg); border:1px solid var(--okfg); font-weight:600; }}
 .hchip.h2 {{ background:var(--ok2bg); }} .hchip.h1 {{ background:var(--ok1bg); font-weight:500; border-style:dashed; }}
@@ -595,20 +654,23 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 </style></head><body>
 <h1>{TITLE}</h1>
 <div class="t">갱신 {stamp} · 규칙 기반 참고 신호이며 투자 판단 책임은 본인에게 있습니다</div>
-
+{crash_html}
 <div class="mcards">{"".join(cards)}</div>
 <div class="idxch">{"".join(index_chart(k) for k in CHART_IDX)}</div>
 
-<div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
+<div class="gauges sec">{gauge("risk", "시장 과열 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
-<div class="legend">매수검토 = 매수 신호(싼 조건 2개 이상 + 반등 트리거) 또는 눌림진행(싸고 아직 빠지는 중이지만 장기 추세 상승). ● = 근거 수(1~3: 기본 + 싼 조건 3개 모두·장기 추세 상승·바닥근접).
-매도검토 = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹칠 때. ● = 겹친 근거 수(1~3: 기본 + 상대강도↓·거래량폭증·10주선 이탈·꼭지근접).
-매수보류(호박색) = 과열·경고는 떴지만 정리 근거는 없음(백테스트상 뒤에 더 오르는 경우도 많음 — 보유는 유지, 추가 매수는 금지).
-홀딩(연두) = 주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 진한 연두 = 일봉도 정배열(순항), 옅은 연두(점선) = 일봉만 역배열(눌림, 팔 이유 아님).
-상승중 = 상승 추세 · 과열 아님 · 20일선 눌림 뒤 반등. 반등대기 = 싸고 하락은 멈췄지만 반등 신호 전. 하락중 = 싸지만 하락 중이고 장기 추세도 하락.
-바닥근접 / 꼭지근접 = 1년 고점 대비 25% 이상 빠진(50% 이상 오른) 종목이 돌아서는 중이고, 가격이 아직 저점 +30%(고점 -20%) 안에 있을 때만 표시(칸에 마우스를 올리면 단계·저점·고점) — 매매 신호가 아니라 참고.
+<div class="legend">매매 규칙(v1, 백테스트로 정함): 매수(바닥)·매수(눌림)·매수(추세)에 사고, 매도(전량) 또는 손절 -8%(종가 기준, 다음 날 회복 못 하면)에 전부 판다.
+국장은 신호 당일 시간외 종가(15:40 전 주문), 미장은 다음 날 LOC(지정가 = 종가 +8%). 매수보류는 보유 유지·추가 매수 없음, 보유는 그냥 들고 가기.
+매도(전량) = 매도·비중축소에 상대강도↓(최근 60거래일 수익률이 지수보다 낮음)가 겹치거나, 익절검토에 거래량 폭증(최근 5일 중 20일 평균의 2.5배 이상)이 겹칠 때.
+매수(바닥) = 근거 3개 이상(매수 신호/눌림진행 · 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접) — 1개월 반등이 강했지만 60일 뒤엔 우위가 사라짐. 매수(눌림) = 그 외 매수 신호·눌림진행. 매수(추세) = 오르는 추세 속 20일선 눌림 뒤 반등.
+보유(연두) = 주봉·월봉 정배열 + 종가 10주선 위 + 경고 없음 — 진한 연두 = 일봉도 정배열(순항), 옅은 연두(점선) = 일봉만 역배열(조정, 팔 이유 아님). 반등대기(연보라) = 싸고 하락은 멈췄지만 반등 신호 전. 하락(연하늘) = 싸지만 하락 중이고 장기 추세도 하락.
+바닥근접 / 꼭지근접 = 1년 고점 대비 25% 이상 빠진(50% 이상 오른) 종목이 돌아서는 중이고, 가격이 아직 저점 +30%(고점 -20%) 안에 있을 때만 표시 — 참고.
 이격도 = 50일 이격도 현재값 (과거 최소~최대). 한국 관례대로 상승·정배열·이격도 높음=빨강, 하락·역배열·이격도 낮음=파랑. 진한 채움 칸 = 이 판정의 조건·트리거로 쓰인 항목.</div>
+
+<h2>연간 성적표</h2>
+{year_html}
 
 <h2>종목 스크리닝</h2>
 <div class="dgrid">{screen_html}</div>
@@ -641,8 +703,40 @@ print("docs/index.html 생성 완료")
 # ---- 텔레그램 전송 (선택) ----
 token = os.environ.get("TELEGRAM_TOKEN")
 chat_id = os.environ.get("TELEGRAM_CHAT_ID")
-if token and chat_id:
-    text = f"{TITLE} {stamp}\n\n{short_report}"
+
+
+def action_text():
+    """텔레그램 첫 메시지: 지금 할 일만. 국장 리포트 = 국내 종목, 미장 리포트 = 해외 종목(같은 신호를 두 번 보내지 않게)"""
+    mine = [r for r in results if m.is_kr(r["code"]) != IS_US]
+    L = [f"[{'미장' if IS_US else '국장'} {kst:%m/%d %H:%M}] 할 일"]
+    if crash.get("on"):
+        L.append("⚠ 폭락장 · " + " · ".join(crash["why"]))
+    price = (lambda r: f"${r['close']:,.2f}") if IS_US else (lambda r: f"{r['close']:,.0f}원")
+    any_ = False
+    for key, nm, _ in m.REVIEW:
+        if key not in ("sell",) + m.BUY_KEYS:
+            continue
+        hit = [r for r in mine if (r.get("review") or {}).get(key)]
+        if not hit:
+            continue
+        any_ = True
+        L.append(f"\n{nm} {len(hit)}")
+        for r in hit:
+            extra = f" · LOC {r['close'] * 1.08:,.2f}" if IS_US and key != "sell" else ""
+            L.append(f"· {r['name']} — 종가 {price(r)}{extra}")
+    if not any_:
+        L.append("\n오늘 매수·매도 신호 없음")
+    else:
+        L.append("\n→ " + ("오늘 밤 LOC 예약 (지정가 = 종가 +8%), 매도는 다음 날 종가" if IS_US
+                            else "시간외 종가로 15:40 전 주문 (16:00까지 체결)"))
+    cau = [r["name"] for r in mine if (r.get("review") or {}).get("caution")]
+    if cau:
+        L.append("\n매수보류(보유 유지·추가 매수 없음): " + ", ".join(cau))
+    L.append("\n리포트: https://kangsaem.github.io/moneypier/")
+    return "\n".join(L)
+
+
+def tg_send(text):
     for i in range(0, len(text), 3800):  # 텔레그램 글자 제한(4096) 대비 분할
         try:
             r = requests.post(
@@ -653,3 +747,8 @@ if token and chat_id:
             print("텔레그램 전송:", r.status_code, "" if r.ok else r.text[:200])
         except Exception as e:
             print("텔레그램 전송 실패:", type(e).__name__, e)
+
+
+if token and chat_id:
+    tg_send(guard("텔레그램 할 일", action_text, default=f"{TITLE} {stamp} (할 일 요약 실패)"))   # 1) 지금 할 일
+    tg_send(f"{TITLE} {stamp}\n\n{short_report}")                                                # 2) 전체 요약(예전과 같음)

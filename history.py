@@ -1,5 +1,5 @@
 """
-신호 기록: 리포트를 만들 때마다 그날 종목별 리포트 칸(매수검토·매도검토·매수보류·홀딩·상승중·반등대기·하락중)을
+신호 기록: 리포트를 만들 때마다 그날 종목별 리포트 칸(매도(전량)·매수(바닥)·매수(눌림)·매수(추세)·보유·매수보류·반등대기·하락)을
 history/<날짜>_<kr|us>.json 으로 남기고(daily.yml이 저장소에 커밋), 지난 기록을 모아 docs/history.html 을 만든다.
 - 20·60거래일 뒤 수익률은 지금 받아 둔 일봉으로 계산(그날 종가 기준). 기준선 = 같은 날 기록된 전 종목 평균.
 - 월별 요약: 칸별 건수·20일 뒤 평균(기준선 대비) + 그 달 내 종목(균등) vs 코스피 vs 나스닥 수익률.
@@ -68,7 +68,16 @@ def fwd(c, asof, h):
     return float((c.iloc[i + h] / c.iloc[i] - 1) * 100)
 
 
-OLD_NAME = {"추격매수 주의": "매수보류", "홀딩 유지·순항": "홀딩·순항", "홀딩 유지·눌림": "홀딩·눌림", "대기": "반등대기", "하락-대기": "하락중"}
+OLD_NAME = {"추격매수 주의": "매수보류", "홀딩 유지·순항": "보유·순항", "홀딩 유지·눌림": "보유·조정", "홀딩·순항": "보유·순항", "홀딩·눌림": "보유·조정",
+            "대기": "반등대기", "하락-대기": "하락", "하락중": "하락", "상승중": "매수(추세)", "매도검토": "매도(전량)"}
+
+
+def new_name(x):
+    """2026-10-11 이전 기록의 칸 이름을 지금 이름으로. 매수검토는 근거 수(s) 3개 이상이면 매수(바닥), 아니면 매수(눌림)"""
+    g = x.get("g", "")
+    if g == "매수검토":
+        return "매수(바닥)" if (x.get("s") or 0) >= 3 else "매수(눌림)"
+    return OLD_NAME.get(g, g)
 
 
 def rows_of(recs, closes):
@@ -80,7 +89,7 @@ def rows_of(recs, closes):
     rows = []
     for (code, asof), (rec, it) in by.items():
         c = closes.get(code)
-        groups = [dict(x, g=OLD_NAME.get(x["g"], x["g"])) for x in it.get("groups", [])]    # 2026-10-11 이전 기록은 옛 이름
+        groups = [dict(x, g=new_name(x)) for x in it.get("groups", [])]    # 2026-10-11 이전 기록은 옛 이름
         row = {"date": asof, "code": code, "name": it["name"], "groups": groups, "close": it.get("close")}
         for h in HORIZONS:
             row[h] = fwd(c, asof, h)
@@ -107,8 +116,8 @@ def month_ret(c, ym):
 
 
 # ---------------------------------------------------------------- 페이지
-GROUP_ORDER = ["매수검토", "매도검토", "매수보류", "홀딩·순항", "홀딩·눌림", "상승중", "반등대기", "하락중"]
-GROUP_WAY = {"매수검토": 1, "매도검토": -1, "매수보류": -1, "홀딩·순항": 1, "홀딩·눌림": 1, "상승중": 1, "반등대기": 1, "하락중": 1}
+GROUP_ORDER = ["매도(전량)", "매수(바닥)", "매수(눌림)", "매수(추세)", "보유·순항", "보유·조정", "매수보류", "반등대기", "하락"]
+GROUP_WAY = {"매도(전량)": -1, "매수(바닥)": 1, "매수(눌림)": 1, "매수(추세)": 1, "보유·순항": 1, "보유·조정": 1, "매수보류": -1, "반등대기": 1, "하락": 1}
 
 
 def _p(v, d=1):
@@ -158,7 +167,7 @@ def build(results, out="docs/history.html"):
                 continue
             w = GROUP_WAY[x["g"]]
             det += (f'<tr data-g="{E(x["g"])}"><td class="c">{r["date"][2:]}</td><td class="c"><b>{E(r["name"])}</b> <small>{E(r["code"])}</small></td>'
-                    f'<td class="c"><span class="tag t{GROUP_ORDER.index(x["g"])}">{E(x["g"])}{" " + "●" * x["s"] if x["s"] else ""}</span></td>'
+                    f'<td class="c"><span class="tag t{GROUP_ORDER.index(x["g"])}">{E(x["g"])}</span></td>'
                     f'<td class="c why">{E(" · ".join(x.get("why", [])))}</td>'
                     f'<td class="{_cls(r[20], w)}">{_p(r[20])}</td><td class="{_cls(r["x20"], w)}">{_p(r["x20"])}</td>'
                     f'<td class="{_cls(r[60], w)}">{_p(r[60])}</td><td class="{_cls(r["x60"], w)}">{_p(r["x60"])}</td></tr>')
@@ -179,21 +188,21 @@ th {{ color:var(--mut); font-weight:500; }} td.c, th.c {{ text-align:left; }} td
 .g {{ border-left:1px solid var(--line); }} td.ok {{ color:var(--ok); font-weight:600; }} td.bad {{ color:var(--bad); }} td.mut {{ color:var(--mut); }}
 small {{ color:var(--mut); }} a {{ color:inherit; }}
 .tag {{ font-size:.72rem; padding:1px 7px; border-radius:6px; border:1px solid var(--line); font-weight:600; }}
-.t0 {{ color:var(--buy); border-color:var(--buy); }} .t1 {{ color:var(--sell); border-color:var(--sell); }} .t2 {{ color:var(--amber); border-color:var(--amber); }}
-.t3, .t4 {{ color:var(--okfg); border-color:var(--okfg); }} .t5 {{ color:var(--buy); }} .t6, .t7 {{ color:var(--mut); }}
+.t0 {{ color:var(--sell); border-color:var(--sell); }} .t1, .t2, .t3 {{ color:var(--buy); border-color:var(--buy); }}
+.t4, .t5 {{ color:var(--okfg); border-color:var(--okfg); }} .t6 {{ color:var(--amber); border-color:var(--amber); }} .t7 {{ color:#7c6fd0; border-color:#8b7fd6; }} .t8 {{ color:#3b9bcf; border-color:#7cc3e8; }}
 .flt {{ display:flex; flex-wrap:wrap; gap:6px; margin:6px 0; }} .flt button {{ font:inherit; font-size:.78rem; padding:3px 10px; border-radius:99px;
   border:1px solid var(--line); background:var(--card); color:var(--fg); cursor:pointer; }} .flt button.on {{ background:var(--fg); color:var(--bg); }}
 </style></head><body>
 <h1>신호 기록</h1>
 <div class="t">리포트가 만들어질 때마다 그날 종목별 칸을 저장 · 기록 {len(days)}일({days[0] if days else '-'} ~ {days[-1] if days else '-'}) · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
 <p class="note">20·60일 뒤 = 그날 종가 대비 20·60거래일 뒤 수익률. 기준선 대비 = 같은 날 기록된 내 종목 전체 평균보다 몇 %p 나았나.
-초록 = 칸의 뜻대로 맞음(매수검토·홀딩·상승중은 오르면, 매도검토·매수보류는 덜 오르거나 내리면), 빨강 = 반대. 아직 기간이 안 지났으면 '-'.</p>
+초록 = 칸의 뜻대로 맞음(매수·보유는 오르면, 매도(전량)·매수보류는 덜 오르거나 내리면), 빨강 = 반대. 아직 기간이 안 지났으면 '-'.</p>
 <h2>월별 요약 <small>(칸별 건수 · 20일 뒤 기준선 대비 평균, 그 달 수익률)</small></h2>
 <div class="wrap"><table>
 <tr><th class="c" rowspan="2">월</th>{ghead}<th class="g" rowspan="2">내 종목<br>(균등)</th><th rowspan="2">코스피</th><th rowspan="2">나스닥</th></tr>
 <tr>{gsub}</tr>
 {msum or '<tr><td colspan="20" class="mut">아직 기록 없음</td></tr>'}</table></div>
-<p class="note">머니파이 월별 메모에 옮겨 적을 때: 이 표의 그 달 줄(매수검토·매도검토가 맞았나, 내 종목 vs 코스피·나스닥) + 규칙 외 매매 횟수.</p>
+<p class="note">머니파이 월별 메모에 옮겨 적을 때: 이 표의 그 달 줄(매수·매도(전량)가 맞았나, 내 종목 vs 코스피·나스닥) + 규칙 외 매매 횟수.</p>
 <h2>칸별 기록</h2>
 <div class="flt" id="flt"><button data-g="" class="on">전체</button>{filt}</div>
 <div class="wrap"><table id="tb">

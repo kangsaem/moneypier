@@ -157,9 +157,15 @@ def chart_data(c, rs=None, n=None, with_proj=True):
 _BENCH = {}
 
 
+def is_kr(code):
+    """국내 종목 코드: 6자리이고 숫자로 시작(신형 ETF 코드 0141S0 같은 영문 섞인 코드 포함). 그 외 = 해외"""
+    c = str(code).split(".")[0]
+    return len(c) == 6 and c[0].isdigit()
+
+
 def bench_close(code):
-    """상대강도 비교용 지수 종가: 국내(6자리 숫자 코드) = 코스피, 그 외 = S&P500. 실패하면 None"""
-    key = "kr" if str(code)[:6].isdigit() else "us"
+    """상대강도 비교용 지수 종가: 국내 = 코스피, 그 외 = S&P500. 실패하면 None"""
+    key = "kr" if is_kr(code) else "us"
     if key not in _BENCH:
         try:
             _BENCH[key] = _index_close("KS11", "^KS11") if key == "kr" else _index_close("US500", "^GSPC")
@@ -595,16 +601,19 @@ def stock_signals(r):
             "buy_k": bk, "sell_k": sk, "rsi_hi": rsi_hi, "rsi_lo": rsi_lo}
 
 
-# ---------------------------------------------------------------- 리포트 표시 분류 (2026-10-10, 백테스트 결과 반영)
-# 매수검토 = 매수 또는 눌림진행 (+ 근거 수로 강도) / 매도검토 = 아래 3개 중 하나 이상 (걸린 수로 강도)
-#   ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증
-#   (60거래일 최고 종가 대비 -8%는 2026-10-10 넣었다가 뺌: 시장 조정기에 대부분 걸리고, 백테스트에서도 고점 대비 매도는 수익을 줄임)
-# 매수보류 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 (매도검토에 이미 있으면 제외)
-# 상승중 = 불타기 · 반등대기 = 반등대기 · 하락중 = 하락진행
-# 홀딩 = 주봉·월봉 정배열 + 종가 10주선 위 + 매도검토·매수보류 없음 (순항 = 일봉도 정배열 / 눌림 = 일봉만 역배열)
-REVIEW = (("buy", "매수검토", "buy"), ("sell", "매도검토", "sell"), ("caution", "매수보류", "warn"),
-          ("hold", "홀딩", "hold"), ("up", "상승중", "buy"), ("wait", "반등대기", "watch"), ("waitdn", "하락중", "watch"))
-STRENGTH_MAX = 3      # 매수검토·매도검토 강도 ●1~3 (겹친 근거 수, 3개 이상은 3)
+# ---------------------------------------------------------------- 리포트 표시 분류 (v1 확정 2026-10-11, 백테스트 결과 반영)
+# 매도(전량) = 아래 중 하나: ① 매도 + 상대강도↓  ② 비중축소 + 상대강도↓  ③ 익절검토 + 거래량폭증 → 전량 매도(손절 -8%와 함께)
+# 매수(바닥) / 매수(눌림) = 매수 신호 또는 눌림진행. 근거(기본 + 싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접)가 3개 이상이면 바닥
+#   (백테스트: 바닥은 1개월 반등이 강하지만 60일 뒤엔 사라짐 / 눌림은 꾸준) — 강도 ● 표시는 없앰(매도 강도는 효과 없어 근거도 원래대로)
+# 매수(추세) = 불타기(오르는 추세 속 20일선 눌림 뒤 반등) — 매수 쪽에 넣은 게 계좌 백테스트에서 가장 좋았음
+# 보유 = 주봉·월봉 정배열 + 종가 10주선 위 + 매도·매수보류 없음 (순항 = 일봉도 정배열 / 조정 = 일봉만 역배열)
+# 매수보류 = 매도·비중축소인데 상대강도 괜찮음 / 익절검토인데 거래량 폭증 없음 → 보유 유지, 새로 사거나 더 사지 않음
+# 반등대기 = 싼 조건 2개 이상, 하락 멈춤, 반등 신호 전 · 하락 = 싸지만 아직 하락 중이고 장기 추세도 하락
+# 순서 = 화면 탭 순서
+REVIEW = (("sell", "매도(전량)", "sell"), ("buyb", "매수(바닥)", "buy"), ("buy", "매수(눌림)", "buy"), ("up", "매수(추세)", "buy"),
+          ("hold", "보유", "hold"), ("caution", "매수보류", "warn"), ("wait", "반등대기", "wait"), ("waitdn", "하락", "down"))
+BUY_KEYS = ("buyb", "buy", "up")      # 매수 칸 전부
+BOTTOM_MIN = 3                       # 매수 근거가 이만큼 이상이면 매수(바닥)
 
 
 def review(r):
@@ -613,7 +622,7 @@ def review(r):
     weak = rs is not None and rs < 0
     spike = vol is not None and vol >= VOL_SPIKE
     out = {k: None for k, _, _ in REVIEW}
-    # 매수검토
+    # 매수(바닥)·매수(눌림) — score = 근거 수(백테스트 분류용, 화면엔 표시 안 함)
     if sg["buy"] in ("타점", "눌림"):
         why = ["매수 신호" if sg["buy"] == "타점" else "눌림진행"]
         if len(sg["buy_c"]) >= 3:
@@ -622,8 +631,8 @@ def review(r):
             why.append("장기 추세 상승")
         if r.get("bottom_near"):
             why.append("바닥근접")
-        out["buy"] = {"score": min(len(why), STRENGTH_MAX), "why": why}
-    # 매도검토
+        out["buyb" if len(why) >= BOTTOM_MIN else "buy"] = {"score": len(why), "why": why}
+    # 매도(전량)
     why, warn = [], []
     if sg["sell"] == "타점":
         (why if weak else warn).append(f"매도 + 상대강도↓({rs:+.1f}%p)" if weak else "매도(상대강도 양호)")
@@ -632,27 +641,15 @@ def review(r):
     if sg["sell"] == "과열":
         (why if spike else warn).append(f"익절검토 + 거래량폭증({vol:.1f}배)" if spike else "익절검토(거래량 폭증 없음)")
     if why:
-        # 강도: 기본 근거 1개 + 겹친 근거(상대강도↓·거래량폭증 중 기본에 안 쓴 것, 10주선 이탈, 꼭지근접)
-        base = why[0]
-        if weak and "상대강도" not in base:
-            why.append(f"상대강도↓({rs:+.1f}%p)")
-        if spike and "거래량" not in base:
-            why.append(f"거래량폭증({vol:.1f}배)")
-        if r.get("w10") and r["close"] < r["w10"]:
-            why.append("10주선 이탈")
-        if r.get("top_near"):
-            why.append("꼭지근접")
-        out["sell"] = {"score": min(len(why), STRENGTH_MAX), "why": why}
+        out["sell"] = {"score": 1, "why": why}
     elif warn:
-        out["caution"] = {"score": 0, "why": warn}
-    if out["caution"]:
-        out["caution"]["why"].append("보유 유지 · 추가 매수 금지")
+        out["caution"] = {"score": 0, "why": warn + ["보유 유지 · 새로 사거나 더 사지 않음"]}
     wk, mo = r["week"], r["month"]
     if (not out["sell"] and not out["caution"] and wk.get("ok") and wk.get("above") and mo.get("ok") and mo.get("above")
             and r.get("w10") and r["close"] > r["w10"]):
         cruise = bool(r["day"].get("ok") and r["day"].get("above"))
-        out["hold"] = {"score": 0, "level": "순항" if cruise else "눌림",
-                       "why": ["일·주·월 정배열 — 추세 순항" if cruise else "주·월 정배열, 일봉만 역배열 — 추세 속 눌림(팔 이유 아님)"]}
+        out["hold"] = {"score": 0, "level": "순항" if cruise else "조정",
+                       "why": ["일·주·월 정배열 — 추세 순항" if cruise else "주·월 정배열, 일봉만 역배열 — 추세 속 쉬어가기(팔 이유 아님)"]}
     if sg["add"] == "후보":
         out["up"] = {"score": 0, "why": sg["add_c"]}
     if sg["buy"] == "관심":
@@ -663,7 +660,7 @@ def review(r):
 
 
 def review_groups(r):
-    """이 종목이 들어가는 리포트 칸 [(이름, 성격, 강도), ...]"""
+    """이 종목이 들어가는 리포트 칸 [(이름, 성격, 근거 수), ...] — 성격 hold2 = 보유·순항, hold1 = 보유·조정"""
     rv = r.get("review") or review(r)
     return [(nm + ("·" + rv[k]["level"] if rv[k].get("level") else ""), tone + ("2" if rv[k].get("level") == "순항" else "1" if rv[k].get("level") else ""),
              rv[k]["score"]) for k, nm, tone in REVIEW if rv.get(k)]
@@ -704,8 +701,8 @@ def cross_count(r, golden, wins=None):
 
 
 def flags(r):
-    """세부내용 칩: 리포트 칸(강도 ●) + 일봉 최근 크로스(매수·매도 트리거로 쓰이는 것만) + 8% 변동 · 이격도 · 바닥/꼭지 근접"""
-    f = [nm + (" " + "●" * sc if sc else "") for nm, _, sc in review_groups(r)]
+    """세부내용 칩: 리포트 칸 + 일봉 최근 크로스(매수·매도 트리거로 쓰이는 것만) + 8% 변동 · 이격도 · 바닥/꼭지 근접"""
+    f = [nm for nm, _, _ in review_groups(r)]
     d = r["day"]
     if d["ok"] and d["cross"] and d["cross"]["ago"] < CROSS_DAYS:
         f.append("최근골든" if d["cross"]["golden"] else "최근데드")
@@ -782,7 +779,8 @@ def _index_info(name, s):
         cur, mx, mn = float(disp.iloc[-1]), float(disp.max()), float(disp.min())
         d = {"cur": cur, "max": mx, "min": mn, "up": cur / mx, "down": cur / mn}
     return {"name": name, "close": float(s.iloc[-1]), "chg": float((s.iloc[-1] / s.iloc[-2] - 1) * 100),
-            "date": s.index[-1], "chart": chart_data(s), "disp": d, "rsi": float(rsi(s).iloc[-1])}
+            "date": s.index[-1], "chart": chart_data(s), "disp": d, "rsi": float(rsi(s).iloc[-1]),
+            "from_high": float((s.iloc[-1] / s.tail(250).max() - 1) * 100)}       # 52주 최고 종가 대비 %(폭락장 판정)
 
 
 CREDIT_YEARS = 5      # 금융투자협회 통계를 몇 년치 받을지(백분위의 '과거' 범위)
@@ -1050,6 +1048,28 @@ def extra_line(r, lv=None):
     return " · ".join(parts)
 
 
+CRASH_DD = -20.0       # 폭락장: 지수 52주 고점 대비 이 % 이하
+CRASH_VIX = 30.0       #         VIX 이 값 이상
+CRASH_BOTTOM = 2       #         시장 바닥 지표 이 개수 이상
+CRASH_IDX = (("kospi", "코스피"), ("spx", "S&P500"), ("ndx", "나스닥"))
+
+
+def crash_info(snap, msig):
+    """폭락장 판정: 셋 중 하나라도 켜지면 on. why = 켜진 조건 설명 목록(표시용). 돈 쓰는 방식은 사용자가 판단"""
+    why = []
+    for k, nm in CRASH_IDX:
+        v = (snap.get("idx") or {}).get(k)
+        if v and v.get("from_high") is not None and v["from_high"] <= CRASH_DD:
+            why.append(f"{nm} 고점 {v['from_high']:.0f}%")
+    vix = snap.get("vix")
+    if vix and vix.get("last") is not None and vix["last"] >= CRASH_VIX:
+        why.append(f"VIX {vix['last']:.0f}")
+    b = (msig or {}).get("bottom") or {}
+    if b.get("score", 0) >= CRASH_BOTTOM:
+        why.append(f"바닥 지표 {b['score']}개")
+    return {"on": bool(why), "why": why}
+
+
 def signals_text(results, msig):
     L = ["■ 0. 오늘의 시그널 (참고용 규칙 기반 신호)"]
     for key, nm in (("risk", "시장 위험"), ("bottom", "시장 바닥")):
@@ -1057,7 +1077,7 @@ def signals_text(results, msig):
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
     for key, head, _ in REVIEW:
-        hit = sorted([r for r in results if (r.get("review") or {}).get(key)], key=lambda r: -r["review"][key]["score"])
+        hit = [r for r in results if (r.get("review") or {}).get(key)]
         if not hit:            # 해당 종목이 없는 칸은 생략
             continue
         L.append(f"\n▶ {head} [{len(hit)}]")
@@ -1066,7 +1086,7 @@ def signals_text(results, msig):
             continue
         for r in hit:
             rv = r["review"][key]
-            L.append(f"• {tl(r)}" + (" " + "●" * rv["score"] if rv["score"] else ""))
+            L.append(f"• {tl(r)}")
             L.append("    " + ", ".join(rv["why"]))
             L.append("    " + extra_line(r))
     return "\n".join(L)

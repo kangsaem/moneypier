@@ -84,12 +84,14 @@ def _irr(flows):
     return (lo + hi) / 2 * 100
 
 
-def simulate_alloc(states, dates, pct, cap, inject=False, same_day=False, skip_broken=False, bench=None):
+def simulate_alloc(states, dates, pct, cap, inject=False, same_day=False, skip_broken=False, bench=None, held=None):
     """반환: 잔고(시간가중, 입금 효과 제외) Series, 거래 목록, 현금비중 Series, 기말 보유 수, 기록(dict)
     inject   = 매수 신호 때 현금이 모자라면 모자란 만큼 새로 입금(한도 없음). 매수 금액·종목 상한의 기준금액 =
                그해 첫 거래일의 계좌 평가액(그동안 넣은 돈 포함), 연중에는 고정 → 매년 1월 첫 거래일에 다시 정함
     same_day = 신호 당일 종가에 매수(국장 시간외 종가 가정). 기본은 다음 날 종가
-    skip_broken = 체결일 종가가 신호일보다 올랐는데 그날 매수 신호가 사라졌으면(신호가 깨지는 가격 위) 사지 않음"""
+    skip_broken = 체결일 종가가 신호일보다 올랐는데 그날 매수 신호가 사라졌으면(신호가 깨지는 가격 위) 사지 않음
+    held     = (총합, 최대 상한, 나눠 사는 횟수): 최종 규칙 — 종목당 상한 = min(최대, 총합 ÷ 보유 종목 수),
+               아직 안 가진 종목이면 보유 종목 수 + 1. 신호당 매수 = 상한 ÷ 횟수. 이때 pct·cap은 쓰지 않음"""
     px = {c: s["close"].reindex(dates).ffill().to_numpy(dtype=float) for c, s in states.items()}     # 속도: 배열로
     cats = {c: list(s["cats"].reindex(dates)) for c, s in states.items()}
     cash, pos, orders, trades = 1.0, {}, [], []
@@ -136,9 +138,16 @@ def simulate_alloc(states, dates, pct, cap, inject=False, same_day=False, skip_b
             is_broken = (not same_day) and p0 is not None and p > p0 and not (on & set(ALLOC_BUY))
             E_ = cash + held_value(i)
             base = year_base if inject else E_       # 입금 모드: 그해 1월 첫 거래일 계좌 평가액(입금 포함) — 연중엔 고정
-            want = base * pct / 100
+            if held:
+                h_tot, h_max, h_sp = held
+                nh = len(pos) + (0 if c in pos else 1)
+                cap_i = min(h_max, h_tot / nh)
+                pct_i = cap_i / h_sp
+            else:
+                cap_i, pct_i = cap, pct
+            want = base * pct_i / 100
             have = pos[c]["sh"] * p if c in pos else 0.0
-            amt = min(want, base * cap / 100 - have)
+            amt = min(want, base * cap_i / 100 - have)
             if amt < want * 0.25:
                 skip_cap += 1
                 continue
@@ -218,7 +227,7 @@ def simulate_alloc(states, dates, pct, cap, inject=False, same_day=False, skip_b
         E_ = cash + held_value(i)
         eq_nav.append(E_ / units)
         cash_ratio.append(cash / E_ if E_ > 0 else 1.0)
-        is_low = cash < E_ * pct / 100 * 0.5
+        is_low = cash < E_ * (pct if not held else min(held[1], held[0] / max(len(pos), 1)) / held[2]) / 100 * 0.5
         if is_low and low_cur is None:
             low_cur = [d, d, 0]
         if is_low:
@@ -413,6 +422,12 @@ def run(states, names, bench, bench_name, out_path, label, note=""):
                 simulate_alloc(states, dates, pc, cap), "종목 수 기준 상한", show=(tot == 150 and sp == 2))
             add(nm + "+입금", "같은 규칙 + 현금이 모자라면 새로 입금(기준금액 = 그해 1월 첫 거래일 계좌, 연중 고정)",
                 simulate_alloc(states, dates, pc, cap, inject=True, bench=nq), "종목 수 기준 상한 + 무제한 입금")
+    for sp in (1, 2, 3):
+        nm = f"최종규칙 {sp}회"
+        add(nm, f"종목당 상한 = min(10%, 150 ÷ 보유 종목 수, 새 종목은 +1), 신호마다 상한의 1/{sp} 매수, 매도검토·손절8%에 전량",
+            simulate_alloc(states, dates, 0, 0, held=(150, 10, sp)), "최종 규칙(보유 종목 수 기준)", show=(sp == 3))
+        add(nm + "+입금", "같은 규칙 + 현금이 모자라면 새로 입금(기준금액 = 그해 1월 첫 거래일 계좌, 연중 고정)",
+            simulate_alloc(states, dates, 0, 0, inject=True, bench=nq, held=(150, 10, sp)), "최종 규칙 + 무제한 입금")
     rc, rp = ALLOC_REF
     add(f"상한{rc:g}%·{rp:g}% 당일종가", "기준 조합을 신호 당일 종가에 매수(국장 시간외 종가 가정)", simulate_alloc(states, dates, rp, rc, same_day=True), "체결 시점·신호 깨짐", show=True)
     add(f"상한{rc:g}%·{rp:g}% 깨지면 안 삼", "기준 조합, 다음 날 종가가 신호일보다 올랐는데 매수 신호가 사라졌으면(신호가 깨지는 가격 위) 사지 않음",
@@ -477,6 +492,22 @@ def write_html(rows, curves, names, out_path, label, dates, note="", shown=None)
             cells += f'<td class="{"up" if r and r > 0 else "dn" if r and r < 0 else ""}">{_f(r)}</td>'
         wtr += f'<tr class="{"bm" if sr["bm"] else ""}"><td class="c">{E(sr["name"])}</td>{cells}</tr>'
     wtable = f'<div class="wrap"><table><tr><th class="c">방식</th>{head}</tr>{wtr}</table></div>'
+    # 연도별 수익률(달력 기준, 전년 마지막 날 → 그해 마지막 날, 올해는 오늘까지) — 기본 표시 방식 + 지수·균등 보유
+    yrs = sorted({d.year for d in dates})
+    ytr = ""
+    for sr in series:
+        if not (sr["bm"] or sr.get("show")):
+            continue
+        cv = pd.Series(sr["v"], index=dates).dropna()
+        cells = ""
+        for y in yrs:
+            prev, cur = cv[cv.index.year < y], cv[cv.index.year == y]
+            st = prev.iloc[-1] if len(prev) else (cur.iloc[0] if len(cur) else None)
+            r = (cur.iloc[-1] / st - 1) * 100 if st and len(cur) else None
+            cells += f'<td class="{"up" if r and r > 0 else "dn" if r and r < 0 else ""}">{_f(r)}</td>'
+        ytr += f'<tr class="{"bm" if sr["bm"] else ""}"><td class="c">{E(sr["name"])}</td>{cells}</tr>'
+    ytable = (f'<div class="wrap"><table><tr><th class="c">방식</th>{"".join(f"<th>{y}</th>" for y in yrs)}</tr>{ytr}</table></div>'
+              '<p class="note">첫해·올해는 기간 안의 부분만(첫해는 시작일부터, 올해는 오늘까지). 내 종목 실행이면 이 표가 연간 성적표의 "로직대로 매매했을 때".</p>')
     xr = [r for r in rows if r.get("x")]
     alloc_html = ""
     if xr:
@@ -566,6 +597,8 @@ a {{ color:inherit; }}
 현금 비중 = 기간 평균으로 계좌 중 놀고 있던 현금 비율 — 높을수록 신호가 적어 돈이 덜 일했다는 뜻.
 한계: 배당 미반영, 체결은 종가 가정. 대상이 '지금 목록'이면 생존 편향(그동안 커진 종목만 담김)이 있어 '균등 보유'가 지수보다 크게 높게 나옴 — 이때는 지수 대신 균등 보유와 비교.</p>
 {alloc_html}
+<h2>연도별 수익률</h2>
+{ytable}
 <h2>구간별 수익률</h2>
 {wtable}
 <p class="note">최근 1·3·5년 구간 첫날을 0%로 본 수익률. 전략은 전체 기간을 이어서 매매한 계좌의 그 구간 성과(구간 첫날 이미 들고 있던 종목 포함). 종목 목록은 이 실행의 시작일 기준 그대로 — 1·3년을 그때의 상위 종목으로 보려면 1년·3년 실행 결과를 볼 것.
