@@ -14,6 +14,7 @@ import html
 import json
 from datetime import datetime, timedelta, timezone
 
+import numpy as np
 import pandas as pd
 
 SLOTS = 10
@@ -41,27 +42,76 @@ VARIANTS = [
 # 바닥 2/3·3/3에 매수, 꼭지 매도, 매수 트리거=골든X2, 눌림진행도 매수, 손절8%+고점 대비 -8·10·12% 매도, 손절8%+추세이탈 매도 — HANDOFF.md 참고
 
 # 비율 매수: 매수 신호(매수검토·상승중)가 새로 켜질 때마다 그날 계좌 평가액의 pct%를 산다(보유 중이어도 같은 비율로 추가).
-# 한 종목은 계좌의 CAP%까지. 매도검토 또는 손절8%(평균 매수가 기준) → 전량 매도. 칸 제한 없음.
+# 한 종목은 계좌의 cap%까지. 매도검토 또는 손절8%(평균 매수가 기준) → 전량 매도. 칸 제한 없음.
 ALLOC_BUY = ("v1·매수검토", "불타기")
 ALLOC_SELL = ("v1·매도검토",)
-ALLOC_CAP = 10.0
-ALLOC_PCTS = (1, 2, 5, 10)
+ALLOC_COMBOS = ((8.0, (3, 4, 5)), (5.0, (2, 2.5, 3)), (2.0, (0.5, 1, 1.5)))    # (종목당 상한 %, 신호당 매수 %)
+ALLOC_REF = (8.0, 5)
+N_TOTALS = (100, 150, 200)    # 종목당 상한 = 총합 ÷ 종목 수 (3% 이상은 정수, 미만은 0.5% 단위로 반올림)
+N_SPLITS = (1, 2, 3)          # 신호 몇 번에 상한을 채우나(신호당 매수 = 상한 ÷ 횟수)
 
 
-def simulate_alloc(states, dates, pct, cap=ALLOC_CAP):
-    """반환: 잔고 Series, 거래 목록, 현금비중 Series, 기말 보유 수, 기록(dict)"""
-    px = {c: s["close"].reindex(dates).ffill() for c, s in states.items()}
-    cats = {c: s["cats"].reindex(dates) for c, s in states.items()}
-    cash, pos, eq, cash_ratio, trades, orders = 1.0, {}, [], [], [], []
+def n_cap(total, n):
+    v = total / max(n, 1)
+    return float(round(v)) if v >= 3 else max(round(v * 2) / 2, 0.5)          # 체결 시점·신호 깨짐 비교의 기준 조합
+SIG_BINS = ((0, 0), (1, 1), (2, 2), (3, 3), (4, 4), (5, 9), (10, 19), (20, 10 ** 9))
+RUN_BINS = ((1, 1), (2, 3), (4, 5), (6, 10), (11, 10 ** 9))
+
+
+def _bins(vals, bins):
+    out = {}
+    for lo, hi in bins:
+        k = str(lo) if lo == hi else (f"{lo}+" if hi >= 10 ** 9 else f"{lo}~{hi}")
+        n = sum(1 for v in vals if lo <= v <= hi)
+        if n:
+            out[k] = n
+    return out
+
+
+def _irr(flows):
+    """flows: [(연 단위 시점, 금액)] — 금액 합의 현재가치가 0이 되는 연수익률(이분법)"""
+    def npv(r):
+        return sum(a / (1 + r) ** t for t, a in flows)
+    lo, hi = -0.99, 10.0
+    if npv(lo) * npv(hi) > 0:
+        return None
+    for _ in range(200):
+        mid = (lo + hi) / 2
+        if npv(lo) * npv(mid) <= 0:
+            hi = mid
+        else:
+            lo = mid
+    return (lo + hi) / 2 * 100
+
+
+def simulate_alloc(states, dates, pct, cap, inject=False, same_day=False, skip_broken=False, bench=None):
+    """반환: 잔고(시간가중, 입금 효과 제외) Series, 거래 목록, 현금비중 Series, 기말 보유 수, 기록(dict)
+    inject   = 매수 신호 때 현금이 모자라면 모자란 만큼 새로 입금(한도 없음). 매수 금액·종목 상한의 기준금액 =
+               그해 첫 거래일의 계좌 평가액(그동안 넣은 돈 포함), 연중에는 고정 → 매년 1월 첫 거래일에 다시 정함
+    same_day = 신호 당일 종가에 매수(국장 시간외 종가 가정). 기본은 다음 날 종가
+    skip_broken = 체결일 종가가 신호일보다 올랐는데 그날 매수 신호가 사라졌으면(신호가 깨지는 가격 위) 사지 않음"""
+    px = {c: s["close"].reindex(dates).ffill().to_numpy(dtype=float) for c, s in states.items()}     # 속도: 배열로
+    cats = {c: list(s["cats"].reindex(dates)) for c, s in states.items()}
+    cash, pos, orders, trades = 1.0, {}, [], []
+    units, eq_nav, cash_ratio = 1.0, [], []
     prev = {c: set() for c in states}
-    opened = {c: 0 for c in states}           # 종목별 새로 진입한 횟수(첫 진입 포함)
-    buys_n = {c: 0 for c in states}           # 종목별 실제 매수 횟수(추가 매수 포함)
-    sig_n = {c: 0 for c in states}            # 종목별 매수 신호(새로 켜짐) 횟수
+    opened = {c: 0 for c in states}
+    buys_n = {c: 0 for c in states}
+    sig_n = {c: 0 for c in states}
+    sig_days = {c: [] for c in states}            # 매수 신호가 새로 켜진 날(인덱스)
+    runs_len, cur_run = [], {c: 0 for c in states}
+    best_run = {c: 0 for c in states}
     skip_cash = skip_cap = 0
-    low, runs, cur = [], [], None             # 현금 부족 상태(한 번 살 금액의 절반 미만) 구간
+    low_runs, low_cur = [], None
+    inj, inj_total = [], 0.0                      # 입금 [(날짜, 금액)]
+    broken = []                                   # (신호가 깨진 매수) [(코드, 체결 인덱스, 가격)]
+    broken_skip = 0
+    bought_at = []                                # 모든 매수 [(코드, 인덱스, 가격, 깨짐 여부)]
+    repeat_buys = 0                               # 같은 종목 직전 매수 20거래일 안에 또 산 횟수
+    last_buy = {}
 
-    def equity_at(i):
-        return cash + sum(Q["sh"] * px[k].iloc[i] for k, Q in pos.items() if not pd.isna(px[k].iloc[i]))
+    def held_value(i):
+        return sum(Q["sh"] * px[k][i] for k, Q in pos.items() if not np.isnan(px[k][i]))
 
     def sell_all(c, p, d, i, why):
         nonlocal cash
@@ -71,43 +121,68 @@ def simulate_alloc(states, dates, pct, cap=ALLOC_CAP):
         trades.append({"code": c, "in": P["date"], "out": d, "cost": P["cost"], "back": back,
                        "ret": (back / P["cost"] - 1) * 100, "days": i - P["i"], "why": why, "buys": P["n"]})
 
-    for i, d in enumerate(dates):
-        # 1) 어제 신호 → 오늘 종가 체결 (매도 먼저)
-        for kind, c in sorted(orders, key=lambda o: o[0] != "sell"):
-            p = px[c].iloc[i]
-            if pd.isna(p) or p <= 0:
+    def execute(i, d):
+        nonlocal cash, skip_cash, skip_cap, units, inj_total, broken_skip, repeat_buys, year_base
+        for kind, c, p0 in sorted(orders, key=lambda o: o[0] != "sell"):
+            p = px[c][i]
+            if np.isnan(p) or p <= 0:
                 continue
-            if kind == "sell" and c in pos:
-                sell_all(c, p, d, i, "신호")
-            elif kind == "buy":
-                E_ = equity_at(i)
-                want = E_ * pct / 100
-                have = pos[c]["sh"] * p if c in pos else 0.0
-                room = E_ * cap / 100 - have
-                amt = min(want, room)
-                if amt < want * 0.25:                  # 상한에 거의 닿음
-                    skip_cap += 1
-                    continue
-                if cash < amt * 0.5:                   # 현금 부족
+            if kind == "sell":
+                if c in pos:
+                    sell_all(c, p, d, i, "신호")
+                continue
+            on = cats[c][i]
+            on = on if isinstance(on, (set, frozenset)) else set()
+            is_broken = (not same_day) and p0 is not None and p > p0 and not (on & set(ALLOC_BUY))
+            E_ = cash + held_value(i)
+            base = year_base if inject else E_       # 입금 모드: 그해 1월 첫 거래일 계좌 평가액(입금 포함) — 연중엔 고정
+            want = base * pct / 100
+            have = pos[c]["sh"] * p if c in pos else 0.0
+            amt = min(want, base * cap / 100 - have)
+            if amt < want * 0.25:
+                skip_cap += 1
+                continue
+            if is_broken and skip_broken:           # 실제로 샀을 매수만 건너뜀으로 셈(상한에 걸린 건 제외)
+                broken_skip += 1
+                continue
+            if cash < amt * 0.5 or (inject and cash < amt):
+                if not inject:
                     skip_cash += 1
                     continue
-                amt = min(amt, cash)
-                cash -= amt
-                sh = amt * (1 - BUY_COST) / p
-                if c in pos:
-                    P = pos[c]
-                    P["entry"] = (P["entry"] * P["sh"] + p * sh) / (P["sh"] + sh)    # 평균 매수가
-                    P["sh"] += sh; P["cost"] += amt; P["n"] += 1
-                else:
-                    pos[c] = {"sh": sh, "cost": amt, "date": d, "i": i, "entry": p, "warn": False, "n": 1, "last": i}
-                    opened[c] += 1
-                pos[c]["last"] = i
-                buys_n[c] += 1
-        orders = []
-        # 1-2) 손절8%: 종가가 평균 매수가 -8% 이하가 이틀 연속(오늘 산 종목 제외)
+                need = amt - cash                  # 모자란 만큼 입금 — 입금 직전 1단위 가치로 단위 추가(시간가중 수익률 유지)
+                nav = E_ / units
+                units += need / nav
+                cash += need; inj_total += need; inj.append((d, need))
+            amt = min(amt, cash)
+            cash -= amt
+            sh = amt * (1 - BUY_COST) / p
+            if c in pos:
+                P = pos[c]
+                P["entry"] = (P["entry"] * P["sh"] + p * sh) / (P["sh"] + sh)
+                P["sh"] += sh; P["cost"] += amt; P["n"] += 1
+            else:
+                pos[c] = {"sh": sh, "cost": amt, "date": d, "i": i, "entry": p, "warn": False, "n": 1}
+                opened[c] += 1
+            pos[c]["last"] = i
+            buys_n[c] += 1
+            if c in last_buy and i - last_buy[c] <= 20:
+                repeat_buys += 1
+            last_buy[c] = i
+            bought_at.append((c, i, p, is_broken))
+
+    year_base, base_year, bases = 1.0, dates[0].year, {}
+    for i, d in enumerate(dates):
+        if d.year != base_year:                      # 새해 첫 거래일: 어제 종가 기준 계좌 평가액으로 기준금액 재설정
+            base_year = d.year
+            year_base = cash + held_value(max(i - 1, 0))
+        bases.setdefault(str(d.year), round(year_base * 100, 1))
+        if not same_day:
+            execute(i, d)
+            orders = []
+        # 손절8%: 종가가 평균 매수가 -8% 이하가 이틀 연속(오늘 산 종목 제외)
         for c in list(pos):
-            P, x = pos[c], px[c].iloc[i]
-            if pd.isna(x) or P["last"] == i:
+            P, x = pos[c], px[c][i]
+            if np.isnan(x) or P.get("last") == i:
                 continue
             if x <= P["entry"] * 0.92:
                 if P["warn"]:
@@ -116,47 +191,84 @@ def simulate_alloc(states, dates, pct, cap=ALLOC_CAP):
                 P["warn"] = True
             else:
                 P["warn"] = False
-        # 2) 평가 + 현금 부족 구간
-        E_ = equity_at(i)
-        eq.append(E_)
-        cash_ratio.append(cash / E_ if E_ > 0 else 1.0)
-        is_low = cash < E_ * pct / 100 * 0.5
-        if is_low and cur is None:
-            cur = [d, d, 0]
-        if is_low:
-            cur[1] = d; cur[2] += 1
-        elif cur is not None:
-            runs.append(cur); cur = None
-        # 3) 오늘 신호 → 내일 주문
+        # 오늘 신호 → 주문(다음 날 또는 오늘 종가)
         for c in states:
-            on = cats[c].iloc[i]
+            on = cats[c][i]
             on = on if isinstance(on, (set, frozenset)) else set()
             new = on - prev[c]
             prev[c] = on
+            b_on = bool(on & set(ALLOC_BUY))
+            if b_on:
+                cur_run[c] += 1
+            elif cur_run[c]:
+                runs_len.append(cur_run[c]); best_run[c] = max(best_run[c], cur_run[c]); cur_run[c] = 0
             if i == 0:
                 continue
             if new & set(ALLOC_BUY):
                 sig_n[c] += 1
+                sig_days[c].append(i)
             if c in pos and new & set(ALLOC_SELL):
-                orders.append(("sell", c))
+                orders.append(("sell", c, None))
             elif new & set(ALLOC_BUY) and not (on & set(ALLOC_SELL)):
-                orders.append(("buy", c))
-    if cur is not None:
-        runs.append(cur)
+                orders.append(("buy", c, px[c][i]))
+        if same_day:
+            execute(i, d)
+            orders = []
+        # 평가
+        E_ = cash + held_value(i)
+        eq_nav.append(E_ / units)
+        cash_ratio.append(cash / E_ if E_ > 0 else 1.0)
+        is_low = cash < E_ * pct / 100 * 0.5
+        if is_low and low_cur is None:
+            low_cur = [d, d, 0]
+        if is_low:
+            low_cur[1] = d; low_cur[2] += 1
+        elif low_cur is not None:
+            low_runs.append(low_cur); low_cur = None
+    if low_cur is not None:
+        low_runs.append(low_cur)
+    for c in states:
+        if cur_run[c]:
+            runs_len.append(cur_run[c]); best_run[c] = max(best_run[c], cur_run[c])
 
-    def dist(vals, top=3):
-        out = {}
-        for v in vals:
-            k = str(v) if v < top else f"{top}+"
-            out[k] = out.get(k, 0) + 1
-        return dict(sorted(out.items()))
-    longest = max(runs, key=lambda r: r[2]) if runs else None
-    rec = {"sig": dist([v for v in sig_n.values()], 5), "reentry": dist([v - 1 for v in opened.values() if v > 0], 3),
-           "buys": dist([v for v in buys_n.values() if v > 0], 5),
-           "skip_cash": skip_cash, "skip_cap": skip_cap, "low_runs": len(runs), "low_days": sum(r[2] for r in runs),
+    # 한 달(20거래일) 안에 매수 신호가 다시 켜진 경우
+    rep = {c: sum(1 for a, b in zip(sig_days[c], sig_days[c][1:]) if b - a <= 20) for c in states}
+    # 신호가 깨진 뒤에도 산 경우 vs 나머지: 체결가 대비 20·60거래일 뒤 수익
+    def fwd(c, i, p, h):
+        j = i + h
+        return (px[c][j] / p - 1) * 100 if j < len(dates) and not np.isnan(px[c][j]) else None
+
+    def avg(xs):
+        xs = [x for x in xs if x is not None]
+        return sum(xs) / len(xs) if xs else None
+    br = [b for b in bought_at if b[3]]
+    ok = [b for b in bought_at if not b[3]]
+    longest = max(low_runs, key=lambda r: r[2]) if low_runs else None
+    E_end = cash + held_value(len(dates) - 1)
+    rec = {"sig": _bins(list(sig_n.values()), SIG_BINS), "buys": _bins([v for v in buys_n.values() if v], SIG_BINS),
+           "reentry": _bins([v - 1 for v in opened.values() if v > 0], SIG_BINS),
+           "run": _bins(runs_len, RUN_BINS), "run_max": max(best_run.values()) if best_run else 0,
+           "rep20": _bins([v for v in rep.values() if v], SIG_BINS), "rep20_n": sum(rep.values()), "repeat_buys": repeat_buys,
+           "skip_cash": skip_cash, "skip_cap": skip_cap, "low_runs": len(low_runs), "low_days": sum(r[2] for r in low_runs),
            "low_longest": (f"{longest[0]:%y.%m.%d}~{longest[1]:%y.%m.%d} ({longest[2]}일)" if longest else "-"),
-           "invested": float((1 - pd.Series(cash_ratio).mean()) * 100)}
-    return pd.Series(eq, index=dates), trades, pd.Series(cash_ratio, index=dates), len(pos), rec
+           "invested": float((1 - pd.Series(cash_ratio).mean()) * 100),
+           "broken_n": len(br), "ok_n": len(ok), "broken_skip": broken_skip,
+           "broken_f20": avg([fwd(c, i, p, 20) for c, i, p, _ in br]), "broken_f60": avg([fwd(c, i, p, 60) for c, i, p, _ in br]),
+           "ok_f20": avg([fwd(c, i, p, 20) for c, i, p, _ in ok]), "ok_f60": avg([fwd(c, i, p, 60) for c, i, p, _ in ok])}
+    if inject:
+        yrs = lambda dd: (dd - dates[0]).days / 365.25
+        flows = [(0.0, -1.0)] + [(yrs(dd), -a) for dd, a in inj] + [(yrs(dates[-1]), E_end)]
+        rec.update({"inj_total": inj_total * 100, "inj_n": len(inj), "end_value": E_end * 100,
+                    "net": (E_end - 1 - inj_total) * 100, "roc": (E_end / (1 + inj_total) - 1) * 100, "irr": _irr(flows),
+                    "base_by_year": bases,
+                    "inj_by_year": {str(y): round(sum(a for dd, a in inj if dd.year == y) * 100, 1) for y in sorted({dd.year for dd, _ in inj})}})
+        if bench is not None and len(bench):
+            b = bench.reindex(dates, method="ffill")
+            if not pd.isna(b.iloc[0]):
+                bu = 1.0 / b.iloc[0] + sum(a / b.loc[dd] for dd, a in inj if not pd.isna(b.loc[dd]))   # 같은 날 같은 금액을 지수에
+                bend = bu * b.iloc[-1]
+                rec.update({"bench_end": bend * 100, "bench_irr": _irr([(0.0, -1.0)] + [(yrs(dd), -a) for dd, a in inj] + [(yrs(dates[-1]), bend)])})
+    return pd.Series(eq_nav, index=dates), trades, pd.Series(cash_ratio, index=dates), len(pos), rec
 
 
 def simulate(states, dates, buy_cats, bear_only, sell_mode, opts=None):
@@ -269,19 +381,43 @@ def run(states, names, bench, bench_name, out_path, label, note=""):
     """states가 비어 있지 않을 때 계좌 시뮬레이션을 돌려 out_path(.html)에 저장"""
     dates = sorted(set().union(*[set(s.index) for s in states.values()]))
     dates = pd.DatetimeIndex(dates)
-    rows, curves = [], {}
+    rows, curves, shown = [], {}, set()
     for nm, desc, buy_cats, bear_only, mode, opts in VARIANTS:
         eq, trades, cash, open_n = simulate(states, dates, buy_cats, bear_only, mode, opts)
         rows.append({"name": nm, "desc": desc, **metrics(eq, trades, cash, open_n), "trades": trades})
         curves[nm] = eq / eq.iloc[0]
-    for pc in ALLOC_PCTS:
-        eq, trades, cash, open_n, rec = simulate_alloc(states, dates, pc)
-        nm = f"비율 {pc}%"
-        rows.append({"name": nm, "desc": f"매수검토·상승중마다 계좌의 {pc}% 매수(다시 뜨면 또, 종목당 {ALLOC_CAP:.0f}% 상한), 매도검토·손절8%(평균가)에 전량",
-                     **metrics(eq, trades, cash, open_n), "trades": trades, "x": rec})
-        curves[nm] = eq / eq.iloc[0]
-    # 비교 대상: 지수 보유, 균등 보유
+        shown.add(nm)
     benches = bench if isinstance(bench, list) else ([(bench_name, bench)] if bench is not None else [])
+    nq = next((s for n, s in benches if n.startswith("나스닥")), None)
+
+    def add(nm, desc, res, group, show=False):
+        eq, trades, cash, open_n, rec = res
+        rows.append({"name": nm, "desc": desc, **metrics(eq, trades, cash, open_n), "trades": trades, "x": rec, "grp": group})
+        curves[nm] = eq / eq.iloc[0]
+        if show:
+            shown.add(nm)
+    for cap, pcts in ALLOC_COMBOS:
+        for pc in pcts:
+            base = f"상한{cap:g}%·{pc:g}%"
+            add(base, f"매수 신호마다 계좌의 {pc:g}% 매수(다시 뜨면 또), 종목당 {cap:g}% 상한, 매도검토·손절8%(평균가)에 전량. 현금 없으면 건너뜀",
+                simulate_alloc(states, dates, pc, cap), "비율 매수", show=(cap, pc) == ALLOC_REF or (cap == 5.0 and pc == 2.5) or (cap == 2.0 and pc == 1))
+            add(base + "+입금", "같은 규칙 + 현금이 모자라면 모자란 만큼 새로 입금(한도 없음). 매수 기준금액 = 그해 1월 첫 거래일 계좌(입금 포함), 연중 고정. 수익률은 입금 효과를 뺀 시간가중",
+                simulate_alloc(states, dates, pc, cap, inject=True, bench=nq), "무제한 입금")
+    nst = len(states)
+    for tot in N_TOTALS:
+        cap = n_cap(tot, nst)
+        for sp in N_SPLITS:
+            pc = cap / sp
+            nm = f"N{tot} 상한{cap:g}%·{sp}회"
+            add(nm, f"종목당 상한 = {tot}÷{nst}종목 ≈ {cap:g}%, 신호마다 {pc:.2g}% 매수({sp}번에 상한 채움), 매도검토·손절8%에 전량",
+                simulate_alloc(states, dates, pc, cap), "종목 수 기준 상한", show=(tot == 150 and sp == 2))
+            add(nm + "+입금", "같은 규칙 + 현금이 모자라면 새로 입금(기준금액 = 그해 1월 첫 거래일 계좌, 연중 고정)",
+                simulate_alloc(states, dates, pc, cap, inject=True, bench=nq), "종목 수 기준 상한 + 무제한 입금")
+    rc, rp = ALLOC_REF
+    add(f"상한{rc:g}%·{rp:g}% 당일종가", "기준 조합을 신호 당일 종가에 매수(국장 시간외 종가 가정)", simulate_alloc(states, dates, rp, rc, same_day=True), "체결 시점·신호 깨짐", show=True)
+    add(f"상한{rc:g}%·{rp:g}% 깨지면 안 삼", "기준 조합, 다음 날 종가가 신호일보다 올랐는데 매수 신호가 사라졌으면(신호가 깨지는 가격 위) 사지 않음",
+        simulate_alloc(states, dates, rp, rc, skip_broken=True), "체결 시점·신호 깨짐")
+    # 비교 대상: 지수 보유, 균등 보유
     for bname, bser in benches:                    # 지수 보유: 이 대상의 시장 지수가 먼저, 다른 시장 지수도 참고로
         if bser is None or not len(bser):
             continue
@@ -296,7 +432,7 @@ def run(states, names, bench, bench_name, out_path, label, note=""):
         ew = (px[first.index] / first).mean(axis=1) * (1 - BUY_COST)
         rows.append({"name": "균등 보유", "desc": f"첫날 {len(first)}종목을 똑같이 나눠 사서 들고 있기", **metrics(ew)})
         curves["균등 보유"] = ew
-    write_html(rows, curves, names, out_path, label, dates, note)
+    write_html(rows, curves, names, out_path, label, dates, note, shown)
     return rows
 
 
@@ -306,7 +442,7 @@ def _f(v, plus=True, unit="%"):
     return (f"{v:+.1f}" if plus else f"{v:.0f}") + unit
 
 
-def write_html(rows, curves, names, out_path, label, dates, note=""):
+def write_html(rows, curves, names, out_path, label, dates, note="", shown=None):
     E = html.escape
     kst = datetime.now(timezone.utc) + timedelta(hours=9)
     strat = [r["name"] for r in rows if "n" in r]
@@ -322,7 +458,8 @@ def write_html(rows, curves, names, out_path, label, dates, note=""):
     series = []
     for nm, cv in curves.items():
         cv = cv.reindex(dates).ffill()
-        series.append({"name": nm, "bm": nm not in strat, "slot": strat.index(nm) + 1 if nm in strat else 0,
+        series.append({"name": nm, "bm": nm not in strat, "slot": (strat.index(nm) % 12) + 1 if nm in strat else 0,
+                       "show": bool(shown is None or nm in shown),
                        "v": [None if pd.isna(x) else round(float(x), 5) for x in cv]})
     years = (dates[-1] - dates[0]).days / 365.25
     wins = [w for w in (1, 3, 5) if w < years - 0.2] + ["전체"]
@@ -344,16 +481,47 @@ def write_html(rows, curves, names, out_path, label, dates, note=""):
     alloc_html = ""
     if xr:
         dfmt = lambda dd: " · ".join(f"{k}회 {v}" for k, v in dd.items()) or "-"
-        alloc_html = ('<h2>비율 매수 기록</h2><div class="wrap"><table><tr><th class="c">방식</th><th>평균 투자 비중</th><th>투자 비중 대비 수익(대략)</th>'
-                      '<th>현금 부족으로 못 산 횟수</th><th>상한(10%) 때문에 건너뜀</th><th>현금 부족 구간</th><th>현금 부족 총 일수</th><th>가장 긴 현금 부족</th></tr>'
-                      + "".join(f'<tr><td class="c"><b>{E(r["name"])}</b></td><td>{_f(r["x"]["invested"], False)}</td>'
-                                f'<td>{_f(r["tot"] / max(r["x"]["invested"], 1) * 100)}</td><td>{r["x"]["skip_cash"]}</td><td>{r["x"]["skip_cap"]}</td>'
-                                f'<td>{r["x"]["low_runs"]}</td><td>{r["x"]["low_days"]}일</td><td>{E(r["x"]["low_longest"])}</td></tr>' for r in xr)
-                      + '</table></div>'
-                      '<div class="wrap" style="margin-top:6px"><table><tr><th class="c">방식</th><th class="c">종목별 실제 매수 횟수 (횟수 종목수)</th><th class="c">종목별 재진입 횟수 (다 판 뒤 다시 산 횟수)</th></tr>'
-                      + "".join(f'<tr><td class="c"><b>{E(r["name"])}</b></td><td class="c">{E(dfmt(r["x"]["buys"]))}</td><td class="c">{E(dfmt(r["x"]["reentry"]))}</td></tr>' for r in xr)
-                      + f'</table></div><p class="note">종목별 매수 신호(매수검토·상승중이 새로 켜진) 횟수 분포: {E(dfmt(xr[0]["x"]["sig"]))} (기간 전체, 매매와 무관). '
-                      '현금 부족 = 현금이 한 번 살 금액의 절반 미만인 날. 투자 비중 대비 수익 = 총수익 ÷ 평균 투자 비중(놀던 현금을 뺀 대략적 효율).</p>')
+        dyr = lambda dd: " · ".join(f"{k} {v:g}" for k, v in dd.items()) or "-"
+        nn = lambda v, d=0: "-" if v is None else f"{v:,.{d}f}"
+        plain = [r for r in xr if "inj_total" not in r["x"]]
+        injr = [r for r in xr if "inj_total" in r["x"]]
+        alloc_html += ('<h2>비율 매수 · 현금 사용</h2><div class="wrap"><table><tr><th class="c">방식</th><th>총수익</th><th>최대 하락</th><th>평균 투자 비중</th>'
+                       '<th>투자 비중 대비 수익(대략)</th><th>현금 없어 못 산</th><th>상한 때문에 건너뜀</th><th>현금 부족 구간</th><th>총 일수</th><th>가장 긴 현금 부족</th></tr>'
+                       + "".join(f'<tr><td class="c"><b>{E(r["name"])}</b></td><td>{_f(r["tot"])}</td><td>{_f(r["mdd"])}</td><td>{_f(r["x"]["invested"], False)}</td>'
+                                 f'<td>{_f(r["tot"] / max(r["x"]["invested"], 1) * 100)}</td><td>{r["x"]["skip_cash"]}</td><td>{r["x"]["skip_cap"]}</td>'
+                                 f'<td>{r["x"]["low_runs"]}</td><td>{r["x"]["low_days"]}일</td><td>{E(r["x"]["low_longest"])}</td></tr>' for r in plain)
+                       + '</table></div><p class="note">현금 부족 = 현금이 한 번 살 금액의 절반 미만인 날. 투자 비중 대비 수익 = 총수익 ÷ 평균 투자 비중.</p>')
+        if injr:
+            same = {r["name"]: r for r in plain}
+            alloc_html += ('<h2>무제한 입금 (현금이 모자라면 모자란 만큼 새로 넣기, 시작 100)</h2><div class="wrap"><table><tr><th class="c">방식</th>'
+                           '<th>총 입금</th><th>입금 횟수</th><th>최종 평가액</th><th>순이익</th><th>넣은 돈 대비 수익</th><th>연수익률(IRR)</th>'
+                           '<th>같은 입금 → 나스닥 최종액</th><th>나스닥 IRR</th><th>시간가중 수익 (입금 없음 대비)</th><th class="c">연도별 입금</th><th class="c">연도별 기준금액</th></tr>'
+                           + "".join(f'<tr><td class="c"><b>{E(r["name"])}</b></td><td>{nn(r["x"]["inj_total"])}</td><td>{r["x"]["inj_n"]}</td>'
+                                     f'<td>{nn(r["x"]["end_value"])}</td><td>{nn(r["x"]["net"])}</td><td>{_f(r["x"]["roc"])}</td><td>{_f(r["x"].get("irr"))}</td>'
+                                     f'<td>{nn(r["x"].get("bench_end"))}</td><td>{_f(r["x"].get("bench_irr"))}</td>'
+                                     f'<td>{_f(r["tot"])} <small>({_f((same.get(r["name"].replace("+입금", "")) or {}).get("tot"))})</small></td>'
+                                     f'<td class="c"><small>{E(dyr(r["x"].get("inj_by_year", {})))}</small></td>'
+                                     f'<td class="c"><small>{E(dyr(r["x"].get("base_by_year", {})))}</small></td></tr>' for r in injr)
+                           + '</table></div><p class="note">총 입금·최종 평가액·순이익은 시작 금액 100 기준. 넣은 돈 대비 수익 = 최종 평가액 ÷ (100 + 총 입금) − 1. '
+                           'IRR = 돈이 들어간 시점까지 반영한 연수익률. 나스닥 = 시작 100과 같은 날 같은 금액을 나스닥 지수에 넣었을 때. '
+                           '매수 금액·종목 상한 = 그해 1월 첫 거래일 계좌 평가액(넣은 돈 포함)의 n%·m%, 연중 고정, 매년 다시 정함.</p>')
+        ref = next((r for r in plain if r["name"] == f"상한{ALLOC_REF[0]:g}%·{ALLOC_REF[1]:g}%"), plain[0])
+        x = ref["x"]
+        alloc_html += (f'<h2>신호 기록 · {E(ref["name"])} 기준</h2><div class="wrap"><table>'
+                       f'<tr><td class="c">종목별 매수 신호 횟수 (기간 전체)</td><td class="c">{E(dfmt(x["sig"]))}</td></tr>'
+                       f'<tr><td class="c">종목별 실제 매수 횟수</td><td class="c">{E(dfmt(x["buys"]))}</td></tr>'
+                       f'<tr><td class="c">종목별 재진입 횟수 (다 판 뒤 다시 산)</td><td class="c">{E(dfmt(x["reentry"]))}</td></tr>'
+                       f'<tr><td class="c">매수 신호 연속 일수 (켜진 채 이어진 거래일)</td><td class="c">{E(" · ".join(f"{k}일 {v}" for k, v in x["run"].items()) or "-")} · 최장 {x["run_max"]}일</td></tr>'
+                       f'<tr><td class="c">한 달(20거래일) 안에 매수 신호가 다시 켜진 경우</td><td class="c">총 {x["rep20_n"]}번 · 종목별 {E(dfmt(x["rep20"]))}</td></tr>'
+                       f'<tr><td class="c">같은 종목을 20거래일 안에 또 산 횟수</td><td class="c">{x["repeat_buys"]}번</td></tr>'
+                       '</table></div>')
+        sk = next((r for r in plain if "깨지면" in r["name"]), None)
+        alloc_html += ('<h2>신호가 깨지는 가격 위로 오른 경우</h2><div class="wrap"><table><tr><th class="c">구분</th><th>횟수</th><th>산 뒤 20거래일</th><th>산 뒤 60거래일</th></tr>'
+                       f'<tr><td class="c">그래도 산 경우 (다음 날 올랐는데 매수 신호 사라짐)</td><td>{x["broken_n"]}</td><td>{_f(x["broken_f20"])}</td><td>{_f(x["broken_f60"])}</td></tr>'
+                       f'<tr><td class="c">나머지 매수</td><td>{x["ok_n"]}</td><td>{_f(x["ok_f20"])}</td><td>{_f(x["ok_f60"])}</td></tr>'
+                       '</table></div>'
+                       + (f'<p class="note">안 산 경우(상한 적용) 계좌: 총수익 {_f(sk["tot"])} · 최대 하락 {_f(sk["mdd"])} · 건너뛴 매수 {sk["x"]["broken_skip"]}번 — 기준 조합 {_f(ref["tot"])} / {_f(ref["mdd"])}와 비교. '
+                          '깨짐 판정 = 체결일 종가가 신호일 종가보다 높은데 그날 매수 신호(매수검토·상승중)가 꺼진 경우(신호가 깨지는 가격 위로 오른 것으로 봄).</p>' if sk else ""))
     tr0 = (rows[1] if len(rows) > 1 and rows[1].get("trades") is not None else rows[0]).get("trades") or []   # v1+상승중 전부 거래
     tl = "".join(
         f'<tr><td class="c">{E(names.get(t["code"], t["code"]))}</td><td>{t["in"]:%y.%m.%d}</td><td>{t["out"]:%y.%m.%d}</td>'
@@ -413,7 +581,7 @@ const D = {json.dumps(data, ensure_ascii=False)};
 const W = 900, H = 320, L = 48, R = 12, T = 10, B = 24;
 const sv = document.getElementById('sv'), tip = document.getElementById('tip'), lg = document.getElementById('lg'), seg = document.getElementById('seg');
 const color = s => s.bm ? (s.name === '균등 보유' ? 'var(--bm2)' : s.name.startsWith('나스닥') ? 'var(--bm3)' : 'var(--bm1)') : 'var(--s' + s.slot + ')';
-const SHOW = new Set(D.s.filter(s => !s.bm).map(s => s.name));     // 처음에 보이는 선(범례를 눌러 켜고 끔). 지수·균등 보유는 항상 처음에 보임
+const SHOW = new Set(D.s.filter(s => !s.bm && s.show).map(s => s.name));     // 처음에 보이는 선(범례를 눌러 켜고 끔). 지수·균등 보유는 항상 처음에 보임
 D.s.forEach((s, k) => {{ s.off = !s.bm && !SHOW.has(s.name);
   lg.insertAdjacentHTML('beforeend', `<span class="li${{s.off ? ' off' : ''}}" data-k="${{k}}"><i class="${{s.bm ? 'dash' : ''}}" style="background:${{color(s)}};border-color:${{color(s)}}"></i>${{s.name}}</span>`); }});
 let cur = null, curW = null;
