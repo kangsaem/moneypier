@@ -626,7 +626,7 @@ def review(r):
     out = {k: None for k, _, _ in REVIEW}
     # 매수·바닥·매수·눌림 — score = 근거 수(백테스트 분류용, 화면엔 표시 안 함)
     if sg["buy"] in ("타점", "눌림"):
-        why = ["매수 신호" if sg["buy"] == "타점" else "눌림진행"]
+        why = ["반등 신호" if sg["buy"] == "타점" else "하락 중 · 장기 추세 상승"]
         if len(sg["buy_c"]) >= 3:
             why.append("싼 조건 3개 모두")
         if long_up(r):
@@ -637,11 +637,11 @@ def review(r):
     # 매도·전량
     why, warn = [], []
     if sg["sell"] == "타점":
-        (why if weak else warn).append(f"매도 + 상대강도↓({rs:+.1f}%p)" if weak else "매도(상대강도 양호)")
+        (why if weak else warn).append(f"과열 + 꺾임 + 상대강도↓({rs:+.1f}%p)" if weak else "과열 + 꺾임 (상대강도 양호)")
     if sg["sell"] == "관심":
-        (why if weak else warn).append(f"비중축소 + 상대강도↓({rs:+.1f}%p)" if weak else "비중축소(상대강도 양호)")
+        (why if weak else warn).append(f"과열 · 추세 약함 + 상대강도↓({rs:+.1f}%p)" if weak else "과열 · 추세 약함 (상대강도 양호)")
     if sg["sell"] == "과열":
-        (why if spike else warn).append(f"익절검토 + 거래량폭증({vol:.1f}배)" if spike else "익절검토(거래량 폭증 없음)")
+        (why if spike else warn).append(f"과열 · 추세 강함 + 거래량 폭증({vol:.1f}배)" if spike else "과열 · 추세 강함 (거래량 폭증 없음)")
     if why:
         out["sell"] = {"score": 1, "why": why}
     elif warn:
@@ -724,11 +724,11 @@ def flags(r):
     if len(r["sig"]["sell_c"]) >= 2:
         f.append("과열")
     if abs(r["ret5"]) >= MOVE_PCT or abs(r["maxday"]) >= MOVE_PCT:
-        f.append(f"{MOVE_PCT:g}%↑변동")
+        f.append(f"급등락 {MOVE_PCT:g}%")
     if r["disp"] and r["disp"]["up"] >= NEAR_MAX:
-        f.append("이격도상단")
+        f.append("이격도 높음")
     if r["disp"] and r["disp"]["down"] <= NEAR_MIN:
-        f.append("이격도하단")
+        f.append("이격도 낮음")
     if r.get("bottom_near"):
         f.append("바닥근접")
     if r.get("top_near"):
@@ -1086,8 +1086,8 @@ def crash_info(snap, msig):
 
 
 def signals_text(results, msig):
-    L = ["■ 0. 오늘의 시그널 (참고용 규칙 기반 신호)"]
-    for key, nm in (("risk", "시장 위험"), ("bottom", "시장 바닥")):
+    L = ["■ 오늘의 신호"]
+    for key, nm in (("risk", "시장 과열"), ("bottom", "시장 바닥")):
         g = msig[key]
         on = [lb for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
