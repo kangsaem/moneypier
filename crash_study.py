@@ -3,7 +3,7 @@
   ① 지수(코스피·S&P500·나스닥) 52주 고점 대비 -20% 이하
   ② VIX 30 이상
   ③ 시장 바닥 지표 2개 이상 — 리포트의 5개 중 '내 종목 RSI' 항목은 과거 재현이 안 돼서 빼고 4개로 계산
-     (코스피 50일 이격도 90 이하 또는 과거 최소권 / 코스피 RSI 35 이하 / 코스피 고점 -20% + 20거래일 신저점 없음 / VIX 30 이상)
+     (코스피 50일 이격도 90 이하 / 코스피 RSI 35 이하 / 코스피 고점 -20% + 20거래일 신저점 없음 / VIX 30 이상)
 '처음 켜진 날' = 꺼진 지 20거래일 이상 지난 뒤 다시 켜진 날. 그날 종가에 지수를 샀다면 1·3·6·12개월(21·63·126·252거래일) 뒤 수익률을
 같은 지수의 '아무 날이나 샀을 때' 평균과 비교. 결과: results/crash_study.html (+ .json)
 """
@@ -51,11 +51,10 @@ def flags():
     f["vix"] = v >= 30
     ks = px["kospi"]
     disp = ks / ks.rolling(50).mean() * 100
-    dmin = disp.expanding().min()
     r = m.rsi(ks)
     hi = ks.rolling(250, min_periods=60).max()
     lo_age = ks.rolling(250, min_periods=60).apply(lambda w: len(w) - 1 - w.argmin(), raw=True)
-    b = pd.DataFrame({"disp": (disp <= 90) | (disp <= dmin * m.NEAR_MIN), "rsi": r <= 35,
+    b = pd.DataFrame({"disp": disp <= 90, "rsi": r <= 35,
                       "dd": (ks / hi - 1 <= -0.20) & (lo_age >= 20), "vix": (v.reindex(ks.index).ffill() >= 30)})
     f["bottom2"] = (b.sum(axis=1) >= 2).reindex(days).ffill().fillna(False)
     f["any"] = f[[c for c in f.columns if c.startswith("dd_")] + ["vix", "bottom2"]].any(axis=1)

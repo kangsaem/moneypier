@@ -544,7 +544,7 @@ h2 {{ font-size:1.05rem; margin:26px 0 10px; padding-left:10px; border-left:4px 
 .bar i {{ display:block; height:100%; background:var(--fg); }}
 .gauge.risk .bar i {{ background:var(--buy); }} .gauge.bottom .bar i {{ background:var(--ok); }}
 .gauge ul {{ list-style:none; margin:0; padding:0; font-size:.83rem; }}
-.gauge li {{ display:flex; gap:8px; align-items:center; padding:3px 0; }} .gauge li .t {{ flex:1; }}
+.gauge li {{ display:flex; gap:8px; align-items:center; padding:3px 0; }} .gauge li .t {{ flex:1; white-space:pre-line; }}
 .dot {{ width:10px; height:10px; border-radius:50%; background:var(--line); flex:none; }}
 .gauge.risk li.on .dot {{ background:var(--buy); }} .gauge.bottom li.on .dot {{ background:var(--ok); }}
 li.on {{ font-weight:600; }} li.off, li.na {{ color:var(--mut); }}
@@ -664,7 +664,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="mcards">{"".join(cards)}</div>
 <div class="idxch">{"".join(index_chart(k) for k in CHART_IDX)}</div>
 
-<div class="gauges sec">{gauge("risk", "시장 과열 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
+<div class="gauges sec">{gauge("risk", "시장 위험 지표")}{gauge("bottom", "시장 바닥 지표")}</div>
 
 <div class="sgrid sec">{sig_html or '<div class="none">오늘 해당하는 시그널이 없습니다</div>'}</div>
 {logic_html()}

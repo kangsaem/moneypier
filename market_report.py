@@ -898,6 +898,7 @@ def credit_info(df):
     return {"ratio": cur, "date": r.index[-1], "dep": float(df["dep"].iloc[-1]), "cred": float(df["cred"].iloc[-1]),
             "pct": float((r <= cur).mean() * 100),           # 과거(읽은 기간) 중 오늘보다 낮거나 같은 날 비율
             "max": float(r.max()), "min": float(r.min()), "since": r.index[0], "n": len(r),
+            "thr": float(r.quantile(CREDIT_TOP / 100)),      # 상위 10%가 시작되는 값(이 값 이상이면 켜짐)
             "chg20": float(cur - r.iloc[-21]) if len(r) > 20 else None,
             "spark": [round(float(x), 2) for x in r.tail(120)]}
 
@@ -981,16 +982,16 @@ def market_signals(snap, results):
          (y10["chg10"] >= 0.3) if y10 and y10["chg10"] is not None else None),
         ("내 종목 70% 이상이 일봉 역배열", f"{bear:.0%}" if bear is not None else "-",
          (bear >= 0.7) if bear is not None else None),
-        (f"신용잔고/예탁금 비율 5년 중 높은 {100 - CREDIT_TOP}%",
-         f"{cr['ratio']:.1f}% (5년 최대 {cr['max']:.1f}%)" if cr else "-",
+        (f"빚투 비율 5년 중 상위 {100 - CREDIT_TOP}%" + (("\n기준 " + (f"{cr['thr']:.1f}% · " if cr.get("thr") is not None else "") + f"최고 {cr['max']:.1f}%") if cr else ""),
+         f"{cr['ratio']:.1f}%" if cr else "-",
          (cr["pct"] >= CREDIT_TOP) if cr else None),
     ]
     bottom = [
-        ("코스피 50일 이격도 90 이하 또는 과거 최소권", f"{ks['disp']:.1f}" if ks else "-",
-         (ks["disp"] <= 90 or ks["disp"] <= ks["disp_min"] * NEAR_MIN) if ks else None),
+        ("코스피 50일 이격도 90 이하", f"{ks['disp']:.1f}" if ks else "-",
+         (ks["disp"] <= 90) if ks else None),
         ("코스피 RSI 35 이하", f"{ks['rsi']:.0f}" if ks else "-", ks["rsi"] <= 35 if ks else None),
-        ("코스피 52주 고점 대비 -20% 이하 + 최근 20거래일 신저점 없음",
-         f"{ks['from_high']:.1f}% · 저점 {ks['days_since_low']}일 전" if ks else "-",
+        ("코스피 52주 고점 대비 -20% 이하이면서\n최근 20거래일 신저점 없음" + (f" (저점 {ks['days_since_low']}일 전)" if ks else ""),
+         f"{ks['from_high']:.1f}%" if ks else "-",
          (ks["from_high"] <= -20 and ks["days_since_low"] >= 20) if ks else None),
         ("VIX 30 이상", f"{vix['last']:.1f}" if vix else "-", vix["last"] >= 30 if vix else None),
         ("내 종목 30% 이상이 RSI 35 이하", f"{weak:.0%}" if weak is not None else "-",
@@ -1087,9 +1088,9 @@ def crash_info(snap, msig):
 
 def signals_text(results, msig):
     L = ["■ 오늘의 신호"]
-    for key, nm in (("risk", "시장 과열"), ("bottom", "시장 바닥")):
+    for key, nm in (("risk", "시장 위험"), ("bottom", "시장 바닥")):
         g = msig[key]
-        on = [lb for lb, _, st in g["items"] if st]
+        on = [lb.replace("\n", " ") for lb, _, st in g["items"] if st]
         L.append(f"{nm}: {g['score']}/{g['total']} [{g['label']}]" + (" - " + " / ".join(on) if on else ""))
     for key, head, _ in REVIEW:
         hit = [r for r in results if key in display_keys(r.get("review") or {})]
