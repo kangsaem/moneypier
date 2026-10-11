@@ -89,6 +89,13 @@ def compute(results, recs=None, idx=None):
     if before:                                                     # 시작 전날을 기준점(0%)으로 — 첫날 신호도 체결되게
         dates = [max(before)] + dates
     dates = pd.DatetimeIndex(dates)
+    latest = {it["code"] for it in max(recs, key=lambda r: r.get("time", "")).get("items", [])}
+    last_seen = {}
+    for rec in recs:
+        for it in rec.get("items", []):
+            d = pd.Timestamp(it["asof"])
+            last_seen[it["code"]] = max(last_seen.get(it["code"], d), d)
+    gone = {c: d for c, d in last_seen.items() if c not in latest}
     states = {}
     for c, s in ser.items():
         own = s.index[s.index >= start]
@@ -98,8 +105,15 @@ def compute(results, recs=None, idx=None):
             cats = cats.shift(1)
         cats = cats.reindex(cats.index.union(dates)).ffill(limit=5).reindex(dates)   # 다른 시장만 쉬는 날은 칸 유지
         cats = cats.apply(lambda x: x if isinstance(x, set) else set())
+        if c in gone and gone[c] in cats.index:                    # 목록에서 빠짐 = 팔고 뺀 것 → 마지막 기록일 종가에 전량 매도
+            cats = cats.copy()
+            cats.loc[gone[c]] = {pf.ALLOC_SELL[0]}
+            cats.loc[cats.index > gone[c]] = [set()] * int((cats.index > gone[c]).sum())
         states[c] = {"close": s, "cats": cats}
     eq, trades, *_ = pf.simulate_alloc(states, dates, 0, 0, same_day=True, held=HELD)
+    for t in trades:
+        if t["code"] in gone and t["out"] == gone[t["code"]]:
+            t["why"] = "목록에서 빠짐"
     px = {c: st["close"].reindex(dates).ffill().to_numpy(dtype=float) for c, st in states.items()}
     first_rec = {}
     for rec in sorted(recs, key=lambda r: r["time"]):
@@ -257,15 +271,13 @@ def build(results, out="docs/live.html", recs=None, idx=None):
         keys = [k for k, _ in LINES if k in res["lines"]]
         last = {k: res["lines"][k][-1] for k in keys}
         tot = {k: None if last[k] is None else (last[k] - 1) * 100 for k in keys}
-        best = max((k for k in keys if tot[k] is not None), key=lambda k: tot[k], default=None)
-        chips = "".join(f'<button class="c{" best" if k == best else ""}" data-k="{k}"><i style="background:{COLORS[k]}"></i>{E(names[k])} <b>{_pct(tot[k])}</b></button>' for k in keys)
+        chips = "".join(f'<button class="c" data-k="{k}"><i style="background:{COLORS[k]}"></i>{E(names[k])} <b>{_pct(tot[k])}</b></button>' for k in keys)
         yh = "".join(f"<th>{E(names[k])}</th>" for k in keys)
         yr = ""
         for y in reversed(res["years"]):
             vals = {k: y.get(k) for k in keys}
-            b = max((k for k in keys if vals[k] is not None), key=lambda k: vals[k], default=None)
             yr += (f'<tr><td class="l"><b>{y["year"]}</b>{"" if y["done"] else " <small>(진행 중)</small>"}<br><small>{y["from"][5:]} ~ {y["to"][5:]}</small></td>'
-                   + "".join(f'<td class="{"best" if k == b else ""}">{_pct(vals[k])}</td>' for k in keys) + "</tr>")
+                   + "".join(f'<td class="{"up" if (vals[k] or 0) > 0 else "dn" if (vals[k] or 0) < 0 else ""}">{_pct(vals[k])}</td>' for k in keys) + "</tr>")
         data = json.dumps({"d": res["dates"], "s": {k: res["lines"][k] for k in keys}, "c": COLORS}, ensure_ascii=False)
         body = f"""<div class="chips" id="chips">{chips}</div>
 <div class="card"><svg id="ch" viewBox="0 0 600 260"></svg></div>
@@ -389,7 +401,7 @@ h3 {{ font-size:.92rem; margin:14px 0 5px; }} h3 small {{ color:var(--mut); font
 <div class="t">{E(START)}부터 매일 리포트의 신호대로 v1 규칙을 따른 가상 계좌 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
 <p class="note">백테스트가 아니라 그날 뜬 신호만으로 계산(결과를 미리 아는 효과 없음). 매수: 매수·바닥/눌림/추세 — 국장 신호일 종가, 미장 다음 날 종가 ·
 종목당 상한 = 평가액 × min(10%, 150 ÷ 보유 종목 수), 신호 한 번에 상한의 절반(2회 분할) · 매도: 매도·전량 또는 손절 -8%(종가 이틀) → 전량 · 거래비용 포함 · 지수는 배당 제외 ·
-'내 종목 그냥 보유' = 시작일과 매년 첫 거래일에 그때 종목을 똑같이 나눠 사서 들고만 있음. 선 이름을 누르면 끄고 켬, 분홍 = 1등.</p>
+'내 종목 그냥 보유' = 시작일과 매년 첫 거래일에 그때 종목을 똑같이 나눠 사서 들고만 있음. 선 이름을 누르면 끄고 켬.</p>
 {body}
 </body></html>"""
     with open(out, "w", encoding="utf-8") as f:
