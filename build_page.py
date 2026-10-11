@@ -427,12 +427,7 @@ def rev_block(key, head_txt):
 # 순서: 매도(전량) / 매수(바닥) / 매수(눌림) / 매수(추세) / 보유 / 매수보류 / 반등대기 / 하락  (market_report.REVIEW와 같은 순서)
 sig_html = "".join(rev_block(k, nm) for k, nm, _ in m.REVIEW)
 
-screen_html = ""
-for h, n, lines, tone in guard("스크리닝", m.summary_sections, results, default=[]):
-    body = E("\n".join(lines)) if n else "해당 종목 없음"
-    # 종목이 있는 탭만 색: 골든·이격도 최소권=분홍, 데드·이격도 최대권=하늘, 과열=노랑
-    tcls = {"buy": ' class="dbuy"', "sell": ' class="dsell"', "hot": ' class="dhot"'}.get(tone, "") if n else ""
-    screen_html += f'<details{tcls}><summary>{E(h)} <small>{n}</small></summary><pre>{body}</pre></details>'
+# 종목 스크리닝(크로스·과열·8% 변동·이격도 최대/최소권)은 2026-10-11 뺌 — 분류 탭·종목 칩과 중복
 
 detail_html = ""
 for r in results:
@@ -492,10 +487,7 @@ def year_table():
 
 
 year_html = guard("연간 성적표", year_table, default="")
-crash = guard("폭락장 판정", m.crash_info, snap, msig, default={"on": False, "why": []})
-crash_html = (f'<div class="crash">폭락장 · {E(" · ".join(crash["why"]))}'
-              '<small>지수 고점 -20%, VIX 30 이상, 시장 바닥 지표 2개 이상 중 하나라도 켜짐 — 개별 종목 신호는 그대로. 돈을 어떻게 쓸지는 직접 판단</small></div>'
-              if crash.get("on") else "")
+# 폭락장 배너는 2026-10-11 뺌 — 시장 바닥 지표를 보고 직접 판단
 
 if render_errors:
     notes += "\n\n[화면 생성 중 오류]\n" + "\n".join(sorted(set(render_errors)))
@@ -654,7 +646,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 </style></head><body>
 <h1>{TITLE}</h1>
 <div class="t">갱신 {stamp} · 규칙 기반 참고 신호이며 투자 판단 책임은 본인에게 있습니다</div>
-{crash_html}
+
 <div class="mcards">{"".join(cards)}</div>
 <div class="idxch">{"".join(index_chart(k) for k in CHART_IDX)}</div>
 
@@ -672,8 +664,6 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <h2>연간 성적표</h2>
 {year_html}
 
-<h2>종목 스크리닝</h2>
-<div class="dgrid">{screen_html}</div>
 
 <h2>종목별 세부내용</h2>
 <div class="dgrid">{detail_html}</div>
@@ -709,8 +699,6 @@ def action_text():
     """텔레그램 첫 메시지: 지금 할 일만. 국장 리포트 = 국내 종목, 미장 리포트 = 해외 종목(같은 신호를 두 번 보내지 않게)"""
     mine = [r for r in results if m.is_kr(r["code"]) != IS_US]
     L = [f"[{'미장' if IS_US else '국장'} {kst:%m/%d %H:%M}] 할 일"]
-    if crash.get("on"):
-        L.append("⚠ 폭락장 · " + " · ".join(crash["why"]))
     price = (lambda r: f"${r['close']:,.2f}") if IS_US else (lambda r: f"{r['close']:,.0f}원")
     any_ = False
     for key, nm, _ in m.REVIEW:
