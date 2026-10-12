@@ -1,0 +1,89 @@
+name: variant-test
+
+# V1 규칙 변형 시험(variant_cmp.py, 2026-10-13): 같은 표본에 손절·매도·지수 필터·현금 하한 변형 — 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      kospi_seeds:
+        description: "rand20 코스피 번호 범위"
+        default: "1-60"
+      nasdaq_seeds:
+        description: "rand20 나스닥 번호 범위"
+        default: "1-40"
+      fixed_seeds:
+        description: "과거 구간 번호 목록(JSON)"
+        default: "[1,2,3]"
+
+permissions:
+  contents: write
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      m: ${{ steps.p.outputs.m }}
+    steps:
+      - id: p
+        env:
+          KS: ${{ inputs.kospi_seeds }}
+          NQ: ${{ inputs.nasdaq_seeds }}
+          FS: ${{ inputs.fixed_seeds }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          def rng(t):
+              t = (t or "").strip()
+              if not t: return []
+              a, _, b = t.partition("-"); return list(range(int(a), int(b or a) + 1))
+          fs = json.loads(os.environ["FS"] or "[]")
+          K = ["2007-07-02","2008-06-02","2010-01-04","2011-05-02","2012-06-01","2014-01-02","2015-06-01","2017-01-02","2018-01-02","2019-06-03","2020-03-20","2021-07-01","2022-01-03"]
+          Q = ["2015-08-03","2016-01-04","2018-01-02","2018-10-01","2020-02-03","2021-11-01"]
+          inc = [{"src": "fixed", "market": "kospi", "start": s, "seed": d} for s in K for d in fs]
+          inc += [{"src": "fixed", "market": "nasdaq", "start": s, "seed": d} for s in Q for d in fs]
+          inc += [{"src": "rand20", "market": "kospi", "start": "", "seed": d} for d in rng(os.environ["KS"])]
+          inc += [{"src": "rand20", "market": "nasdaq", "start": "", "seed": d} for d in rng(os.environ["NQ"])]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"m={json.dumps({'include': inc[:256]})}\n")
+          print(len(inc))
+          PY
+
+  run:
+    needs: plan
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 19
+      matrix: ${{ fromJSON(needs.plan.outputs.m) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pip install "nasdaq-100-ticker-history @ git+https://github.com/jmccarrell/n100tickers"
+      - name: 시험
+        run: python variant_cmp.py
+        env:
+          VC_SRC: ${{ matrix.src }}
+          VC_MARKET: ${{ matrix.market }}
+          VC_SEED: ${{ matrix.seed }}
+          RC_START: ${{ matrix.start }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/var_" > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in $(seq 1 25); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "규칙 변형 시험 (${{ matrix.src }} ${{ matrix.market }} ${{ matrix.start }} ${{ matrix.seed }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $(( (RANDOM % 20) + i * 3 ))
+          done
+          exit 1
