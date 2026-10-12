@@ -110,7 +110,7 @@ def main():
          "th{color:#9A9BA1;font-weight:500}.l{text-align:left}.up{color:#FF4D5E}.dn{color:#3D8BFF}div{overflow-x:auto}p{color:#9A9BA1}</style>",
          f"<h1 style='font-size:16px'>그냥 보유 vs 보유 + 추적 손절 −{TRAIL * 100:.0f}% · {'코스피' if MK == 'kospi' else '나스닥'} {len(rows)}번</h1>",
          "<p>rand20 시험과 같은 기간·같은 20종목. 넣은 돈 대비 수익(원금 100, 이자 없음). 손절 = 산 뒤 최고 종가 대비 하락이 기준 이하인 날 종가에 전량. "
-         "현금 = 판 돈을 그대로 둠, 재투입 = 판 돈을 남은 보유 종목에 같은 금액씩 다시 삼.</p>",
+         "현금 = 판 돈을 그대로 둠, 재투입 = 판 돈을 남은 보유 종목에 같은 금액씩 다시 삼. 매수 0.05%, 매도 0.25%(수수료·거래세 대략치)를 반영. 배당·배당세·해외 주식 양도세·환율은 반영 제외.</p>",
          "<div><table><tr><th class='l'>방식</th><th>평균</th><th>중앙값</th><th>최대 하락 평균</th><th>V1이 더 높은 횟수</th></tr>"]
     for k, nm in keys:
         a = agg[k]

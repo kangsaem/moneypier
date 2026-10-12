@@ -131,7 +131,7 @@ def main():
         json.dump(out, fp, ensure_ascii=False, indent=0)
     f = lambda v: "-" if v is None else f"{v:+.1f}%"
     h = [f"<!doctype html><meta charset='utf-8'><title>{name}</title><style>body{{font:13px sans-serif;margin:16px}}td,th{{border:1px solid #ccc;padding:3px 7px;text-align:right}}td.l{{text-align:left}}table{{border-collapse:collapse}}</style>",
-         f"<h1>무작위 {out['n']}종목 · {MK} · 번호 {SEED} · {out['window']}</h1><p>{note} · 더 나은 쪽(넣은 돈 대비): <b>{out['winner']}</b> · 연 환산은 계산 기준이 달라 참고만</p>",
+         f"<h1>무작위 {out['n']}종목 · {MK} · 번호 {SEED} · {out['window']}</h1><p>{note} · 더 나은 쪽(넣은 돈 대비): <b>{out['winner']}</b> · 연 환산은 계산 기준이 달라 참고만 · 매수 0.05%, 매도 0.25%(수수료·거래세 대략치)를 반영. 배당·배당세·해외 주식 양도세·환율은 반영 제외</p>",
          "<table><tr><th class='l'>방식</th><th>넣은 돈 대비</th><th>연 환산</th><th>최대 하락</th></tr>"
          f"<tr><td class='l'>V1 (현금 100에서 시작)</td><td>{f(v1['roc'])}</td><td>{f(v1['irr'])}</td><td>{v1['mdd']:.1f}%</td></tr>"
          + "".join(f"<tr><td class='l'>적립 매달 {r['nth']}번째 거래일</td><td>{f(r['roc'])}</td><td>{f(r['irr'])}</td><td>{r['mdd']:.1f}%</td></tr>" for r in runs)

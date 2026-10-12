@@ -61,7 +61,7 @@ def main():
          "th{color:#9A9BA1;font-weight:500}.l{text-align:left}.up{color:#FF4D5E}.dn{color:#3D8BFF}.tbl{overflow-x:auto}p,li{color:#9A9BA1}h2{font-size:14px;margin:16px 0 4px}</style>",
          f"<h1 style='font-size:16px'>무작위 시험 종합 · {PREFIX}</h1>",
          "<p>V1(현금 100, 최종 규칙·손절 8%) vs 적립(같은 100을 매달 1·5·10·15·20·25번째 거래일에 나눠 산 여섯 경우의 평균). "
-         "기준 = 넣은 돈 대비 수익(둘 다 끝에 넣은 돈 100, 대기 현금 이자 없음). 차이 = V1 − 적립 평균(%p). 판정은 V1이 적립 여섯 경우 범위 밖일 때만 승패.</p>",
+         "기준 = 넣은 돈 대비 수익(둘 다 끝에 넣은 돈 100, 대기 현금 이자 없음). 차이 = V1 − 적립 평균(%p). 판정은 V1이 적립 여섯 경우 범위 밖일 때만 승패. 매수 0.05%, 매도 0.25%(수수료·거래세 대략치)를 반영. 배당·배당세·해외 주식 양도세·환율은 반영 제외.</p>",
          "<h2>시장별</h2><div class='tbl'><table>" + head]
     for mk in ("kospi", "nasdaq"):
         rs = [r for r in data if r["market"] == mk]
