@@ -7,6 +7,9 @@ on:
       retry:
         description: "1 = 문제였던 미장만 다시"
         default: "0"
+      syms:
+        description: "새 티커 후보만 확인(쉼표로)"
+        default: ""
 
 permissions:
   contents: write
@@ -24,16 +27,17 @@ jobs:
       - run: python ticker_check.py
         env:
           TC_RETRY: ${{ inputs.retry }}
+          TC_SYMS: ${{ inputs.syms }}
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          cp results/ticker_check.json /tmp/
+          cp results/ticker_check*.json /tmp/
           for i in $(seq 1 25); do
             git fetch -q origin ${{ github.ref_name }}
             git reset -q --hard origin/${{ github.ref_name }}
-            cp /tmp/ticker_check.json results/
-            git add results/ticker_check.json
+            cp /tmp/ticker_check*.json results/
+            git add results/ticker_check*.json
             git commit -q -m "후보 종목 시세 확인" || exit 0
             git push -q origin HEAD:${{ github.ref_name }} && exit 0
             sleep $(( (RANDOM % 20) + i * 3 ))

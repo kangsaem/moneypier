@@ -12,6 +12,10 @@ RETRY = os.environ.get("TC_RETRY") == "1"          # 1 = 앞선 결과에서 문
 prev = json.load(open("results/ticker_check.json")) if RETRY else None
 out = {"us": {}, "kr": {}} if not RETRY else prev
 todo = L["us"] if not RETRY else [t for t, v in prev["us"].items() if not v.get("old") or not v.get("now")]
+SYMS = [x for x in os.environ.get("TC_SYMS", "").split(",") if x]     # 새 티커 후보만 확인(변경표 만들 때)
+if SYMS:
+    out = {"us": {}, "kr": {}}
+    todo, RETRY = SYMS, True
 for t in todo:
     sym = t.replace(".", "-")
     for k in range(3 if RETRY else 1):
@@ -36,7 +40,7 @@ for c in ([] if RETRY else L["kr"]):
     except Exception as e:
         out["kr"][c] = {"err": str(e)[:80]}
     time.sleep(0.1)
-with open("results/ticker_check.json", "w") as f:
+with open("results/ticker_check_new.json" if SYMS else "results/ticker_check.json", "w") as f:
     json.dump(out, f, indent=0)
 bad_us = [t for t, v in out["us"].items() if not v.get("old") or not v.get("now")]
 bad_kr = [c for c, v in out["kr"].items() if v.get("old", 0) <= 0 or v.get("now", 0) <= 0]
