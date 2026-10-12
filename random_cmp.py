@@ -1,6 +1,7 @@
 """무작위 30종목: V1 vs 적립식 (2026-10-12, 리포트·기록과 무관한 별도 시험)
 
 RC_MARKET = kospi | nasdaq, RC_SEED = 무작위 번호, 기간 5년(1260거래일).
+RC_WINDOW = last(최근 5년) | random(최근 10년 안 무작위 시작 5년, 끝날 뒤 시세는 잘라서 안 씀), RC_N = 종목 수, RC_PREFIX = 결과 이름 앞부분.
 종목 고르기(그 시작일 당시 목록에서 무작위 — 생존 편향 없음):
   코스피 = 시작일 시가총액 상위 300 중 무작위, 나스닥 = 시작일 나스닥100 구성 중 무작위. 시세 실패(상장폐지 등)는 빼고 30개를 채움.
 비교(원금 100, 같은 종목 30개):
@@ -19,6 +20,9 @@ from datetime import datetime, timedelta, timezone
 MK = os.environ.get("RC_MARKET", "kospi")
 SEED = int(os.environ.get("RC_SEED", "1"))
 N = int(os.environ.get("RC_N", "30"))
+WIN = os.environ.get("RC_WINDOW", "last")          # last = 최근 5년 / random = 최근 10년 안에서 무작위 5년(2026-10-12 추가)
+PREFIX = os.environ.get("RC_PREFIX", "rand")       # 결과 파일 이름 앞부분(rand20 = 20종목 × 무작위 기간 시험)
+END = None                                         # 무작위 기간의 끝날(그 뒤 시세는 안 씀)
 os.environ["BT_UNIVERSE"] = "tickers"
 os.environ["BT_DAYS"] = "1260"
 os.environ["BT_OUT"] = "results/_tmp_rand"
@@ -32,24 +36,35 @@ import portfolio as pf         # noqa: E402
 NTH = (1, 5, 10, 15, 20, 25)
 
 
+def window(ix, rnd):
+    """시작일(지수 거래일): last = 끝에서 1260번째 날 / random = 10년 전 이후 거래일 중 무작위(끝이 오늘을 넘지 않게)"""
+    global END
+    if WIN != "random":
+        return ix.index[-1260]
+    lo = ix.index.searchsorted(ix.index[-1] - pd.DateOffset(years=10))
+    k = rnd.randint(lo, len(ix) - 1260)
+    END = ix.index[k + 1259]
+    return ix.index[k]
+
+
 def pick():
     rnd = random.Random(f"{MK}-{SEED}")
     if MK == "kospi":
         ks = m._index_close("KS11", "^KS11")
-        day = ks.index[-1260]
+        day = window(ks, rnd)
         d0, lst = b.kospi_top_at(day, 300)
         note = f"{d0:%Y-%m-%d} 코스피 시가총액 상위 300 중 무작위"
         start = d0
     else:
         from nasdaq_100_ticker_history import tickers_as_of
         ix = m._index_close("IXIC", "^IXIC")
-        day = ix.index[-1260]
+        day = window(ix, rnd)
         tk = sorted(t for t in tickers_as_of(day.year, day.month, day.day) if t not in b.N100_DUP)
         lst = [{"code": b.N100_RENAME.get(t, t), "name": t} for t in tk]
         note = f"{day:%Y-%m-%d} 나스닥100 구성 중 무작위"
         start = day
     rnd.shuffle(lst)
-    return lst[: N + 15], note, pd.Timestamp(start)          # 시세 실패에 대비해 여유분
+    return lst[: N + (25 if WIN == "random" else 15)], note, pd.Timestamp(start)          # 시세 실패에 대비해 여유분
 
 
 def dca(px, nth):
@@ -78,25 +93,32 @@ def dca(px, nth):
 def main():
     t0 = time.time()
     cand, note, start = pick()
+    if END is not None:                 # 무작위 기간: 끝날 뒤 시세를 잘라 그날까지로만 신호 계산(미래 정보 없음)
+        _load = m.load_prices
+        m.load_prices = lambda code: (lambda df: df[df.index <= END])(_load(code))
     for t in cand:
         b.bench_for(t["code"])
     res = dict(b.run_all(cand))
-    states, names = {}, []
+    states, names, failed = {}, [], []
     for i, t in enumerate(cand):
         r = res.get(i)
+        if len(states) < N and not (r and r[0] == "ok"):
+            failed.append(t["name"])                    # 시세 실패(상장폐지·합병 등) — 다음 후보로 채움
         if r and r[0] == "ok" and len(states) < N:
             stt = r[1][2]
             states[t["code"]] = {"close": stt["close"], "cats": stt["cats"]}
             names.append(t["name"])
     dates = pd.DatetimeIndex(sorted({d for s in states.values() for d in s["close"].index}))
     dates = dates[dates >= start]       # 뽑은 날부터(그 이전은 생존 편향) — 2026-10-12 수정
+    if END is not None:
+        dates = dates[dates <= END]
     eq, trades, cash, open_n, _ = pf.simulate_alloc(states, dates, 0, 0, same_day=(MK == "kospi"), held=(150, 10, 2))
     mt = pf.metrics(eq, trades, cash, open_n)
     yrs = (dates[-1] - dates[0]).days / 365.25
     v1 = {"roc": mt["tot"], "irr": ((eq.iloc[-1] / eq.iloc[0]) ** (1 / yrs) - 1) * 100, "mdd": mt["mdd"], "trades": mt["n"], "cash": mt["cash"]}
     px = pd.DataFrame({c: s["close"] for c, s in states.items()}).reindex(dates).ffill()
     runs = [dca(px, n) for n in NTH]
-    out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
+    out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "failed": failed, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
            "v1": v1, "dca": runs, "secs": round(time.time() - t0),
            "run": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
     lo = lambda k: min(r[k] for r in runs if r[k] is not None)
@@ -104,7 +126,7 @@ def main():
     # 판정 = 넣은 돈 대비(둘 다 끝에 넣은 돈 100, 남은 현금 이자 없음). 연 환산은 V1(첫날 100 기준)과 적립(넣은 시점 기준 IRR)의 기준이 달라 참고만
     out["winner"] = "V1" if v1["roc"] > hi("roc") else "적립" if v1["roc"] < lo("roc") else "비슷(적립 범위 안)"
     os.makedirs("results", exist_ok=True)
-    name = f"rand_{MK}_s{SEED}"
+    name = f"{PREFIX}_{MK}_s{SEED}"
     with open(f"results/{name}.json", "w", encoding="utf-8") as fp:
         json.dump(out, fp, ensure_ascii=False, indent=0)
     f = lambda v: "-" if v is None else f"{v:+.1f}%"
@@ -113,7 +135,8 @@ def main():
          "<table><tr><th class='l'>방식</th><th>넣은 돈 대비</th><th>연 환산</th><th>최대 하락</th></tr>"
          f"<tr><td class='l'>V1 (현금 100에서 시작)</td><td>{f(v1['roc'])}</td><td>{f(v1['irr'])}</td><td>{v1['mdd']:.1f}%</td></tr>"
          + "".join(f"<tr><td class='l'>적립 매달 {r['nth']}번째 거래일</td><td>{f(r['roc'])}</td><td>{f(r['irr'])}</td><td>{r['mdd']:.1f}%</td></tr>" for r in runs)
-         + "</table><p>종목: " + ", ".join(names) + "</p>"]
+         + "</table><p>종목: " + ", ".join(names) + "</p>"
+         + (f"<p>시세 실패로 빠진 후보 {len(failed)}개: " + ", ".join(failed) + "</p>" if failed else "")]
     with open(f"results/{name}.html", "w", encoding="utf-8") as fp:
         fp.write("\n".join(h))
     print(name, out["winner"], json.dumps(v1, ensure_ascii=False), f"적립 {lo('roc'):+.1f}~{hi('roc'):+.1f}%")
