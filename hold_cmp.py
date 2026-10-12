@@ -6,7 +6,7 @@ rand20 결과(results/rand20_<시장>_s<번호>.json)의 같은 기간·같은 �
 - 손절·재투입: 위와 같이 팔고, 판 돈을 그날 종가로 남은 보유 종목에 같은 금액씩 나눠 삼(남은 종목이 없으면 현금)
   다시 산 종목의 기준 최고가는 그대로 이어감(새로 산 몫도 같은 손절선)
 쉬는 날·상장폐지 뒤에는 마지막 가격으로 평가. V1·적립은 rand20 결과에서 그대로 가져옴.
-HC_MARKET = kospi | nasdaq, HC_SEEDS = 1-30, HC_TRAIL = 0.25 → results/hold_<시장>.json·html
+HC_MARKET = kospi | nasdaq, HC_SEEDS = 1-30, HC_TRAIL = 0.25, HC_OUT = 결과 이름(기본 hold_<시장>) → results/<이름>.json·html
 """
 import json
 import os
@@ -21,15 +21,43 @@ MK = os.environ.get("HC_MARKET", "kospi")
 A, _, Z = os.environ.get("HC_SEEDS", "1-30").partition("-")
 SEEDS = range(int(A), int(Z or A) + 1)
 TRAIL = float(os.environ.get("HC_TRAIL", "0.25"))
+OUT = os.environ.get("HC_OUT", "") or f"hold_{MK}"
 BUY, SELL = 0.0005, 0.0025
 
 
+_MC = {}
+
+
+def _marcap_year(y):
+    """연도별 시총 자료를 한 번만 받아 둠(번호마다 다시 받지 않게, 2026-10-13)"""
+    if y not in _MC:
+        import tempfile
+        import requests
+        r = requests.get(b.MARCAP_URL.format(y=y), timeout=180)
+        r.raise_for_status()
+        with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
+            f.write(r.content)
+            f.flush()
+            d = pd.read_parquet(f.name, columns=["Date", "Code", "Name", "Marcap", "Market"])
+        d["Date"] = pd.to_datetime(d["Date"])
+        _MC[y] = d
+    return _MC[y]
+
+
 def codes_for(d):
-    """rand20 결과의 종목 이름 → 시세 코드"""
+    """rand20 결과의 종목 이름 → 시세 코드(코스피는 시작일 당시 시총 상위 300의 이름으로 찾음 — b.kospi_top_at과 같은 목록)"""
     if MK == "nasdaq":
         return [b.N100_RENAME.get(n, n) for n in d["names"]]
-    _, lst = b.kospi_top_at(pd.Timestamp(d["window"][:10]), 300)
-    by = {x["name"]: x["code"] for x in lst}
+    day = pd.Timestamp(d["window"][:10])
+    by = {}
+    for y in (day.year, day.year + 1):
+        x = _marcap_year(y)
+        x = x[(x["Date"] >= day) & (x["Market"] == "KOSPI")]
+        if len(x):
+            d0 = x["Date"].min()
+            t = x[x["Date"] == d0].sort_values("Marcap", ascending=False).head(300)
+            by = {n: str(c).zfill(6) for c, n in zip(t["Code"], t["Name"])}
+            break
     return [by[n] for n in d["names"] if n in by]
 
 
@@ -101,7 +129,7 @@ def main():
                "v1_wins": int(sum(bool(r["v1"] > r[k]) for r in rows))} for k, _ in keys}
     out = {"market": MK, "trail": TRAIL, "n": len(rows), "rows": rows, "agg": agg}
     os.makedirs("results", exist_ok=True)
-    with open(f"results/hold_{MK}.json", "w", encoding="utf-8") as fp:
+    with open(f"results/{OUT}.json", "w", encoding="utf-8") as fp:
         json.dump(out, fp, ensure_ascii=False, indent=0)
     P = lambda v: f"<span class='{'up' if v > 0 else 'dn' if v < 0 else ''}'>{v:+.1f}%</span>"
     h = ["<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'>",
@@ -119,7 +147,7 @@ def main():
     for r in sorted(rows, key=lambda x: x["window"]):
         h.append(f"<tr><td>{r['seed']}</td><td class='l'>{r['window']}</td><td>{r['n']}</td>" + "".join(f"<td>{P(r[k])}</td>" for k, _ in keys) + f"<td>{r['cashs']}</td></tr>")
     h.append("</table></div><p>한계: 같은 종목의 시세를 다시 받아 계산(rand20 때와 시세 출처 같음). 쉬는 날·상장폐지 뒤엔 마지막 가격. 손절 뒤 다시 사는 규칙 없음(재투입은 남은 종목으로만).</p>")
-    with open(f"results/hold_{MK}.html", "w", encoding="utf-8") as fp:
+    with open(f"results/{OUT}.html", "w", encoding="utf-8") as fp:
         fp.write("\n".join(h))
     for k, nm in keys:
         a = agg[k]
