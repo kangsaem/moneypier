@@ -62,7 +62,7 @@ def run(px, mode):
                 cash = 0.0
         vals.append(float((sh * p).sum()) + cash)
     v = pd.Series(vals, index=px.index)
-    return (v.iloc[-1] - 1) * 100, mdd(v), stops
+    return float((v.iloc[-1] - 1) * 100), mdd(v), int(stops)
 
 
 def main():
@@ -85,7 +85,7 @@ def main():
                 print(s, c, "시세 실패", e)
         px = pd.DataFrame(closes).ffill()
         px = px[(px.index >= t0) & (px.index <= t1)].dropna(axis=1, how="any")
-        r = {"seed": s, "window": d["window"], "n": px.shape[1], "v1": d["v1"]["roc"], "v1m": d["v1"]["mdd"],
+        r = {"seed": s, "window": d["window"], "n": int(px.shape[1]), "v1": d["v1"]["roc"], "v1m": d["v1"]["mdd"],
              "dca": mean(x["roc"] for x in d["dca"]), "dcam": mean(x["mdd"] for x in d["dca"])}
         for k in ("hold", "cash", "redeploy"):
             roc, dd, st = run(px, k)
@@ -98,7 +98,7 @@ def main():
         return
     keys = [("v1", "V1"), ("dca", "적립"), ("hold", "보유"), ("cash", "보유+손절·현금"), ("redeploy", "보유+손절·재투입")]
     agg = {k: {"mean": mean(r[k] for r in rows), "med": median(r[k] for r in rows), "mdd": mean(r[k + "m"] for r in rows),
-               "v1_wins": sum(r["v1"] > r[k] for r in rows)} for k, _ in keys}
+               "v1_wins": int(sum(bool(r["v1"] > r[k]) for r in rows))} for k, _ in keys}
     out = {"market": MK, "trail": TRAIL, "n": len(rows), "rows": rows, "agg": agg}
     os.makedirs("results", exist_ok=True)
     with open(f"results/hold_{MK}.json", "w", encoding="utf-8") as fp:
