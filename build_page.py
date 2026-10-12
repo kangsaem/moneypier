@@ -701,8 +701,8 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 .mc .mn {{ font-size:.72rem; color:var(--mut); }} .mc .mv {{ display:flex; flex-wrap:wrap; align-items:baseline; column-gap:6px; }}
 .mc b {{ font-size:var(--bignum); }} .mc .mg {{ font-size:.75rem; }} .mc .mtags {{ display:flex; flex-wrap:wrap; gap:3px; margin-top:3px; }} .mc .mt {{ white-space:normal; }}
 .sigdot {{ position:absolute; width:9px; height:9px; border-radius:50%; transform:translate(-50%,-50%); box-sizing:border-box; border:1.5px solid var(--card); cursor:pointer; z-index:1; }}
-.sigdot.buy {{ background:#FF4D5E; }} .sigdot.sell {{ background:#3D8BFF; }} .sigdot::after {{ content:''; position:absolute; inset:-8px; border-radius:50%; }}
-.chart line.ch-sv {{ stroke-dasharray:2 3; opacity:.75; vector-effect:non-scaling-stroke; }} .chart line.ch-sv.buy {{ stroke:#FF4D5E; }} .chart line.ch-sv.sell {{ stroke:#3D8BFF; }}
+.sigdot.buy {{ background:#E87BA4; }} .sigdot.sell {{ background:#5FB8E0; }} .sigdot::after {{ content:''; position:absolute; inset:-8px; border-radius:50%; }}
+.chart line.ch-sv {{ stroke-dasharray:2 3; opacity:.75; vector-effect:non-scaling-stroke; }} .chart line.ch-sv.buy {{ stroke:#E87BA4; }} .chart line.ch-sv.sell {{ stroke:#5FB8E0; }}
 .chart line.ch-sh {{ stroke:#9A9BA1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }}
 .sigpop {{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; }}
 .sigpop > div {{ min-width:120px; min-height:120px; padding:14px 18px; box-sizing:border-box; border-radius:14px; background:#EDEDED; color:#333; display:flex; align-items:center; justify-content:center;
