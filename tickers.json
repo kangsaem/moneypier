@@ -110,5 +110,13 @@
  {
   "code": "HUN",
   "name": "헌츠맨"
+ },
+ {
+  "code": "MTRN",
+  "name": "마테리언"
+ },
+ {
+  "code": "ELMT",
+  "name": "엘멧 그룹"
  }
 ]
