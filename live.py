@@ -89,13 +89,9 @@ def compute(results, recs=None, idx=None):
     if before:                                                     # 시작 전날을 기준점(0%)으로 — 첫날 신호도 체결되게
         dates = [max(before)] + dates
     dates = pd.DatetimeIndex(dates)
-    latest = {it["code"] for it in max(recs, key=lambda r: r.get("time", "")).get("items", [])}
-    last_seen = {}
-    for rec in recs:
-        for it in rec.get("items", []):
-            d = pd.Timestamp(it["asof"])
-            last_seen[it["code"]] = max(last_seen.get(it["code"], d), d)
-    gone = {c: d for c, d in last_seen.items() if c not in latest}
+    # 목록에서 빠진 구간(2번 이상 연속 기록에 없음): 빠지기 전 마지막 기록일 종가에 전량 매도, 그 사이는 신호 없음, 다시 들어오면 신호대로
+    gp = history.gaps(recs)
+    gone_at = {c: {pd.Timestamp(st) for st, _ in gl} for c, gl in gp.items()}
     states = {}
     for c, s in ser.items():
         own = s.index[s.index >= start]
@@ -105,14 +101,18 @@ def compute(results, recs=None, idx=None):
             cats = cats.shift(1)
         cats = cats.reindex(cats.index.union(dates)).ffill(limit=5).reindex(dates)   # 다른 시장만 쉬는 날은 칸 유지
         cats = cats.apply(lambda x: x if isinstance(x, set) else set())
-        if c in gone and gone[c] in cats.index:                    # 목록에서 빠짐 = 팔고 뺀 것 → 마지막 기록일 종가에 전량 매도
+        for st, en in gp.get(c, []):                               # 목록에서 빠짐 = 팔고 뺀 것 → 마지막 기록일 종가에 전량 매도
+            st = pd.Timestamp(st)
+            if st not in cats.index:
+                continue
             cats = cats.copy()
-            cats.loc[gone[c]] = {pf.ALLOC_SELL[0]}
-            cats.loc[cats.index > gone[c]] = [set()] * int((cats.index > gone[c]).sum())
+            cats.loc[st] = {pf.ALLOC_SELL[0]}
+            mask = (cats.index > st) & ((cats.index < pd.Timestamp(en)) if en else True)
+            cats.loc[mask] = [set()] * int(mask.sum())
         states[c] = {"close": s, "cats": cats}
     eq, trades, *_ = pf.simulate_alloc(states, dates, 0, 0, same_day=True, held=HELD)
     for t in trades:
-        if t["code"] in gone and t["out"] == gone[t["code"]]:
+        if t["out"] in gone_at.get(t["code"], ()):
             t["why"] = "목록에서 빠짐"
     px = {c: st["close"].reindex(dates).ffill().to_numpy(dtype=float) for c, st in states.items()}
     first_rec = {}
@@ -167,7 +167,7 @@ def track(recs, results):
             x["name"] = it["name"]
             x["sig"][it["asof"]] = {"cat": cat, "g": next((g for g in gs if g in SELL_G or g in BUY_G), ""), "close": it.get("close")}
             x["last"] = max(x["last"], it["asof"])
-    latest = {it["code"] for it in recs[-1].get("items", [])} if recs else set()
+    gp = history.gaps(recs)
     closes = {r["code"]: r.get("_c") for r in results if r.get("_c") is not None}
     out = []
     for code, x in per.items():
@@ -177,7 +177,7 @@ def track(recs, results):
             dates, close = [f"{d:%Y-%m-%d}" for d in c.index], [float(v) for v in c.to_numpy()]
         else:
             dates, close = sd, [float(x["sig"][d]["close"] or 0) for d in sd]
-        gone = code not in latest
+        gone = any(en is None for _, en in gp.get(code, []))            # 지금 목록에서 빠져 있음
         end_date = x["last"] if gone else dates[-1]
         kr = m.is_kr(code)
         ex = (lambda i: i) if kr else (lambda i: i + 1)
@@ -197,6 +197,14 @@ def track(recs, results):
             if dates[i] > end_date:
                 break
             if dates[i] < first:
+                continue
+            if history.in_gap(gp.get(code), dates[i]):                 # 안 본 기간: 추적 중이면 빠지기 전 마지막 날로 끝냄(목록에서 빠짐)
+                if tr:
+                    li = max(i - 1, 0)
+                    tr.update(end=None, endI=li, why="gone", last=dates[li],
+                              ret=(close[li] / tr["px"] - 1) * 100 if tr["px"] and li >= tr["entI"] else None)
+                    out.append(tr)
+                    tr = None
                 continue
             s_ = x["sig"].get(dates[i])
             if tr and tr["px"] is None and i == tr["entI"]:

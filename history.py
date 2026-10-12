@@ -57,6 +57,40 @@ def load_all():
     return recs
 
 
+# ---------------------------------------------------------------- 감시 기간(목록에서 빠졌다 돌아온 구간)
+GAP_MIN = 2     # 이 횟수 이상 연속으로 기록에 없어야 '빠짐'으로 봄(시세 실패로 한 번 빠진 것은 무시)
+
+
+def gaps(recs):
+    """종목별 안 본 기간 {code: [(시작, 끝), ...]} — 시작 = 빠지기 전 마지막 기록의 봉 날짜, 끝 = 다시 들어온 첫 기록의 봉 날짜
+    (그 사이 날짜가 '안 본 기간'). 지금도 빠져 있으면 끝 = None. 머니파이 anHistGaps 와 같음"""
+    last, miss, out = {}, {}, {}
+    for rec in sorted(recs, key=lambda r: r.get("time", "")):
+        here = {}
+        for it in rec.get("items", []):
+            here[it["code"]] = it.get("asof")
+        for c in last:
+            if c not in here:
+                miss[c] = miss.get(c, 0) + 1
+        for c, asof in here.items():
+            if miss.get(c, 0) >= GAP_MIN:
+                out.setdefault(c, []).append((last[c], asof))
+            miss[c] = 0
+            last[c] = asof
+    for c, n in miss.items():
+        if n >= GAP_MIN:
+            out.setdefault(c, []).append((last[c], None))
+    return out
+
+
+def in_gap(gl, d):
+    """날짜 d(YYYY-MM-DD)가 안 본 기간 안인가 → 그 구간의 시작(빠지기 전 마지막 봉 날짜) 또는 None"""
+    for st, en in gl or []:
+        if d > st and (en is None or d < en):
+            return st
+    return None
+
+
 # ---------------------------------------------------------------- 계산
 def fwd(c, asof, h):
     """asof(그 종목 마지막 봉 날짜) 종가 대비 h거래일 뒤 수익률(%). 아직 안 지났으면 None"""

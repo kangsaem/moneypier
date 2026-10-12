@@ -67,6 +67,7 @@ def _attach_marks():
     import live
     today = history.record(results, msig, "us" if IS_US else "kr")
     recs = [x for x in history.load_all() if (x.get("date"), x.get("session")) != (today["date"], today["session"])] + [today]
+    gp = history.gaps(recs)                 # 안 본 기간(목록에서 빠졌던 구간) → 차트 회색
     by = {}
     for t in live.track(recs, results):
         by.setdefault(t["code"], []).append(t)
@@ -88,6 +89,15 @@ def _attach_marks():
             mk.append({"i": i, "side": t["side"], "price": ch["close"][i],
                        "tip": f'{nm}\n{ch["dates"][i]}\n{m.fmt_price(ch["close"][i])}\n{res}{ret}'})
         ch["marks"] = mk
+        gl, gs, st = gp.get(r["code"]), [], None
+        for i, sd in enumerate(ch["dates"] if gl else []):
+            if history.in_gap(gl, "20" + sd.replace(".", "-")):
+                st = i if st is None else st
+            elif st is not None:
+                gs.append((st, i - 1)); st = None
+        if st is not None:
+            gs.append((st, len(ch["dates"]) - 1))
+        ch["gaps"] = gs
 
 
 guard("차트 신호 표시", _attach_marks)
@@ -386,6 +396,11 @@ def _svg_chart(ch, mini=False):
         if F and proj.get(k):
             xf = lambda i, k=k: x(n - 1 + i)
             o.append(f'<path class="ch-{k} ch-f" d="{_path(proj[k], xf, y)}"/>')
+    # 안 본 기간(목록에서 빠졌던 구간): 회색 사각형(가격·RSI 영역 모두)
+    for a, b in ch.get("gaps") or []:
+        x0, x1 = max(pl, x(a - 0.5)), min(xr, x(b + 0.5))
+        if x1 > x0:
+            o.append(f'<rect class="ch-gap" x="{x0:.1f}" y="{pt}" width="{x1 - x0:.1f}" height="{H - pb - pt}"/>')
     # 신호추적 매수·매도: 신호일 세로 점선(날짜 축까지) + 그 가격에서 21거래일 회색 점선, 원은 HTML(크기 고정·누르면 팝업)
     marks = ""
     for mk in ch.get("marks") or []:
@@ -709,6 +724,7 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 .sigdot {{ position:absolute; width:9px; height:9px; border-radius:50%; transform:translate(-50%,-50%); box-sizing:border-box; border:1.5px solid var(--card); cursor:pointer; z-index:1; }}
 .sigdot.buy {{ background:#E87BA4; }} .sigdot.sell {{ background:#5FB8E0; }} .sigdot::after {{ content:''; position:absolute; inset:-8px; border-radius:50%; }}
 .chart line.ch-sv {{ stroke-dasharray:2 3; opacity:.75; vector-effect:non-scaling-stroke; }} .chart line.ch-sv.buy {{ stroke:#E87BA4; }} .chart line.ch-sv.sell {{ stroke:#5FB8E0; }}
+.chart rect.ch-gap {{ fill:#9A9BA1; opacity:.16; }}
 .chart line.ch-sh {{ stroke:#9A9BA1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }}
 .sigpop {{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; }}
 .sigpop > div {{ min-width:120px; min-height:120px; padding:14px 18px; box-sizing:border-box; border-radius:14px; background:#EDEDED; color:#333; display:flex; align-items:center; justify-content:center;
