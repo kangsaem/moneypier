@@ -1,0 +1,52 @@
+name: hold-test
+
+# 그냥 보유 vs 보유 + 추적 손절(hold_cmp.py) — rand20 결과와 같은 기간·종목, 시세만 다시 받음(신호 계산 없음). 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "번호 범위"
+        default: "1-30"
+      trail:
+        description: "추적 손절 폭(0.25 = 최고가 대비 −25%)"
+        default: "0.25"
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      max-parallel: 2
+      matrix:
+        market: [kospi, nasdaq]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 시험
+        run: python hold_cmp.py
+        env:
+          HC_MARKET: ${{ matrix.market }}
+          HC_SEEDS: ${{ inputs.seeds }}
+          HC_TRAIL: ${{ inputs.trail }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          cp results/hold_${{ matrix.market }}.* /tmp/
+          for i in $(seq 1 25); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            cp /tmp/hold_${{ matrix.market }}.* results/
+            git add results/hold_${{ matrix.market }}.*
+            git commit -q -m "보유 vs 손절 시험 (${{ matrix.market }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $(( (RANDOM % 20) + i * 3 ))
+          done
+          exit 1
