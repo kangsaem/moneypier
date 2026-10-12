@@ -3,6 +3,10 @@ name: ticker-check
 # lab-bt 랜덤 후보 시세 확인(ticker_check.py) — 리포트 재실행 없음
 on:
   workflow_dispatch:
+    inputs:
+      retry:
+        description: "1 = 문제였던 미장만 다시"
+        default: "0"
 
 permissions:
   contents: write
@@ -18,6 +22,8 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - run: python ticker_check.py
+        env:
+          TC_RETRY: ${{ inputs.retry }}
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"

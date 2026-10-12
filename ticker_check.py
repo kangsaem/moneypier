@@ -6,19 +6,27 @@ import time
 import requests
 import yfinance as yf
 
+import os
 L = json.load(open("ticker_check_list.json"))
-out = {"us": {}, "kr": {}}
-for t in L["us"]:
+RETRY = os.environ.get("TC_RETRY") == "1"          # 1 = 앞선 결과에서 문제였던 미장만 간격 두고 세 번까지 다시
+prev = json.load(open("results/ticker_check.json")) if RETRY else None
+out = {"us": {}, "kr": {}} if not RETRY else prev
+todo = L["us"] if not RETRY else [t for t, v in prev["us"].items() if not v.get("old") or not v.get("now")]
+for t in todo:
     sym = t.replace(".", "-")
-    try:
-        h = yf.Ticker(sym).history(start="2020-12-01", end="2021-03-01", auto_adjust=False)
-        r = yf.Ticker(sym).history(period="5d", auto_adjust=False)
-        out["us"][t] = {"old": len(h), "now": len(r)}
-    except Exception as e:
-        out["us"][t] = {"err": str(e)[:80]}
-    time.sleep(0.2)
+    for k in range(3 if RETRY else 1):
+        try:
+            h = yf.Ticker(sym).history(start="2020-12-01", end="2021-03-01", auto_adjust=False)
+            r = yf.Ticker(sym).history(period="5d", auto_adjust=False)
+            out["us"][t] = {"old": len(h), "now": len(r)}
+        except Exception as e:
+            out["us"][t] = {"err": str(e)[:80]}
+        if out["us"][t].get("old") and out["us"][t].get("now"):
+            break
+        time.sleep(3 if RETRY else 0)
+    time.sleep(1.5 if RETRY else 0.2)
 H = {"User-Agent": "Mozilla/5.0"}
-for c in L["kr"]:
+for c in ([] if RETRY else L["kr"]):
     try:
         u = f"https://api.finance.naver.com/siseJson.naver?symbol={c}&requestType=1&startTime=20201201&endTime=20210301&timeframe=day"
         a = requests.get(u, headers=H, timeout=20).text.count("[") - 1
