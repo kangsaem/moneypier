@@ -576,3 +576,9 @@
   랜덤 칸이 시세 없음·5년 치 미만이면 같은 시장 다음 후보로 교체(Actions와 같음, '바뀐 종목' 표시·기록), 직접 입력 칸은 빼기만. 비교 지수 나스닥 종합 → 나스닥100(^NDX, 'idx:ndx100'). 기간 탭을 결과 위로(실행 뒤 바꿔도 재계산 없음). 설명 항목별 정리, 누적 기록 설명 삭제.
   백테스트 가정 문구('매수 0.05%, 매도 0.25%(수수료·거래세 대략치)를 반영. 배당·배당세·해외 주식 양도세·환율은 반영 제외'): lab-bt, 머니파이 AN_BT_NOTES(지수는 배당 제외 줄 대체), 리포트 LOGIC_BT(7c168eb), rand_summary·hold_cmp·random_cmp 결과 페이지.
   남은 것: 미장 티커 변경표(US_FIX·backtest N100_RENAME) — ticker_check.py 재확인(실행 38242258050) 결과로 채움. 첫 확인은 야후 일시 오류로 BK 등 정상 종목도 0. FISV→FI 변환은 지금 틀린 것으로 보임(rand20에서 14번 빠짐).
+- 2026-10-12 20:55 티커 확인(ticker_check.py, ticker-check.yml): 후보 미장 636개 중 83개가 옛 티커로 시세 없음(재확인 3회도 같음 → 실제로 없음).
+  새 티커로 옛 시세까지 이어지는 것 확인: ANTM→ELV, BLL→BALL, ABC→COR, FBHS→FBIN, FLT→CPAY, NLOK→GEN, PEAK→DOC, PKI→RVTY, RE→EG, WLTW→WTW, HFC→DINO, GPS→GAP, FB→META, LB→BBWI, FI→FISV, VIAC·PARA→PSKY, BK→BNY, MMC→MRSH (DISCA→WBD는 2022년부터라 5년 치 부족).
+  다른 회사가 같은 티커를 쓰는 INFO·SBNY는 후보에서 뺌(lab-bt US_DEAD). 나머지(XLNX·ATVI·JNPR·HES·IPG 등)는 인수·폐지 → 실행 때 교체. 국장 506개는 모두 시세 있음(네이버).
+  반영: lab-bt US_FIX, backtest.py N100_RENAME(1e04c91, FISV→FI 오류 수정 — 440개 시험엔 미적용).
+- 2026-10-12 20:55 lab-bt 화면(사용자 지시): 머리 설명·'종목' 라벨·1회 매수/기간 라벨·안내 문구 삭제, 입력 5칸×2줄 전체 폭('종목명 또는 코드'), 실행·랜덤(하늘색 채움)·33/50/100%·1/3/5년 한 줄(모바일 360px도 한 줄),
+  실행 진행은 버튼 아래 가로 막대(종목별 % 표시 없음), 적립(종목·코스피·나스닥100)은 여섯 경우 최저~최고 영역으로, 설명 문구 다듬기('백테스트 가정' 제목·가로선·신호 설명 삭제).
