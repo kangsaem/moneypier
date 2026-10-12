@@ -96,7 +96,7 @@ def dca(px, nth):
     t0 = flows[0][0]
     yrs = lambda d: (d - t0).days / 365.25
     irr = pf._irr([(yrs(d), -a) for d, a in flows] + [(yrs(dates[-1]), endv)])
-    return {"nth": nth, "roc": (v.iloc[-1] - 1) * 100, "irr": irr, "mdd": float(((v / v.cummax()) - 1).min() * 100)}
+    return {"nth": nth, "roc": (v.iloc[-1] - 1) * 100, "irr": irr, "mdd": float(((v / v.cummax()) - 1).min() * 100), "path": v.tolist()}
 
 
 def main():
@@ -130,8 +130,16 @@ def main():
     runs = [dca(px, n) for n in NTH]
     hv = (px / px.bfill().iloc[0]).mean(axis=1) * (1 - pf.BUY_COST)   # 첫날 시세가 없는 종목은 첫 시세로           # 그냥 보유: 첫날 종목마다 같은 금액, 끝까지
     hold = {"roc": float((hv.iloc[-1] - 1) * 100), "mdd": float(((hv / hv.cummax()) - 1).min() * 100)}
+    # 곡선(5거래일마다, 원금 1 기준): 나중에 'V1 반 + 보유 반' 같은 섞기를 다시 돌리지 않고 계산하려고(2026-10-12)
+    e1 = (eq / eq.iloc[0]).reindex(dates).ffill()
+    dv = pd.concat([pd.Series(r_["path"], index=dates) for r_ in runs], axis=1).mean(axis=1) if runs and "path" in runs[0] else None
+    step = list(range(0, len(dates), 5)) + ([len(dates) - 1] if (len(dates) - 1) % 5 else [])
+    curve = {"d": [f"{dates[i]:%Y-%m-%d}" for i in step], "v1": [round(float(e1.iloc[i]), 4) for i in step],
+             "hold": [round(float(hv.iloc[i]), 4) for i in step]}
+    if dv is not None:
+        curve["dca"] = [round(float(dv.iloc[i]), 4) for i in step]
     out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "failed": failed, "fail_reason": reasons, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
-           "v1": v1, "dca": runs, "hold": hold, "secs": round(time.time() - t0),
+           "v1": v1, "dca": [{k: v for k, v in r_.items() if k != "path"} for r_ in runs], "hold": hold, "curve": curve, "secs": round(time.time() - t0),
            "run": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
     lo = lambda k: min(r[k] for r in runs if r[k] is not None)
     hi = lambda k: max(r[k] for r in runs if r[k] is not None)

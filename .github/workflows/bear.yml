@@ -11,6 +11,15 @@ on:
       seeds:
         description: "번호 목록(JSON)"
         default: '[1]'
+      market:
+        description: "kospi | nasdaq"
+        default: "kospi"
+      n:
+        description: "종목 수"
+        default: "20"
+      par:
+        description: "동시 실행 수"
+        default: "4"
 
 permissions:
   contents: write
@@ -21,7 +30,7 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
-      max-parallel: 4      # 440개 시험(15개)과 합쳐 19개 — 사이트 배포 자리 1개 남김
+      max-parallel: ${{ fromJSON(inputs.par) }}
       matrix:
         start: ${{ fromJSON(inputs.starts) }}
         seed: ${{ fromJSON(inputs.seeds) }}
@@ -31,12 +40,13 @@ jobs:
         with:
           python-version: "3.12"
       - run: pip install -r requirements.txt
+      - run: pip install "nasdaq-100-ticker-history @ git+https://github.com/jmccarrell/n100tickers"
       - name: 시험
         run: python random_cmp.py
         env:
-          RC_MARKET: kospi
+          RC_MARKET: ${{ inputs.market }}
           RC_SEED: ${{ matrix.seed }}
-          RC_N: "20"
+          RC_N: ${{ inputs.n }}
           RC_WINDOW: fixed
           RC_START: ${{ matrix.start }}
           RC_PREFIX: bear
@@ -53,7 +63,7 @@ jobs:
             git reset -q --hard origin/${{ github.ref_name }}
             tar xf /tmp/new/r.tar
             git add results/
-            git commit -q -m "하락·횡보장 시험 (${{ matrix.start }} ${{ matrix.seed }})" || exit 0
+            git commit -q -m "하락·횡보장 시험 (${{ inputs.market }} ${{ matrix.start }} ${{ matrix.seed }})" || exit 0
             git push -q origin HEAD:${{ github.ref_name }} && exit 0
             sleep $(( (RANDOM % 20) + i * 3 ))
           done
