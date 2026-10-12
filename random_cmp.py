@@ -1,6 +1,6 @@
 """무작위 30종목: V1 vs 적립식 (2026-10-12, 리포트·기록과 무관한 별도 시험)
 
-RC_MARKET = kospi | nasdaq, RC_SEED = 무작위 번호, 기간 5년(1260거래일).
+RC_MARKET = kospi | nasdaq | sp500(2026-10-13: 그때 S&P500 구성, fja05680/sp500 — 1996년부터), RC_SEED = 무작위 번호, 기간 5년(1260거래일).
 RC_WINDOW = last(최근 5년) | random(최근 10년 안 무작위 시작 5년, 끝날 뒤 시세는 잘라서 안 씀), RC_N = 종목 수, RC_PREFIX = 결과 이름 앞부분.
 종목 고르기(그 시작일 당시 목록에서 무작위 — 생존 편향 없음):
   코스피 = 시작일 시가총액 상위 300 중 무작위, 나스닥 = 시작일 나스닥100 구성 중 무작위. 시세 실패(상장폐지 등)는 빼고 30개를 채움.
@@ -41,6 +41,39 @@ if WIN == "fixed":
     b.BT_DAYS = 1450           # 신호를 끝날에서 1450거래일 거슬러 계산 → 5년(달력) 전체를 빠짐없이 덮음(앞부분은 시작일로 잘라냄)
 
 NTH = (1, 5, 10, 15, 20, 25)
+SP_RAW = "https://raw.githubusercontent.com/fja05680/sp500/master/"
+SP_INFO = {}                                       # 티커 → 지수 편입·제외일(빠진 이유 분석용)
+
+
+def sp500_at(day):
+    """그날(또는 직전) S&P500 구성 티커 목록 + 티커별 지수 편입·제외일"""
+    import io as _io
+    import requests
+    from urllib.parse import quote
+    r = requests.get(SP_RAW + quote("S&P 500 Historical Components & Changes (Updated).csv"), timeout=120)
+    r.raise_for_status()
+    h = pd.read_csv(_io.StringIO(r.text))
+    h["date"] = pd.to_datetime(h["date"])
+    row = h[h["date"] <= day].iloc[-1]
+    try:
+        se = pd.read_csv(SP_RAW + "sp500_ticker_start_end.csv")
+        for t, a, z in zip(se["ticker"], se["start_date"], se["end_date"]):
+            SP_INFO.setdefault(t, []).append((str(a), "" if pd.isna(z) else str(z)))
+    except Exception as e:
+        print("편입·제외일 실패", e)
+    return row["date"], sorted(set(row["tickers"].split(",")))
+
+
+def sp_cover(df, start):
+    """S&P 과거 구간: 시세가 시작일(10일 여유)부터 끝날(10일 여유)까지 이어져야 씀 → (통과, 이유)"""
+    if df is None or not len(df):
+        return False, "시세 없음"
+    a, z = df.index[0], df.index[-1]
+    if a > start + pd.Timedelta(days=10):
+        return False, f"시세가 {a:%Y-%m-%d}부터(그때 회사와 다를 수 있음)"
+    if z < END - pd.Timedelta(days=10):
+        return False, f"기간 중 시세 끊김({z:%Y-%m-%d})"
+    return True, ""
 
 
 def marcap_prices(codes, y0, y1):
@@ -105,6 +138,13 @@ def pick():
         d0, lst = b.kospi_top_at(day, 300)
         note = f"{d0:%Y-%m-%d} 코스피 시가총액 상위 300 중 무작위"
         start = d0
+    elif MK == "sp500":
+        ix = m._index_close("US500", "^GSPC")
+        day = window(ix, rnd)
+        d0, tk = sp500_at(day)
+        lst = [{"code": t.replace(".", "-"), "name": t} for t in tk]
+        note = f"{d0:%Y-%m-%d} S&P500 구성 중 무작위(빠진 종목은 다음 후보로 채움)"
+        start = day
     else:
         from nasdaq_100_ticker_history import tickers_as_of
         ix = m._index_close("IXIC", "^IXIC")
@@ -114,6 +154,8 @@ def pick():
         note = f"{day:%Y-%m-%d} 나스닥100 구성 중 무작위"
         start = day
     rnd.shuffle(lst)
+    if MK == "sp500":
+        return lst, note, pd.Timestamp(start)      # 앞에서부터 시세 확인하며 N개 채움(main)
     return lst[: N + (25 if WIN in ("random", "fixed") else 15)], note, pd.Timestamp(start)          # 시세 실패에 대비해 여유분
 
 
@@ -160,6 +202,22 @@ def main():
                 df.attrs["src"] = "marcap"
             return df
         m.load_prices = _ld
+    sp_fail = []
+    if MK == "sp500":                   # 시세가 기간 전체를 덮는 종목만 앞에서부터 N개(빠진 후보는 이유와 함께 기록)
+        ok = []
+        for t in cand:
+            if len(ok) >= N:
+                break
+            try:
+                df = m.load_prices(t["code"])
+            except Exception:
+                df = None
+            good, why = sp_cover(df, start)
+            if good:
+                ok.append(t)
+            else:
+                sp_fail.append({"t": t["name"], "why": why, "idx": SP_INFO.get(t["name"], []), "q": t["name"].endswith("Q")})
+        cand = ok
     for t in cand:
         b.bench_for(t["code"])
     res = dict(b.run_all(cand))
@@ -193,7 +251,7 @@ def main():
              "hold": [round(float(hv.iloc[i]), 4) for i in step]}
     if dv is not None:
         curve["dca"] = [round(float(dv.iloc[i]), 4) for i in step]
-    out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "failed": failed, "fail_reason": reasons, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
+    out = {"market": MK, "seed": SEED, "n": len(states), "sp_fail": sp_fail, "sp_tried": len(sp_fail) + len(cand), "names": names, "failed": failed, "fail_reason": reasons, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
            "v1": v1, "dca": [{k: v for k, v in r_.items() if k != "path"} for r_ in runs], "hold": hold, "curve": curve, "secs": round(time.time() - t0),
            "run": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
     lo = lambda k: min(r[k] for r in runs if r[k] is not None)
