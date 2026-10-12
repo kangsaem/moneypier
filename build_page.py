@@ -58,6 +58,39 @@ stamp = f"{kst:%Y-%m-%d %H:%M} KST"
 _hm = kst.hour * 100 + kst.minute
 IS_US = 500 <= _hm < 1530
 TITLE = "미장 마감 리포트" if IS_US else "국장 마감 리포트"
+
+
+# 신호추적(history/ 지난 기록 + 오늘 기록)의 매수·매도 신호 → 종목 차트 표시용 r["chart"]["marks"] (머니파이 anSigMarks 와 같은 모양)
+# 실전 기록이 없는 기간엔 아무것도 없음(백테스트 재계산 신호는 쓰지 않음). 손절은 따로 표시하지 않고 팝업 결과에만.
+def _attach_marks():
+    import history
+    import live
+    today = history.record(results, msig, "us" if IS_US else "kr")
+    recs = [x for x in history.load_all() if (x.get("date"), x.get("session")) != (today["date"], today["session"])] + [today]
+    by = {}
+    for t in live.track(recs, results):
+        by.setdefault(t["code"], []).append(t)
+    RES = {"stop": "손절", "open": "진행중", "wait": "진행중", "gone": "목록에서 빠짐"}
+    for r in results:
+        ch = r.get("chart")
+        if not ch:
+            continue
+        pos = {d: i for i, d in enumerate(ch["dates"])}
+        mk = []
+        for t in by.get(r["code"], []):
+            i = pos.get(f'{t["sig"][2:4]}.{t["sig"][5:7]}.{t["sig"][8:10]}')
+            if i is None:
+                continue
+            done = t["why"] in ("sig", "stop")
+            res = ("손절" if t["why"] == "stop" else "성공" if t["hit"] else "실패") if done else RES.get(t["why"], "")
+            ret = "" if t.get("ret") is None else f' {t["ret"]:+.1f}%'
+            nm = t.get("g") or ("매수" if t["side"] == "buy" else "매도·전량")
+            mk.append({"i": i, "side": t["side"], "price": ch["close"][i],
+                       "tip": f'{nm}\n{ch["dates"][i]}\n{m.fmt_price(ch["close"][i])}\n{res}{ret}'})
+        ch["marks"] = mk
+
+
+guard("차트 신호 표시", _attach_marks)
 CHART_IDX = ("spx", "ndx") if IS_US else ("kospi", "kosdaq")
 E = html.escape
 
@@ -347,6 +380,19 @@ def _svg_chart(ch, mini=False):
         if F and proj.get(k):
             xf = lambda i, k=k: x(n - 1 + i)
             o.append(f'<path class="ch-{k} ch-f" d="{_path(proj[k], xf, y)}"/>')
+    # 신호추적 매수·매도: 신호일 세로 점선(날짜 축까지) + 그 가격에서 21거래일 회색 점선, 원은 HTML(크기 고정·누르면 팝업)
+    marks = ""
+    for mk in ch.get("marks") or []:
+        i = mk["i"]
+        if not 0 <= i < n:
+            continue
+        xv, yv, xe = x(i), y(mk["price"]), x(min(i + 21, n - 1))
+        o.append(f'<line class="ch-sv {mk["side"]}" x1="{xv:.1f}" x2="{xv:.1f}" y1="{pt}" y2="{H - pb + 4}"/>')
+        if xe > xv:
+            o.append(f'<line class="ch-sh" x1="{xv:.1f}" x2="{xe:.1f}" y1="{yv:.1f}" y2="{yv:.1f}"/>')
+        tip = html.escape(mk["tip"])
+        marks += (f'<span class="sigdot {mk["side"]}" style="left:{xv / W * 100:.2f}%;top:{yv / H * 100:.2f}%" '
+                  f'title="{tip}" data-sig="{tip}"></span>')
     ly = y(close[-1])
     o.append(f'<circle class="ch-dot" cx="{x(n - 1):.1f}" cy="{ly:.1f}" r="3"/>')
     # 오늘 종가: 검은 점 바로 오른쪽, 카드 숫자와 같은 크기(HTML로 겹쳐 그려 화면 폭과 무관하게 크기 유지)
@@ -368,7 +414,7 @@ def _svg_chart(ch, mini=False):
         if last is not None:
             o.append(f'<text class="ch-last ch-in" x="{tx}" y="{y2(last) + 3:.1f}" text-anchor="end">RSI {last:.0f}</text>')
     o.append("</svg>")
-    return legend_html(ch) + '<div class="svgbox">' + "".join(o) + lbl + "</div>"
+    return legend_html(ch) + '<div class="svgbox">' + "".join(o) + marks + lbl + "</div>"
 
 
 def svg_chart(ch, mini=False):
@@ -654,6 +700,13 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 .mc {{ background:var(--card); border:1px solid var(--line); border-radius:8px; padding:5px 8px; display:flex; flex-direction:column; line-height:1.3; }}
 .mc .mn {{ font-size:.72rem; color:var(--mut); }} .mc .mv {{ display:flex; flex-wrap:wrap; align-items:baseline; column-gap:6px; }}
 .mc b {{ font-size:var(--bignum); }} .mc .mg {{ font-size:.75rem; }} .mc .mtags {{ display:flex; flex-wrap:wrap; gap:3px; margin-top:3px; }} .mc .mt {{ white-space:normal; }}
+.sigdot {{ position:absolute; width:9px; height:9px; border-radius:50%; transform:translate(-50%,-50%); box-sizing:border-box; border:1.5px solid var(--card); cursor:pointer; z-index:1; }}
+.sigdot.buy {{ background:#FF4D5E; }} .sigdot.sell {{ background:#3D8BFF; }} .sigdot::after {{ content:''; position:absolute; inset:-8px; border-radius:50%; }}
+.chart line.ch-sv {{ stroke-dasharray:2 3; opacity:.75; vector-effect:non-scaling-stroke; }} .chart line.ch-sv.buy {{ stroke:#FF4D5E; }} .chart line.ch-sv.sell {{ stroke:#3D8BFF; }}
+.chart line.ch-sh {{ stroke:#9A9BA1; stroke-dasharray:3 3; vector-effect:non-scaling-stroke; }}
+.sigpop {{ position:fixed; inset:0; z-index:50; display:flex; align-items:center; justify-content:center; }}
+.sigpop > div {{ min-width:120px; min-height:120px; padding:14px 18px; box-sizing:border-box; border-radius:14px; background:#EDEDED; color:#333; display:flex; align-items:center; justify-content:center;
+  white-space:pre-line; text-align:center; font-size:15px; line-height:1.45; font-weight:700; box-shadow:0 8px 24px rgba(0,0,0,.4); }}
 .svgbox {{ position:relative; }} .lastlbl {{ position:absolute; transform:translateY(-50%); font-size:var(--bignum); font-weight:700; line-height:1; white-space:nowrap; color:var(--fg); text-shadow:0 0 3px var(--card),0 0 3px var(--card),0 0 2px var(--card); pointer-events:none; }}
 .mc.up .mg, .mc.up b {{ color:var(--buy); }} .mc.dn .mg, .mc.dn b {{ color:var(--sell); }} .mc.bad {{ background:var(--warnbg); }}
 .idxch {{ display:grid; gap:8px; }}
@@ -678,6 +731,15 @@ pre.warn {{ background:var(--warnbg); border-radius:10px; padding:10px 12px; }}
 <div class="dgrid">{detail_html}</div>
 <div class="legend" style="margin-top:14px"><a href="live.html"><b>V1 실전 기록 · 신호 추적(가상 계좌 vs 지수, 신호마다 맞았나) →</b></a> &nbsp;·&nbsp; <a href="backtest.html">시그널 백테스트 · 내 종목 12개월 →</a>{wide_link}</div>
 {extra}
+<script>
+// 신호 원을 누르면 날짜·가격·결과 팝업(아무 데나 누르면 닫힘). 마우스를 올리면 같은 내용이 툴팁으로
+document.addEventListener('click', e => {{
+  const old = document.querySelector('.sigpop'); if(old){{ old.remove(); return; }}
+  const d = e.target.closest('[data-sig]'); if(!d) return;
+  const m = document.createElement('div'); m.className = 'sigpop';
+  const b = document.createElement('div'); b.textContent = d.dataset.sig; m.appendChild(b); document.body.appendChild(m);
+}});
+</script>
 </body></html>"""
 
 os.makedirs("docs", exist_ok=True)
