@@ -36,6 +36,8 @@ import portfolio as pf         # noqa: E402
 
 if WIN == "fixed":
     m.START = "2004-01-01"     # 과거 기간은 시세를 더 길게(신호 계산용 앞 1년 포함)
+    if FIX_START and FIX_START[:4] < "2006":   # 1997~2005 시작(2026-10-13): 시작 2년 전부터(marcap은 1995년부터)
+        m.START = f"{max(1995, int(FIX_START[:4]) - 2)}-01-01"
     b.BT_DAYS = 1450           # 신호를 끝날에서 1450거래일 거슬러 계산 → 5년(달력) 전체를 빠짐없이 덮음(앞부분은 시작일로 잘라냄)
 
 NTH = (1, 5, 10, 15, 20, 25)
