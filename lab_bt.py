@@ -139,6 +139,119 @@ def simulate(dates, close, buy_on, sell_on, start=0.0, buy_pct=20.0, cap=None, s
             "cash": sum(cash_ratio) / n * 100, "skips": skips}
 
 
+def simulate_bundle(dates, assets, times=2):
+    """묶음 계좌(2026-10-12, lab-bt.html btBundle 과 같은 계산). 종목 n개를 현금 n(화면 100×n) 한 계좌로, 입금 없음.
+    dates: 모든 종목 날짜 합집합(정렬). assets: [{"close": [가격 또는 None], "buy": [bool 또는 None], "sell": [...], "same_day": bool}]
+      (None = 그 종목이 쉬는 날 — 신호·체결·손절 없음, 평가는 마지막 가격)
+    - 종목당 상한 = 계좌 평가액 ÷ n, 신호당 매수 = 상한 ÷ times(1·2·3회). 산다 = min(신호당 매수, 상한 - 그 종목 보유액)
+      상한 여유가 신호당 매수의 25% 미만이면 건너뜀, 현금이 살 금액의 50% 미만이면 건너뜀, 그 사이면 있는 현금만큼(portfolio.simulate_alloc 과 같음)
+    - 신호 = 그 종목 직전 거래일 대비 새로 켜짐(첫 거래일은 신호 없음). 매도·전량 새로 켜짐 = 전량 매도, 매수 새로 켜짐(같은 날 매도 칸 없음) = 매수
+    - same_day = 그날 종가 체결(국내), 아니면 그 종목 다음 거래일 종가(해외). 한 번에 체결하는 주문은 매도 먼저, 그다음 종목 순서
+    - 손절: 종가 ≤ 평균 매수가 × 0.92 가 그 종목 거래일 기준 이틀 연속(산 날 제외)이면 그날 종가 전량
+    - 하루 순서: 미뤄둔(다음 날) 주문 체결 → 손절 → 오늘 신호 → 당일 체결 주문 실행 → 평가"""
+    n_a, n = len(assets), len(dates)
+    cash = float(n_a)
+    pos, trades, eq_s, cash_ratio = {}, [], [], []
+    last_px = [None] * n_a
+    prev = [None] * n_a               # 직전 거래일 (buy, sell)
+    pending = [None] * n_a            # 다음 거래일에 체결할 주문
+    skip_cap = skip_cash = 0
+
+    def value():
+        return sum(P["sh"] * last_px[a] for a, P in pos.items())
+
+    def sell(a, i, why):
+        nonlocal cash
+        P = pos.pop(a)
+        p = assets[a]["close"][i]
+        back = P["sh"] * p * (1 - SELL_COST)
+        cash += back
+        trades.append({"a": a, "in": P["in"], "out": dates[i], "days": i - P["inI"], "buys": P["n"], "ret": (back / P["cost"] - 1) * 100, "why": why})
+
+    def run(i, orders):
+        nonlocal cash, skip_cap, skip_cash
+        for kind, a in sorted(orders, key=lambda o: o[0] != "sell"):
+            p = assets[a]["close"][i]
+            if kind == "sell":
+                if a in pos:
+                    sell(a, i, "신호")
+                continue
+            E = cash + value()
+            cap_ = E / n_a
+            want = cap_ / times
+            have = pos[a]["sh"] * p if a in pos else 0.0
+            amt = min(want, cap_ - have)
+            if amt < want * 0.25:
+                skip_cap += 1
+                continue
+            if cash < amt * 0.5:
+                skip_cash += 1
+                continue
+            amt = min(amt, cash)
+            cash -= amt
+            sh = amt * (1 - BUY_COST) / p
+            if a in pos:
+                P = pos[a]
+                P["entry"] = (P["entry"] * P["sh"] + p * sh) / (P["sh"] + sh)
+                P["sh"] += sh; P["cost"] += amt; P["n"] += 1
+            else:
+                pos[a] = {"sh": sh, "cost": amt, "entry": p, "warn": False, "n": 1, "in": dates[i], "inI": i}
+            pos[a]["last"] = i
+
+    for i in range(n):
+        live = [a for a in range(n_a) if assets[a]["close"][i] is not None]
+        for a in live:
+            last_px[a] = assets[a]["close"][i]
+        due = [(pending[a], a) for a in live if pending[a]]
+        for a in live:
+            pending[a] = None
+        run(i, due)
+        for a in live:                                   # 손절
+            P = pos.get(a)
+            if not P or P["last"] == i:
+                continue
+            if assets[a]["close"][i] <= P["entry"] * STOP:
+                if P["warn"]:
+                    sell(a, i, "손절")
+                else:
+                    P["warn"] = True
+            else:
+                P["warn"] = False
+        today = []
+        for a in live:                                   # 오늘 신호
+            b, s = bool(assets[a]["buy"][i]), bool(assets[a]["sell"][i])
+            pv = prev[a]
+            prev[a] = (b, s)
+            if pv is None:
+                continue
+            kind = "sell" if (a in pos and s and not pv[1]) else "buy" if (b and not pv[0] and not s) else None
+            if not kind:
+                continue
+            if assets[a]["same_day"]:
+                today.append((kind, a))
+            else:
+                pending[a] = kind
+        run(i, today)
+        E = cash + value()
+        eq_s.append(E)
+        cash_ratio.append(cash / E if E > 0 else 1.0)
+    end = eq_s[-1]
+    for a, P in pos.items():
+        trades.append({"a": a, "in": P["in"], "out": None, "days": n - 1 - P["inI"], "buys": P["n"],
+                       "ret": (P["sh"] * last_px[a] * (1 - SELL_COST) / P["cost"] - 1) * 100, "why": "보유 중"})
+    peak, mdd = -math.inf, 0.0
+    for v in eq_s:
+        peak = max(peak, v)
+        mdd = min(mdd, v / peak - 1)
+    yrs = _days(dates[0], dates[-1]) / 365.25
+    done = [x for x in trades if x["out"] is not None]
+    return {"eqs": [v * 100 for v in eq_s], "trades": trades, "invested": 100.0 * n_a, "end": end * 100,
+            "roc": (end / n_a - 1) * 100, "irr": ((end / n_a) ** (1 / yrs) - 1) * 100 if yrs > 0 else None, "mdd": mdd * 100,
+            "n_trades": len(done), "win": (sum(1 for x in done if x["ret"] > 0) / len(done) * 100) if done else None,
+            "n_stop": sum(1 for x in done if x["why"] == "손절"), "cash": sum(cash_ratio) / n * 100,
+            "skip_cap": skip_cap, "skip_cash": skip_cash}
+
+
 def _days(a, b):
     from datetime import date
     da = date(int(a[:4]), int(a[5:7]), int(a[8:10]))
