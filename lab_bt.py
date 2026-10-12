@@ -34,8 +34,9 @@ def irr(flows):
     return (lo + hi) / 2 * 100
 
 
-def simulate(dates, close, buy_on, sell_on, start=0.0, buy_pct=20.0, cap=None, same_day=True):
-    """dates: 'YYYY-MM-DD' 목록, close: 종가, buy_on/sell_on: 그날 매수·매도 칸이 켜져 있나(bool 목록)"""
+def simulate(dates, close, buy_on, sell_on, start=0.0, buy_pct=20.0, cap=None, same_day=True, stop=True):
+    """dates: 'YYYY-MM-DD' 목록, close: 종가, buy_on/sell_on: 그날 매수·매도 칸이 켜져 있나(bool 목록).
+    stop=False = 손절 없음(그냥 보유 선 — 2026-10-12 버그 수정: 보유 선이 손절돼 현금으로 남던 문제)"""
     n = len(dates)
     cash, sh, entry, cost_sum, warn, last_buy = 1.0, 0.0, 0.0, 0.0, False, -1
     units, inj_year, year, year_base = 1.0, 0.0, dates[0][:4], 1.0
@@ -99,7 +100,7 @@ def simulate(dates, close, buy_on, sell_on, start=0.0, buy_pct=20.0, cap=None, s
         if not same_day and pending:
             execute(i, pending)
         pending = None
-        if sh > 0 and last_buy != i:                 # 손절 -8% 이틀 연속(산 날 제외)
+        if stop and sh > 0 and last_buy != i:        # 손절 -8% 이틀 연속(산 날 제외)
             if p <= entry * STOP:
                 if warn:
                     sell(i, "손절")
