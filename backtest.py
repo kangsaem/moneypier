@@ -247,7 +247,7 @@ NASDAQ_LARGE = ["AAPL", "MSFT", "NVDA", "AMZN", "GOOGL", "META", "AVGO", "TSLA",
                 "MAR", "ORLY", "CSX", "CTAS", "ASML", "FTNT", "MNST", "ABNB", "CRWD", "PDD"]
 
 
-N100_RENAME = {"FB": "META", "FISV": "FI"}   # 그 뒤 기호가 바뀐 종목(야후 시세는 새 기호로)
+N100_RENAME = {"FB": "META", "FI": "FISV", "WLTW": "WTW", "DISCA": "WBD", "VIAC": "PSKY", "BK": "BNY", "MMC": "MRSH"}   # 그 뒤 기호가 바뀐 종목(야후 시세는 새 기호로) — 2026-10-12 ticker_check로 확인, FISV는 다시 FISV
 N100_DUP = {"GOOG", "FOX", "FOXA"}           # GOOGL과 같은 회사(GOOG) · 폭스 두 종류는 뺌
 UNIVERSE_NOTE = ""      # 결과 페이지에 적을 대상 설명(시작일 기준 목록인지, 지금 목록인지)
 MARCAP_URL = "https://raw.githubusercontent.com/FinanceData/marcap/master/data/marcap-{y}.parquet"   # 날짜별 전 종목 시가총액(공개 데이터, 매일 갱신)
