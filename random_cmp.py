@@ -20,7 +20,8 @@ from datetime import datetime, timedelta, timezone
 MK = os.environ.get("RC_MARKET", "kospi")
 SEED = int(os.environ.get("RC_SEED", "1"))
 N = int(os.environ.get("RC_N", "30"))
-WIN = os.environ.get("RC_WINDOW", "last")          # last = 최근 5년 / random = 최근 10년 안에서 무작위 5년(2026-10-12 추가)
+WIN = os.environ.get("RC_WINDOW", "last")          # last = 최근 5년 / random = 최근 10년 안에서 무작위 5년 / fixed = RC_START부터 5년(하락·횡보장 시험)
+FIX_START = os.environ.get("RC_START", "")
 PREFIX = os.environ.get("RC_PREFIX", "rand")       # 결과 파일 이름 앞부분(rand20 = 20종목 × 무작위 기간 시험)
 END = None                                         # 무작위 기간의 끝날(그 뒤 시세는 안 씀)
 os.environ["BT_UNIVERSE"] = "tickers"
@@ -33,12 +34,19 @@ import backtest as b           # noqa: E402
 import market_report as m      # noqa: E402
 import portfolio as pf         # noqa: E402
 
+if WIN == "fixed":
+    m.START = "2004-01-01"     # 과거 기간은 시세를 더 길게(신호 계산용 앞 1년 포함)
+
 NTH = (1, 5, 10, 15, 20, 25)
 
 
 def window(ix, rnd):
     """시작일(지수 거래일): last = 끝에서 1260번째 날 / random = 10년 전 이후 거래일 중 무작위(끝이 오늘을 넘지 않게)"""
     global END
+    if WIN == "fixed":
+        k = ix.index.searchsorted(pd.Timestamp(FIX_START))
+        END = ix.index[min(k + 1259, len(ix) - 1)]
+        return ix.index[k]
     if WIN != "random":
         return ix.index[-1260]
     lo = ix.index.searchsorted(ix.index[-1] - pd.DateOffset(years=10))
@@ -64,7 +72,7 @@ def pick():
         note = f"{day:%Y-%m-%d} 나스닥100 구성 중 무작위"
         start = day
     rnd.shuffle(lst)
-    return lst[: N + (25 if WIN == "random" else 15)], note, pd.Timestamp(start)          # 시세 실패에 대비해 여유분
+    return lst[: N + (25 if WIN in ("random", "fixed") else 15)], note, pd.Timestamp(start)          # 시세 실패에 대비해 여유분
 
 
 def dca(px, nth):
@@ -118,15 +126,17 @@ def main():
     v1 = {"roc": mt["tot"], "irr": ((eq.iloc[-1] / eq.iloc[0]) ** (1 / yrs) - 1) * 100, "mdd": mt["mdd"], "trades": mt["n"], "cash": mt["cash"]}
     px = pd.DataFrame({c: s["close"] for c, s in states.items()}).reindex(dates).ffill()
     runs = [dca(px, n) for n in NTH]
+    hv = (px / px.bfill().iloc[0]).mean(axis=1) * (1 - pf.BUY_COST)   # 첫날 시세가 없는 종목은 첫 시세로           # 그냥 보유: 첫날 종목마다 같은 금액, 끝까지
+    hold = {"roc": float((hv.iloc[-1] - 1) * 100), "mdd": float(((hv / hv.cummax()) - 1).min() * 100)}
     out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "failed": failed, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
-           "v1": v1, "dca": runs, "secs": round(time.time() - t0),
+           "v1": v1, "dca": runs, "hold": hold, "secs": round(time.time() - t0),
            "run": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
     lo = lambda k: min(r[k] for r in runs if r[k] is not None)
     hi = lambda k: max(r[k] for r in runs if r[k] is not None)
     # 판정 = 넣은 돈 대비(둘 다 끝에 넣은 돈 100, 남은 현금 이자 없음). 연 환산은 V1(첫날 100 기준)과 적립(넣은 시점 기준 IRR)의 기준이 달라 참고만
     out["winner"] = "V1" if v1["roc"] > hi("roc") else "적립" if v1["roc"] < lo("roc") else "비슷(적립 범위 안)"
     os.makedirs("results", exist_ok=True)
-    name = f"{PREFIX}_{MK}_s{SEED}"
+    name = f"{PREFIX}_{MK}_{dates[0]:%Y%m}_s{SEED}" if WIN == "fixed" else f"{PREFIX}_{MK}_s{SEED}"
     with open(f"results/{name}.json", "w", encoding="utf-8") as fp:
         json.dump(out, fp, ensure_ascii=False, indent=0)
     f = lambda v: "-" if v is None else f"{v:+.1f}%"
@@ -134,6 +144,7 @@ def main():
          f"<h1>무작위 {out['n']}종목 · {MK} · 번호 {SEED} · {out['window']}</h1><p>{note} · 더 나은 쪽(넣은 돈 대비): <b>{out['winner']}</b> · 연 환산은 계산 기준이 달라 참고만 · 매수 0.05%, 매도 0.25%(수수료·거래세 대략치)를 반영. 배당·배당세·해외 주식 양도세·환율은 반영 제외</p>",
          "<table><tr><th class='l'>방식</th><th>넣은 돈 대비</th><th>연 환산</th><th>최대 하락</th></tr>"
          f"<tr><td class='l'>V1 (현금 100에서 시작)</td><td>{f(v1['roc'])}</td><td>{f(v1['irr'])}</td><td>{v1['mdd']:.1f}%</td></tr>"
+         f"<tr><td class='l'>그냥 보유 (첫날 같은 금액)</td><td>{f(hold['roc'])}</td><td>-</td><td>{hold['mdd']:.1f}%</td></tr>"
          + "".join(f"<tr><td class='l'>적립 매달 {r['nth']}번째 거래일</td><td>{f(r['roc'])}</td><td>{f(r['irr'])}</td><td>{r['mdd']:.1f}%</td></tr>" for r in runs)
          + "</table><p>종목: " + ", ".join(names) + "</p>"
          + (f"<p>시세 실패로 빠진 후보 {len(failed)}개: " + ", ".join(failed) + "</p>" if failed else "")]

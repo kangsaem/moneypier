@@ -1,0 +1,60 @@
+name: bear-test
+
+# 하락·횡보장 시험(2026-10-12): 코스피 시가총액 상위 300 중 무작위 20종목, 정한 시작일부터 5년 — V1 vs 그냥 보유(+적립)
+# random_cmp.py RC_WINDOW=fixed. 리포트·실전 기록과 무관, 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      starts:
+        description: "시작일 목록(JSON)"
+        default: '["2007-07-02","2011-05-02","2014-01-02","2018-01-02","2021-07-01"]'
+      seeds:
+        description: "번호 목록(JSON)"
+        default: '[1]'
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 4      # 440개 시험(15개)과 합쳐 19개 — 사이트 배포 자리 1개 남김
+      matrix:
+        start: ${{ fromJSON(inputs.starts) }}
+        seed: ${{ fromJSON(inputs.seeds) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 시험
+        run: python random_cmp.py
+        env:
+          RC_MARKET: kospi
+          RC_SEED: ${{ matrix.seed }}
+          RC_N: "20"
+          RC_WINDOW: fixed
+          RC_START: ${{ matrix.start }}
+          RC_PREFIX: bear
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/bear_" > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in $(seq 1 25); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "하락·횡보장 시험 (${{ matrix.start }} ${{ matrix.seed }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $(( (RANDOM % 20) + i * 3 ))
+          done
+          exit 1
