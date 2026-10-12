@@ -793,31 +793,29 @@ chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 
 
 def action_text():
-    """텔레그램 첫 메시지: 지금 할 일만. 국장 리포트 = 국내 종목, 미장 리포트 = 해외 종목(같은 신호를 두 번 보내지 않게)"""
+    """텔레그램: 매수·매도만 짧게(시간외 종가 주문 시간이 촉박해서). 국장 리포트 = 국내 종목, 미장 리포트 = 해외 종목"""
     mine = [r for r in results if m.is_kr(r["code"]) != IS_US]
-    L = [f"[{'미장' if IS_US else '국장'} {kst:%m/%d %H:%M}] 할 일"]
     price = (lambda r: f"${r['close']:,.2f}") if IS_US else (lambda r: f"{r['close']:,.0f}원")
-    any_ = False
-    for key, nm, _ in m.REVIEW:
-        if key not in ("sell",) + m.BUY_KEYS:
-            continue
-        hit = [r for r in mine if key in m.display_keys(r.get("review") or {})]
-        if not hit:
-            continue
-        any_ = True
-        L.append(f"\n{nm} {len(hit)}")
-        for r in hit:
-            extra = f" · LOC {r['close'] * 1.08:,.2f}" if IS_US and key != "sell" else ""
-            L.append(f"· {r['name']} — 종가 {price(r)}{extra}")
-    if not any_:
-        L.append("\n오늘 매수·매도 신호 없음")
-    else:
-        L.append("\n→ " + ("오늘 밤 LOC 예약 (지정가 = 종가 +8%), 매도는 다음 날 종가" if IS_US
-                            else "시간외 종가로 15:40 전 주문 (16:00까지 체결)"))
-    cau = [r["name"] for r in mine if (r.get("review") or {}).get("caution")]
-    if cau:
-        L.append("\n매수보류(보유 유지·추가 매수 없음): " + ", ".join(cau))
-    L.append("\n리포트: https://kangsaem.github.io/moneypier/")
+    buy, sell = [], []
+    for r in mine:
+        keys = m.display_keys(r.get("review") or {})
+        if "sell" in keys:
+            sell.append(f"· {r['name']} {price(r)}")
+        else:
+            k = next((k for k in m.BUY_KEYS if k in keys), None)
+            if k:
+                kind = {"buyb": "바닥", "buy": "눌림", "up": "추세"}[k]
+                loc = f" · LOC {r['close'] * 1.08:,.2f}" if IS_US else ""
+                buy.append(f"· {r['name']} {price(r)} ({kind}){loc}")
+    head = f"[{'미장' if IS_US else '국장'} {kst:%m/%d}]"
+    if not buy and not sell:
+        return f"{head} 매수·매도 없음"
+    L = [f"{head} 매수 {len(buy)} · 매도 {len(sell)}"]
+    if buy:
+        L += ["매수"] + buy
+    if sell:
+        L += ["매도"] + sell
+    L.append("→ " + ("LOC 예약(종가+8%) · 매도는 다음 날 종가" if IS_US else "시간외 종가 15:40 전 주문"))
     return "\n".join(L)
 
 
@@ -835,5 +833,4 @@ def tg_send(text):
 
 
 if token and chat_id:
-    tg_send(guard("텔레그램 할 일", action_text, default=f"{TITLE} {stamp} (할 일 요약 실패)"))   # 1) 지금 할 일
-    tg_send(f"{TITLE} {stamp}\n\n{short_report}")                                                # 2) 전체 요약(예전과 같음)
+    tg_send(guard("텔레그램 매수·매도", action_text, default=f"{TITLE} {stamp} (매수·매도 요약 실패 — 리포트 확인)"))   # 매수·매도만 짧게(2026-10-12)
