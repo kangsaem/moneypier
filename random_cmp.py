@@ -36,6 +36,7 @@ import portfolio as pf         # noqa: E402
 
 if WIN == "fixed":
     m.START = "2004-01-01"     # 과거 기간은 시세를 더 길게(신호 계산용 앞 1년 포함)
+    b.BT_DAYS = 1450           # 신호를 끝날에서 1450거래일 거슬러 계산 → 5년(달력) 전체를 빠짐없이 덮음(앞부분은 시작일로 잘라냄)
 
 NTH = (1, 5, 10, 15, 20, 25)
 
@@ -43,9 +44,9 @@ NTH = (1, 5, 10, 15, 20, 25)
 def window(ix, rnd):
     """시작일(지수 거래일): last = 끝에서 1260번째 날 / random = 10년 전 이후 거래일 중 무작위(끝이 오늘을 넘지 않게)"""
     global END
-    if WIN == "fixed":
+    if WIN == "fixed":                  # 끝날 = 시작일 + 5년(달력) — 옛 지수 자료에 빠진 날이 있어도 기간이 밀리지 않게(2026-10-12 수정)
         k = ix.index.searchsorted(pd.Timestamp(FIX_START))
-        END = ix.index[min(k + 1259, len(ix) - 1)]
+        END = ix.index[k] + pd.DateOffset(years=5) - pd.Timedelta(days=1)
         return ix.index[k]
     if WIN != "random":
         return ix.index[-1260]
@@ -107,11 +108,12 @@ def main():
     for t in cand:
         b.bench_for(t["code"])
     res = dict(b.run_all(cand))
-    states, names, failed = {}, [], []
+    states, names, failed, reasons = {}, [], [], {}
     for i, t in enumerate(cand):
         r = res.get(i)
         if len(states) < N and not (r and r[0] == "ok"):
             failed.append(t["name"])                    # 시세 실패(상장폐지·합병 등) — 다음 후보로 채움
+            reasons[t["name"]] = (r[1] if r else "결과 없음")[:160]   # 실패 이유(로그 없이 보려고, 2026-10-12)
         if r and r[0] == "ok" and len(states) < N:
             stt = r[1][2]
             states[t["code"]] = {"close": stt["close"], "cats": stt["cats"]}
@@ -128,7 +130,7 @@ def main():
     runs = [dca(px, n) for n in NTH]
     hv = (px / px.bfill().iloc[0]).mean(axis=1) * (1 - pf.BUY_COST)   # 첫날 시세가 없는 종목은 첫 시세로           # 그냥 보유: 첫날 종목마다 같은 금액, 끝까지
     hold = {"roc": float((hv.iloc[-1] - 1) * 100), "mdd": float(((hv / hv.cummax()) - 1).min() * 100)}
-    out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "failed": failed, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
+    out = {"market": MK, "seed": SEED, "n": len(states), "names": names, "failed": failed, "fail_reason": reasons, "note": note, "window": f"{dates[0]:%Y-%m-%d}~{dates[-1]:%Y-%m-%d}",
            "v1": v1, "dca": runs, "hold": hold, "secs": round(time.time() - t0),
            "run": (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d %H:%M")}
     lo = lambda k: min(r[k] for r in runs if r[k] is not None)
