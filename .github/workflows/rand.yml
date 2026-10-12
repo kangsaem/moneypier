@@ -7,6 +7,9 @@ on:
       memo:
         description: "메모"
         default: ""
+      markets:
+        description: "시장 (JSON 목록)"
+        default: '["kospi","nasdaq"]'
 
 permissions:
   contents: write
@@ -18,7 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        market: [kospi, nasdaq]
+        market: ${{ fromJSON(inputs.markets) }}
         seed: [1, 2, 3, 4, 5]
     steps:
       - uses: actions/checkout@v4
