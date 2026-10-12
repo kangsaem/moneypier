@@ -1,0 +1,35 @@
+name: ticker-check
+
+# lab-bt 랜덤 후보 시세 확인(ticker_check.py) — 리포트 재실행 없음
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: python ticker_check.py
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          cp results/ticker_check.json /tmp/
+          for i in $(seq 1 25); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            cp /tmp/ticker_check.json results/
+            git add results/ticker_check.json
+            git commit -q -m "후보 종목 시세 확인" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $(( (RANDOM % 20) + i * 3 ))
+          done
+          exit 1
