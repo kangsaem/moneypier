@@ -1,0 +1,51 @@
+name: oos-test
+
+# 다른 기간 시험(oos_cmp.py): V1 vs 같은 종목 적립 vs 지수 3개 — 리포트·실전 기록과 무관, 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      memo:
+        description: "메모"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        universe: [kospi, nasdaq]
+        window: ["2016-01-01:2020-12-31", "2018-01-01:2022-12-31"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 시험
+        run: python oos_cmp.py
+        env:
+          OS_UNIVERSE: ${{ matrix.universe }}
+          OS_WINDOW: ${{ matrix.window }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/oos_" > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in 1 2 3 4 5 6 7 8; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "다른 기간 시험 (${{ matrix.universe }} ${{ matrix.window }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 9))
+          done
+          exit 1
