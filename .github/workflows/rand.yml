@@ -1,0 +1,52 @@
+name: rand-test
+
+# 무작위 30종목 V1 vs 적립(random_cmp.py) — 리포트·실전 기록과 무관, 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      memo:
+        description: "메모"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        market: [kospi, nasdaq]
+        seed: [1, 2, 3, 4, 5]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pip install "nasdaq-100-ticker-history @ git+https://github.com/jmccarrell/n100tickers"   # 그때 나스닥100 목록
+      - name: 시험
+        run: python random_cmp.py
+        env:
+          RC_MARKET: ${{ matrix.market }}
+          RC_SEED: ${{ matrix.seed }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/rand_" > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in 1 2 3 4 5 6 7 8; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "무작위 시험 (${{ matrix.market }} ${{ matrix.seed }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 9))
+          done
+          exit 1
