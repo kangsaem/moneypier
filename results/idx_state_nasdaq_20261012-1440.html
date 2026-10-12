@@ -1,0 +1,88 @@
+<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>지수 상태 시험 · 나스닥100(시작일 기준) · 5년</title><style>body{font:13px/1.5 -apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;margin:16px;color:#222;background:#fff;max-width:1100px}
+h1{font-size:18px}h2{font-size:15px;margin-top:26px}h3{font-size:13px;margin:16px 0 4px}table{border-collapse:collapse;margin:6px 0;font-size:12px}
+td,th{border:1px solid #ddd;padding:3px 6px;text-align:right;white-space:nowrap}th{background:#f4f4f4}td.l,th.l{text-align:left}
+.ok{background:#e6f6ea}.bad{background:#f9d0d0}.note{color:#666;font-size:12px}small{color:#888}
+@media (prefers-color-scheme:dark){body{background:#16171a;color:#ddd}th{background:#24262b}td,th{border-color:#333}.ok{background:#1d3a26}.bad{background:#4a1e1e}.note{color:#999}}</style>
+<h1>지수 상태 시험 · 나스닥100(시작일 기준) · 5년</h1><p class='note'>실행 2026-10-12 14:57 KST · 17분 · 종목 50개 · 지금의 나스닥 대형주 목록(그때 목록을 못 받아 대신 사용 · 생존 편향 있음: ModuleNotFoundError) — 계좌 결과는 지수 대신 &#x27;균등 보유&#x27;와 비교할 것 · 메모: 하락 중 매수 안 함 / 상승추세 매도 무시</p>
+<p class='note'>지수 상태는 날마다 그날까지의 지수 종가로 계산(국내 종목 = 코스피, 해외 = 나스닥). 신호표 숫자 = 신호 뒤 수익 − <b>같은 지수 상태의 아무 날</b> 수익(%p), 초록 = 기대 방향으로 1%p 이상(매수류는 더 오름, 매도류는 덜 오름), 빨강 = 반대. 괄호 = 건수.<br>계좌 = 최종 규칙(보유 종목 수 기준 상한 min(10%, 150÷종목 수)·2회 분할, 손절 8%). A = 지수 하락 중인 날 매수 신호 무시, B = 지수 상승추세인 날 매도·전량 무시(손절은 유지). 신호가 그 뒤에도 켜져 있으면 그때 사고판다.</p>
+<h2>1년 (2025-10-09~)</h2><h3>계좌</h3><table><tr><th class='l'>방식</th><th>총수익</th><th>연평균</th><th>최대 하락</th><th>매매</th><th>승률</th><th>현금 비중</th></tr>
+<tr><td class='l'>기본 V1</td><td class=''>+23.2%</td><td>+23.3%</td><td>-14.9%</td><td>34</td><td>29%</td><td>3%</td></tr>
+<tr><td class='l'>A 하락 중 매수 안 함</td><td class='ok'>+38.2%</td><td>+38.3%</td><td>-13.6%</td><td>30</td><td>30%</td><td>4%</td></tr>
+<tr><td class='l'>B 상승추세 매도 무시</td><td class='ok'>+26.5%</td><td>+26.6%</td><td>-13.7%</td><td>25</td><td>28%</td><td>3%</td></tr>
+<tr><td class='l'>A+B</td><td class='ok'>+37.3%</td><td>+37.4%</td><td>-16.9%</td><td>18</td><td>22%</td><td>4%</td></tr>
+<tr><td class='l'>같은 종목 균등 보유</td><td class=''>+36.0%</td><td>+36.2%</td><td>-11.5%</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td class='l'>지수 보유</td><td class=''>+18.9%</td><td>+18.9%</td><td>-13.2%</td><td>-</td><td>-</td><td>-</td></tr>
+</table><h3>신호표 · 20거래일 뒤 (60거래일 뒤)</h3><table><tr><th class='l'>V1 칸</th><th>하락 중<br><small>1400일</small></th><th>바닥 다짐<br><small>0일</small></th><th>상승추세<br><small>5000일</small></th><th>쉬어감<br><small>2450일</small></th><th>없음<br><small>3750일</small></th><th>전체<br><small>12600일</small></th></tr>
+<tr><td class='l'>매수·바닥/눌림</td><td class='ok'>+7.7%p <small>(+5.3%p) · 19</small></td><td>-</td><td class='bad'>-2.6%p <small>(-0.1%p) · 34</small></td><td class='bad'>-2.1%p <small>(+3.2%p) · 11</small></td><td class=''>+0.6%p <small>(+0.3%p) · 33</small></td><td class='ok'>+1.1%p <small>(+3.0%p) · 97</small></td></tr>
+<tr><td class='l'>매수·추세</td><td class=''>-0.6%p <small>(-9.6%p) · 17</small></td><td>-</td><td class=''>-0.8%p <small>(+4.8%p) · 87</small></td><td class=''>-1.0%p <small>(-3.1%p) · 58</small></td><td class='ok'>+3.9%p <small>(+12.2%p) · 59</small></td><td class=''>+0.3%p <small>(+2.5%p) · 221</small></td></tr>
+<tr><td class='l'>매도·전량</td><td class='bad'>+5.7%p <small>(-) · 1</small></td><td>-</td><td class='bad'>+7.6%p <small>(+3.8%p) · 18</small></td><td class='ok'>-1.8%p <small>(+1.7%p) · 7</small></td><td class='ok'>-7.2%p <small>(-18.5%p) · 9</small></td><td class='bad'>+1.7%p <small>(-4.3%p) · 35</small></td></tr>
+<tr><td class='l'>매수보류</td><td class='bad'>+1.7%p <small>(-) · 6</small></td><td>-</td><td class='bad'>+7.2%p <small>(+6.3%p) · 44</small></td><td class=''>+0.8%p <small>(+1.7%p) · 23</small></td><td class=''>+0.2%p <small>(-3.7%p) · 36</small></td><td class='bad'>+3.0%p <small>(+0.1%p) · 109</small></td></tr>
+<tr><td class='l'>보유</td><td class='bad'>-3.5%p <small>(-11.2%p) · 6</small></td><td>-</td><td class='ok'>+4.5%p <small>(+3.6%p) · 63</small></td><td class=''>+0.2%p <small>(-3.5%p) · 26</small></td><td class='ok'>+2.1%p <small>(+8.3%p) · 38</small></td><td class='ok'>+2.5%p <small>(+2.1%p) · 133</small></td></tr>
+</table><h3>지수 자체에 V1 (1회 20% · 연 추가금 10%)</h3><table><tr><th class='l'>지수 · 방식</th><th>시작 0% 총수익</th><th>최대 하락</th><th>매매</th><th>시작 50% 총수익</th><th>최대 하락</th></tr>
+<tr><td class='l'>코스피 그냥 보유</td><td colspan='2'>+86.1% / -38.6%</td><td>-</td><td colspan='2'></td></tr>
+<tr><td class='l'>코스피 · 기본 V1</td><td>+62.0%</td><td>-38.6%</td><td>0</td><td>+74.9%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · A 하락 중 매수 안 함</td><td>+62.0%</td><td>-38.6%</td><td>0</td><td>+74.9%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · B 상승추세 매도 무시</td><td>+62.0%</td><td>-38.6%</td><td>0</td><td>+74.9%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · A+B</td><td>+62.0%</td><td>-38.6%</td><td>0</td><td>+74.9%</td><td>-38.6%</td></tr>
+<tr><td class='l' colspan='6'><small>코스피 상태 일수: 하락 중 15 · 바닥 다짐 14 · 상승추세 120 · 쉬어감 41 · 없음 42</small></td></tr>
+<tr><td class='l'>나스닥 그냥 보유</td><td colspan='2'>+18.8% / -13.2%</td><td>-</td><td colspan='2'></td></tr>
+<tr><td class='l'>나스닥 · 기본 V1</td><td>-7.6%</td><td>-13.2%</td><td>1</td><td>-7.2%</td><td>-13.8%</td></tr>
+<tr><td class='l'>나스닥 · A 하락 중 매수 안 함</td><td>-7.6%</td><td>-13.2%</td><td>1</td><td>-7.2%</td><td>-13.8%</td></tr>
+<tr><td class='l'>나스닥 · B 상승추세 매도 무시</td><td>-7.6%</td><td>-13.2%</td><td>1</td><td>-7.2%</td><td>-13.8%</td></tr>
+<tr><td class='l'>나스닥 · A+B</td><td>-7.6%</td><td>-13.2%</td><td>1</td><td>-7.2%</td><td>-13.8%</td></tr>
+<tr><td class='l' colspan='6'><small>나스닥 상태 일수: 하락 중 28 · 바닥 다짐 0 · 상승추세 100 · 쉬어감 49 · 없음 75</small></td></tr>
+</table>
+<h2>3년 (2023-10-05~)</h2><h3>계좌</h3><table><tr><th class='l'>방식</th><th>총수익</th><th>연평균</th><th>최대 하락</th><th>매매</th><th>승률</th><th>현금 비중</th></tr>
+<tr><td class='l'>기본 V1</td><td class=''>+66.6%</td><td>+18.6%</td><td>-18.8%</td><td>86</td><td>36%</td><td>1%</td></tr>
+<tr><td class='l'>A 하락 중 매수 안 함</td><td class=''>+65.8%</td><td>+18.4%</td><td>-16.8%</td><td>77</td><td>34%</td><td>2%</td></tr>
+<tr><td class='l'>B 상승추세 매도 무시</td><td class='bad'>+61.9%</td><td>+17.4%</td><td>-18.9%</td><td>48</td><td>31%</td><td>1%</td></tr>
+<tr><td class='l'>A+B</td><td class='bad'>+64.2%</td><td>+18.0%</td><td>-17.5%</td><td>50</td><td>30%</td><td>2%</td></tr>
+<tr><td class='l'>같은 종목 균등 보유</td><td class=''>+136.9%</td><td>+33.4%</td><td>-20.7%</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td class='l'>지수 보유</td><td class=''>+107.0%</td><td>+27.5%</td><td>-24.3%</td><td>-</td><td>-</td><td>-</td></tr>
+</table><h3>신호표 · 20거래일 뒤 (60거래일 뒤)</h3><table><tr><th class='l'>V1 칸</th><th>하락 중<br><small>3450일</small></th><th>바닥 다짐<br><small>0일</small></th><th>상승추세<br><small>16250일</small></th><th>쉬어감<br><small>6250일</small></th><th>없음<br><small>11850일</small></th><th>전체<br><small>37800일</small></th></tr>
+<tr><td class='l'>매수·바닥/눌림</td><td class='ok'>+4.8%p <small>(+8.4%p) · 61</small></td><td>-</td><td class='bad'>-1.7%p <small>(+2.6%p) · 72</small></td><td class=''>-0.9%p <small>(+4.8%p) · 32</small></td><td class='ok'>+2.3%p <small>(+2.9%p) · 84</small></td><td class='ok'>+1.8%p <small>(+6.4%p) · 249</small></td></tr>
+<tr><td class='l'>매수·추세</td><td class='bad'>-2.6%p <small>(-4.6%p) · 43</small></td><td>-</td><td class=''>-0.4%p <small>(+1.1%p) · 390</small></td><td class='ok'>+1.4%p <small>(+0.2%p) · 176</small></td><td class=''>+0.6%p <small>(+1.5%p) · 198</small></td><td class=''>-0.1%p <small>(-0.1%p) · 807</small></td></tr>
+<tr><td class='l'>매도·전량</td><td class='bad'>+6.0%p <small>(-3.6%p) · 2</small></td><td>-</td><td class='bad'>+1.9%p <small>(+0.5%p) · 64</small></td><td class='ok'>-5.3%p <small>(-7.2%p) · 10</small></td><td class='ok'>-2.4%p <small>(-12.0%p) · 22</small></td><td class=''>+0.1%p <small>(-4.4%p) · 98</small></td></tr>
+<tr><td class='l'>매수보류</td><td class=''>-0.5%p <small>(-21.2%p) · 11</small></td><td>-</td><td class='bad'>+1.8%p <small>(+0.8%p) · 122</small></td><td class='bad'>+1.6%p <small>(+3.0%p) · 39</small></td><td class=''>+0.3%p <small>(-1.9%p) · 84</small></td><td class='bad'>+1.1%p <small>(-1.0%p) · 256</small></td></tr>
+<tr><td class='l'>보유</td><td class='bad'>-2.5%p <small>(-7.9%p) · 15</small></td><td>-</td><td class='ok'>+2.1%p <small>(+1.9%p) · 212</small></td><td class=''>-0.5%p <small>(-2.5%p) · 59</small></td><td class=''>+0.7%p <small>(+2.3%p) · 143</small></td><td class='ok'>+1.0%p <small>(+0.6%p) · 429</small></td></tr>
+</table><h3>지수 자체에 V1 (1회 20% · 연 추가금 10%)</h3><table><tr><th class='l'>지수 · 방식</th><th>시작 0% 총수익</th><th>최대 하락</th><th>매매</th><th>시작 50% 총수익</th><th>최대 하락</th></tr>
+<tr><td class='l'>코스피 그냥 보유</td><td colspan='2'>+179.6% / -38.6%</td><td>-</td><td colspan='2'></td></tr>
+<tr><td class='l'>코스피 · 기본 V1</td><td>+119.6%</td><td>-38.6%</td><td>1</td><td>+173.0%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · A 하락 중 매수 안 함</td><td>+119.6%</td><td>-38.6%</td><td>1</td><td>+173.0%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · B 상승추세 매도 무시</td><td>+119.6%</td><td>-38.6%</td><td>1</td><td>+173.0%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · A+B</td><td>+119.6%</td><td>-38.6%</td><td>1</td><td>+173.0%</td><td>-38.6%</td></tr>
+<tr><td class='l' colspan='6'><small>코스피 상태 일수: 하락 중 61 · 바닥 다짐 14 · 상승추세 244 · 쉬어감 86 · 없음 315</small></td></tr>
+<tr><td class='l'>나스닥 그냥 보유</td><td colspan='2'>+106.9% / -24.3%</td><td>-</td><td colspan='2'></td></tr>
+<tr><td class='l'>나스닥 · 기본 V1</td><td>-7.6%</td><td>-26.8%</td><td>3</td><td>+22.6%</td><td>-24.3%</td></tr>
+<tr><td class='l'>나스닥 · A 하락 중 매수 안 함</td><td>-12.9%</td><td>-31.0%</td><td>2</td><td>+22.6%</td><td>-24.3%</td></tr>
+<tr><td class='l'>나스닥 · B 상승추세 매도 무시</td><td>-7.6%</td><td>-26.8%</td><td>3</td><td>+22.6%</td><td>-24.3%</td></tr>
+<tr><td class='l'>나스닥 · A+B</td><td>-12.9%</td><td>-31.0%</td><td>2</td><td>+22.6%</td><td>-24.3%</td></tr>
+<tr><td class='l' colspan='6'><small>나스닥 상태 일수: 하락 중 69 · 바닥 다짐 0 · 상승추세 325 · 쉬어감 125 · 없음 237</small></td></tr>
+</table>
+<h2>5년 (2021-10-04~)</h2><h3>계좌</h3><table><tr><th class='l'>방식</th><th>총수익</th><th>연평균</th><th>최대 하락</th><th>매매</th><th>승률</th><th>현금 비중</th></tr>
+<tr><td class='l'>기본 V1</td><td class=''>+95.3%</td><td>+14.3%</td><td>-29.0%</td><td>154</td><td>31%</td><td>2%</td></tr>
+<tr><td class='l'>A 하락 중 매수 안 함</td><td class='ok'>+135.1%</td><td>+18.7%</td><td>-26.7%</td><td>104</td><td>31%</td><td>3%</td></tr>
+<tr><td class='l'>B 상승추세 매도 무시</td><td class='bad'>+93.2%</td><td>+14.1%</td><td>-24.4%</td><td>102</td><td>24%</td><td>1%</td></tr>
+<tr><td class='l'>A+B</td><td class='ok'>+125.6%</td><td>+17.7%</td><td>-23.4%</td><td>88</td><td>24%</td><td>2%</td></tr>
+<tr><td class='l'>같은 종목 균등 보유</td><td class=''>+166.3%</td><td>+21.7%</td><td>-29.6%</td><td>-</td><td>-</td><td>-</td></tr>
+<tr><td class='l'>지수 보유</td><td class=''>+92.0%</td><td>+13.9%</td><td>-36.4%</td><td>-</td><td>-</td><td>-</td></tr>
+</table><h3>신호표 · 20거래일 뒤 (60거래일 뒤)</h3><table><tr><th class='l'>V1 칸</th><th>하락 중<br><small>8245일</small></th><th>바닥 다짐<br><small>6150일</small></th><th>상승추세<br><small>20133일</small></th><th>쉬어감<br><small>7590일</small></th><th>없음<br><small>20826일</small></th><th>전체<br><small>62944일</small></th></tr>
+<tr><td class='l'>매수·바닥/눌림</td><td class='ok'>+3.4%p <small>(+4.2%p) · 154</small></td><td class=''>-1.0%p <small>(+7.9%p) · 14</small></td><td class=''>-1.0%p <small>(+2.1%p) · 83</small></td><td class=''>+0.3%p <small>(+6.6%p) · 35</small></td><td class='ok'>+1.9%p <small>(+2.7%p) · 126</small></td><td class='ok'>+2.1%p <small>(+5.1%p) · 412</small></td></tr>
+<tr><td class='l'>매수·추세</td><td class='bad'>-1.8%p <small>(-1.7%p) · 84</small></td><td class=''>-0.6%p <small>(-0.9%p) · 148</small></td><td class=''>-0.7%p <small>(-0.0%p) · 476</small></td><td class=''>+0.7%p <small>(-0.9%p) · 237</small></td><td class=''>-0.1%p <small>(+1.4%p) · 321</small></td><td class=''>-0.5%p <small>(-0.6%p) · 1266</small></td></tr>
+<tr><td class='l'>매도·전량</td><td class='bad'>+6.9%p <small>(+3.1%p) · 2</small></td><td class='bad'>+1.1%p <small>(-1.2%p) · 19</small></td><td class='bad'>+1.1%p <small>(-0.0%p) · 80</small></td><td class='ok'>-4.2%p <small>(-6.7%p) · 16</small></td><td class='ok'>-1.2%p <small>(-7.3%p) · 29</small></td><td class=''>-0.1%p <small>(-3.0%p) · 146</small></td></tr>
+<tr><td class='l'>매수보류</td><td class='bad'>+1.2%p <small>(-10.5%p) · 13</small></td><td class='ok'>-1.9%p <small>(-8.8%p) · 56</small></td><td class='bad'>+1.6%p <small>(+0.6%p) · 159</small></td><td class=''>+0.4%p <small>(+3.5%p) · 47</small></td><td class=''>+1.0%p <small>(+0.4%p) · 134</small></td><td class=''>+0.5%p <small>(-1.3%p) · 409</small></td></tr>
+<tr><td class='l'>보유</td><td class=''>-0.3%p <small>(-3.8%p) · 40</small></td><td class='ok'>+1.9%p <small>(+3.7%p) · 56</small></td><td class='ok'>+2.0%p <small>(+1.1%p) · 276</small></td><td class=''>-0.0%p <small>(-1.5%p) · 75</small></td><td class=''>-0.4%p <small>(+1.0%p) · 243</small></td><td class=''>+0.8%p <small>(+0.3%p) · 690</small></td></tr>
+</table><h3>지수 자체에 V1 (1회 20% · 연 추가금 10%)</h3><table><tr><th class='l'>지수 · 방식</th><th>시작 0% 총수익</th><th>최대 하락</th><th>매매</th><th>시작 50% 총수익</th><th>최대 하락</th></tr>
+<tr><td class='l'>코스피 그냥 보유</td><td colspan='2'>+126.9% / -38.6%</td><td>-</td><td colspan='2'></td></tr>
+<tr><td class='l'>코스피 · 기본 V1</td><td>+184.1%</td><td>-38.6%</td><td>1</td><td>+169.4%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · A 하락 중 매수 안 함</td><td>+186.0%</td><td>-38.6%</td><td>1</td><td>+173.9%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · B 상승추세 매도 무시</td><td>+184.1%</td><td>-38.6%</td><td>1</td><td>+169.4%</td><td>-38.6%</td></tr>
+<tr><td class='l'>코스피 · A+B</td><td>+186.0%</td><td>-38.6%</td><td>1</td><td>+173.9%</td><td>-38.6%</td></tr>
+<tr><td class='l' colspan='6'><small>코스피 상태 일수: 하락 중 147 · 바닥 다짐 93 · 상승추세 282 · 쉬어감 115 · 없음 577</small></td></tr>
+<tr><td class='l'>나스닥 그냥 보유</td><td colspan='2'>+91.9% / -36.4%</td><td>-</td><td colspan='2'></td></tr>
+<tr><td class='l'>나스닥 · 기본 V1</td><td>-6.1%</td><td>-26.8%</td><td>4</td><td>-10.9%</td><td>-26.8%</td></tr>
+<tr><td class='l'>나스닥 · A 하락 중 매수 안 함</td><td>-12.9%</td><td>-31.0%</td><td>2</td><td>-17.5%</td><td>-31.0%</td></tr>
+<tr><td class='l'>나스닥 · B 상승추세 매도 무시</td><td>-6.1%</td><td>-26.8%</td><td>4</td><td>-10.9%</td><td>-26.8%</td></tr>
+<tr><td class='l'>나스닥 · A+B</td><td>-12.9%</td><td>-31.0%</td><td>2</td><td>-17.5%</td><td>-31.0%</td></tr>
+<tr><td class='l' colspan='6'><small>나스닥 상태 일수: 하락 중 165 · 바닥 다짐 123 · 상승추세 403 · 쉬어감 152 · 없음 417</small></td></tr>
+</table>
