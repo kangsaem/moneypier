@@ -1,0 +1,52 @@
+name: data-check
+
+# 시세 출처 교차 검증(data_check.py): 리포트 출처 vs 네이버·야후·Stooq·FDR — 종가·거래량·날짜·신호 차이 (약 20~40분)
+# 결과는 results/data_check_<실행시각>.html·json(최신본 data_check.html)으로 커밋. 리포트는 다시 돌리지 않음
+# (장중에 daily-report를 돌리면 미완성 봉으로 신호 기록이 남으므로 — 다음 예약 실행 때 docs/로 함께 올라감).
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "신호 비교 기간(거래일, 252 ≈ 1년)"
+        default: "252"
+      memo:
+        description: "메모"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 검증
+        run: DC_VERSION=$(TZ=Asia/Seoul date +%Y%m%d-%H%M) python data_check.py
+        env:
+          DC_DAYS: ${{ inputs.days }}
+          DC_MEMO: ${{ inputs.memo }}
+          TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in 1 2 3 4 5; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "시세 출처 검증 ${{ inputs.memo }}" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 7))
+          done
+          exit 1
