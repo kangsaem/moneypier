@@ -1,0 +1,221 @@
+<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>시세 이상치 점검</title><style>body{font:13px/1.5 -apple-system,'Apple SD Gothic Neo','Noto Sans KR',sans-serif;margin:16px;color:#222;background:#fff}
+h1{font-size:18px}h2{font-size:15px;margin-top:26px}table{border-collapse:collapse;margin:8px 0;font-size:12px}
+td,th{border:1px solid #ddd;padding:3px 6px;text-align:right;white-space:nowrap}th{background:#f4f4f4}td.l,th.l{text-align:left;white-space:normal}
+.bad{background:#f9d0d0}.ok{background:#e6f6ea}.unk{background:#eee}.taint{color:#c0392b;font-weight:600}.note{color:#666;font-size:12px;max-width:900px}
+@media (prefers-color-scheme:dark){body{background:#16171a;color:#ddd}th{background:#24262b}td,th{border-color:#333}.bad{background:#4a1e1e}.ok{background:#1d3a26}.unk{background:#2a2a2a}.note{color:#999}.taint{color:#ff8a7a}}</style>
+<h1>시세 이상치 점검</h1><p class='note'>실행 2026-10-12 11:29 KST · 2분 · 대상 126종목(실패 0) · 의심 날이 있는 종목 51 · <span class='taint'>기준 오염 의심</span>(이격도 최대·최소, 52주 고점·저점이 의심 날 ±3거래일) 19종목 · 독립 출처 확인 82건: 확인 불가 82 · 메모: 첫 이상치 점검</p>
+<p class='note'>의심 날 기준: 하루 ±10% 이상 움직였다가 다음 날 제자리(이틀 합계 ±2% 이내), 하루 ±30%(국내)·±40%(해외) 초과, 고가·저가·종가 모순, 5거래일 이상 같은 종가. 독립 출처 = 국내 KRX 공식(개별 종목만, ETF는 확인 불가), 해외 나스닥 공식 사이트. '같음'이면 실제로 일어난 움직임(데이터 문제 아님), '다름'이면 데이터 오류 가능성이 큼.</p>
+<h2>종목별</h2><table><tr><th class='l'>종목</th><th class='l'>묶음</th><th>봉 수</th><th>의심 날</th><th class='l'>기준 오염 의심</th><th>가격 모순</th><th>같은 종가 구간</th><th>거래량 0</th><th>빠진 날</th></tr>
+<tr><td class='l'>ADI <small>ADI</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>CSCO <small>CSCO</small></td><td class='l'>나스닥100</td><td>3014</td><td>2</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>CTAS <small>CTAS</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KLAC <small>KLAC</small></td><td class='l'>나스닥100</td><td>3014</td><td>2</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>MU <small>MU</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>PDD <small>PDD</small></td><td class='l'>나스닥100</td><td>2063</td><td>2</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TSLA <small>TSLA</small></td><td class='l'>나스닥100</td><td>3014</td><td>2</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TXN <small>TXN</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>태광 <small>023160</small></td><td class='l'>내 종목</td><td>2942</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KODEX 은행 <small>091170</small></td><td class='l'>내 종목</td><td>2942</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>후성 <small>093370</small></td><td class='l'>내 종목</td><td>2942</td><td>4</td><td class='l taint'>이격도 최대, 52주 고점</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td class='l'>내 종목</td><td>2783</td><td>6</td><td class='l taint'>이격도 최대</td><td>0</td><td>1</td><td>23</td><td>0</td></tr>
+<tr><td class='l'>매러선 페트롤리엄 <small>MPC</small></td><td class='l'>내 종목</td><td>3014</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>한화솔루션 <small>009830</small></td><td class='l'>코스피50</td><td>2942</td><td>3</td><td class='l taint'>이격도 최소</td><td>0</td><td>1</td><td>23</td><td>0</td></tr>
+<tr><td class='l'>삼성에스디에스 <small>018260</small></td><td class='l'>코스피50</td><td>2920</td><td>1</td><td class='l taint'>이격도 최대, 52주 고점</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>두산중공업 <small>034020</small></td><td class='l'>코스피50</td><td>2942</td><td>2</td><td class='l taint'>이격도 최대</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SK <small>034730</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>하나금융지주 <small>086790</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>우리금융지주 <small>316140</small></td><td class='l'>코스피50</td><td>1880</td><td>1</td><td class='l taint'>이격도 최소</td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ADBE <small>ADBE</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>AMD <small>AMD</small></td><td class='l'>나스닥100</td><td>3014</td><td>4</td><td class='l taint'></td><td>0</td><td>0</td><td>1</td><td>0</td></tr>
+<tr><td class='l'>BKNG <small>BKNG</small></td><td class='l'>나스닥100</td><td>3014</td><td>2</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>HON <small>HON</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>INTC <small>INTC</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>MELI <small>MELI</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>PEP <small>PEP</small></td><td class='l'>나스닥100</td><td>3014</td><td>3</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>QCOM <small>QCOM</small></td><td class='l'>나스닥100</td><td>3014</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TMUS <small>TMUS</small></td><td class='l'>나스닥100</td><td>3014</td><td>2</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KODEX 보험 <small>140700</small></td><td class='l'>내 종목</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>1</td><td>0</td></tr>
+<tr><td class='l'>LS머트리얼즈 <small>417200</small></td><td class='l'>내 종목</td><td>686</td><td>2</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>필립스 66 <small>PSX</small></td><td class='l'>내 종목</td><td>3014</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>타이드워터 <small>TDW</small></td><td class='l'>내 종목</td><td>3014</td><td>3</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>삼성화재 <small>000810</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LG <small>003550</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>1</td><td>18</td><td>0</td></tr>
+<tr><td class='l'>포스코케미칼 <small>003670</small></td><td class='l'>코스피50</td><td>2942</td><td>2</td><td class='l taint'></td><td>0</td><td>1</td><td>11</td><td>0</td></tr>
+<tr><td class='l'>삼성전자 <small>005930</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>3</td><td>0</td></tr>
+<tr><td class='l'>삼성전자우 <small>005935</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>3</td><td>0</td></tr>
+<tr><td class='l'>삼성전기 <small>009150</small></td><td class='l'>코스피50</td><td>2942</td><td>3</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>한국조선해양 <small>009540</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>1</td><td>25</td><td>0</td></tr>
+<tr><td class='l'>고려아연 <small>010130</small></td><td class='l'>코스피50</td><td>2942</td><td>2</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>S-Oil <small>010950</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>1</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>HMM <small>011200</small></td><td class='l'>코스피50</td><td>2942</td><td>2</td><td class='l taint'></td><td>0</td><td>2</td><td>24</td><td>0</td></tr>
+<tr><td class='l'>SK텔레콤 <small>017670</small></td><td class='l'>코스피50</td><td>2942</td><td>2</td><td class='l taint'></td><td>0</td><td>1</td><td>24</td><td>0</td></tr>
+<tr><td class='l'>한온시스템 <small>018880</small></td><td class='l'>코스피50</td><td>2942</td><td>2</td><td class='l taint'></td><td>0</td><td>1</td><td>14</td><td>0</td></tr>
+<tr><td class='l'>KT&G <small>033780</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LG전자 <small>066570</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>아모레퍼시픽 <small>090430</small></td><td class='l'>코스피50</td><td>2942</td><td>1</td><td class='l taint'></td><td>0</td><td>1</td><td>10</td><td>0</td></tr>
+<tr><td class='l'>삼성바이오로직스 <small>207940</small></td><td class='l'>코스피50</td><td>2430</td><td>2</td><td class='l taint'></td><td>0</td><td>2</td><td>35</td><td>0</td></tr>
+<tr><td class='l'>넷마블 <small>251270</small></td><td class='l'>코스피50</td><td>2307</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SK바이오팜 <small>326030</small></td><td class='l'>코스피50</td><td>1537</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SK아이이테크놀로지 <small>361610</small></td><td class='l'>코스피50</td><td>1326</td><td>1</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>AAPL <small>AAPL</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ABNB <small>ABNB</small></td><td class='l'>나스닥100</td><td>1464</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ADP <small>ADP</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>AMAT <small>AMAT</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>AMGN <small>AMGN</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>AMZN <small>AMZN</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ASML <small>ASML</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>AVGO <small>AVGO</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>CDNS <small>CDNS</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>CMCSA <small>CMCSA</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>COST <small>COST</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>CRWD <small>CRWD</small></td><td class='l'>나스닥100</td><td>1843</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>CSX <small>CSX</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>FTNT <small>FTNT</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>GILD <small>GILD</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>GOOGL <small>GOOGL</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>INTU <small>INTU</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ISRG <small>ISRG</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LRCX <small>LRCX</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>MAR <small>MAR</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>MDLZ <small>MDLZ</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>META <small>META</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>MNST <small>MNST</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>MSFT <small>MSFT</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>NFLX <small>NFLX</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>NVDA <small>NVDA</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ORLY <small>ORLY</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>PANW <small>PANW</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>PYPL <small>PYPL</small></td><td class='l'>나스닥100</td><td>2834</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>REGN <small>REGN</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SBUX <small>SBUX</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SNPS <small>SNPS</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>VRTX <small>VRTX</small></td><td class='l'>나스닥100</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>RISE 삼성전자SK하이닉스채권혼합50 <small>0162Z0</small></td><td class='l'>내 종목</td><td>152</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SOL AI반도체TOP2플러스 <small>0167A0</small></td><td class='l'>내 종목</td><td>140</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SK이노베이션 <small>096770</small></td><td class='l'>내 종목</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TIGER 미국나스닥100 <small>133690.KS</small></td><td class='l'>내 종목</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TIGER 구리실물 <small>160580.KS</small></td><td class='l'>내 종목</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>9</td><td>0</td></tr>
+<tr><td class='l'>TIGER 화장품 <small>228790</small></td><td class='l'>내 종목</td><td>2699</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KODEX 3대농산물선물(H) <small>271060.KS</small></td><td class='l'>내 종목</td><td>2286</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KODEX 200미국채혼합50 <small>284430</small></td><td class='l'>내 종목</td><td>2171</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TIGER 미국S&P500 <small>360750.KS</small></td><td class='l'>내 종목</td><td>1511</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LG에너지솔루션 <small>373220</small></td><td class='l'>내 종목</td><td>1147</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KODEX 미국나스닥100 <small>379810.KS</small></td><td class='l'>내 종목</td><td>1347</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>ACE 미국S&P500미국채혼합50액티브 <small>438080.KS</small></td><td class='l'>내 종목</td><td>1005</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>TIGER TSMC파운드리밸류체인 <small>453950.KS</small></td><td class='l'>내 종목</td><td>856</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KIWOOM 미국원유에너지기업 <small>474800.KS</small></td><td class='l'>내 종목</td><td>664</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KODEX AI전력핵심설비 <small>487240</small></td><td class='l'>내 종목</td><td>547</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>히말라야 쉬핑 <small>HSHP</small></td><td class='l'>내 종목</td><td>885</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>헌츠맨 <small>HUN</small></td><td class='l'>내 종목</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>Teucrium Wheat Fund <small>WEAT</small></td><td class='l'>내 종목</td><td>3014</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>기아 <small>000270</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SK하이닉스 <small>000660</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>대한항공 <small>003490</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>현대차 <small>005380</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>POSCO <small>005490</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>삼성SDI <small>006400</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>롯데케미칼 <small>011170</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>현대모비스 <small>012330</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>한국전력 <small>015760</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>삼성물산 <small>028260</small></td><td class='l'>코스피50</td><td>2896</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KT <small>030200</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>삼성생명 <small>032830</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LG디스플레이 <small>034220</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>NAVER <small>035420</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>3</td><td>0</td></tr>
+<tr><td class='l'>카카오 <small>035720</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>3</td><td>0</td></tr>
+<tr><td class='l'>엔씨소프트 <small>036570</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LG생활건강 <small>051900</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>LG화학 <small>051910</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>신한지주 <small>055550</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>셀트리온 <small>068270</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>현대글로비스 <small>086280</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>KB금융 <small>105560</small></td><td class='l'>코스피50</td><td>2942</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>SK바이오사이언스 <small>302440</small></td><td class='l'>코스피50</td><td>1363</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+<tr><td class='l'>하이브 <small>352820</small></td><td class='l'>코스피50</td><td>1467</td><td>0</td><td class='l taint'></td><td>0</td><td>0</td><td>0</td><td>0</td></tr>
+</table>
+<h2>의심 날 목록</h2><table><tr><th class='l'>종목</th><th>날짜</th><th class='l'>사유</th><th>전날</th><th>그날</th><th>다음 날</th><th>독립 출처</th><th>그쪽 종가</th></tr>
+<tr><td class='l'>ADI <small>ADI</small></td><td>2020-03-17</td><td class='l'>튀었다 복귀 +14.7% → -13.8%</td><td>83.21</td><td>95.44</td><td>82.23</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>CSCO <small>CSCO</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -10.4% → +13.4%</td><td>37.05</td><td>33.20</td><td>37.64</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>CSCO <small>CSCO</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +13.4% → -10.4%</td><td>33.20</td><td>37.64</td><td>33.71</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>CTAS <small>CTAS</small></td><td>2020-03-23</td><td class='l'>튀었다 복귀 -10.3% → +10.7%</td><td>43.77</td><td>39.26</td><td>43.45</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>KLAC <small>KLAC</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -13.5% → +16.0%</td><td>14.49</td><td>12.54</td><td>14.54</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>KLAC <small>KLAC</small></td><td>2020-03-17</td><td class='l'>튀었다 복귀 +15.5% → -11.8%</td><td>12.95</td><td>14.96</td><td>13.20</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>MU <small>MU</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -11.2% → +10.8%</td><td>43.72</td><td>38.81</td><td>42.99</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>PDD <small>PDD</small></td><td>2021-03-08</td><td class='l'>튀었다 복귀 -12.3% → +12.0%</td><td>156.82</td><td>137.60</td><td>154.18</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>PDD <small>PDD</small></td><td>2022-03-16</td><td class='l'>극단 등락 +56.1%</td><td>27.31</td><td>42.62</td><td>39.37</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>TSLA <small>TSLA</small></td><td>2018-09-28</td><td class='l'>튀었다 복귀 -13.9% → +17.3%</td><td>20.50</td><td>17.65</td><td>20.71</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>TSLA <small>TSLA</small></td><td>2020-03-18</td><td class='l'>튀었다 복귀 -16.0% → +18.4%</td><td>28.68</td><td>24.08</td><td>28.51</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>TXN <small>TXN</small></td><td>2020-03-16</td><td class='l'>튀었다 복귀 -11.8% → +13.5%</td><td>106.04</td><td>93.50</td><td>106.15</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>태광 <small>023160</small></td><td>2020-03-19</td><td class='l'>튀었다 복귀 -15.6% → +19.6%</td><td>6,720.00</td><td>5,670.00</td><td>6,780.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>KODEX 은행 <small>091170</small></td><td>2020-03-20</td><td class='l'>튀었다 복귀 +10.7% → -8.6%</td><td>2,866.00</td><td>3,172.00</td><td>2,900.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>후성 <small>093370</small></td><td>2020-03-19</td><td class='l'>튀었다 복귀 -14.0% → +14.7%</td><td>5,234.00</td><td>4,502.00</td><td>5,166.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>후성 <small>093370</small></td><td>2026-05-14</td><td class='l'>튀었다 복귀 +13.2% → -13.2%</td><td>12,030.00</td><td>13,620.00</td><td>11,820.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>후성 <small>093370</small></td><td>2026-06-15</td><td class='l'>튀었다 복귀 +17.8% → -14.3%</td><td>19,010.00</td><td>22,400.00</td><td>19,200.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>후성 <small>093370</small></td><td>2026-06-19</td><td class='l'>튀었다 복귀 -10.1% → +9.8%</td><td>18,840.00</td><td>16,940.00</td><td>18,600.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td>2015-10-19</td><td class='l'>같은 종가 20일 연속</td><td>14.00</td><td>14.00</td><td>13.90</td><td class=''>-</td><td></td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td>2016-07-14</td><td class='l'>극단 등락 +41.4%</td><td>3.72</td><td>5.26</td><td>5.19</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td>2017-09-08</td><td class='l'>극단 등락 +72.3%</td><td>6.85</td><td>11.80</td><td>11.65</td><td class=''>-</td><td></td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td>2020-03-18</td><td class='l'>튀었다 복귀 -14.5% → +17.5%</td><td>7.54</td><td>6.45</td><td>7.58</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td>2020-04-28</td><td class='l'>극단 등락 +48.9%</td><td>10.42</td><td>15.52</td><td>15.59</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>쿠라 온콜로지 <small>KURA</small></td><td>2024-01-24</td><td class='l'>극단 등락 +46.1%</td><td>13.42</td><td>19.61</td><td>18.73</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>매러선 페트롤리엄 <small>MPC</small></td><td>2020-03-20</td><td class='l'>튀었다 복귀 +13.3% → -12.3%</td><td>16.72</td><td>18.95</td><td>16.62</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>한화솔루션 <small>009830</small></td><td>2020-03-20</td><td class='l'>튀었다 복귀 +10.5% → -10.4%</td><td>10,835.00</td><td>11,975.00</td><td>10,733.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>한화솔루션 <small>009830</small></td><td>2020-03-23</td><td class='l'>튀었다 복귀 -10.4% → +10.0%</td><td>11,975.00</td><td>10,733.00</td><td>11,804.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>한화솔루션 <small>009830</small></td><td>2023-03-30</td><td class='l'>같은 종가 24일 연속</td><td>48,954.00</td><td>48,954.00</td><td>50,652.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성에스디에스 <small>018260</small></td><td>2026-06-01</td><td class='l'>튀었다 복귀 +21.1% → -17.0%</td><td>299,000.00</td><td>362,000.00</td><td>300,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>두산중공업 <small>034020</small></td><td>2020-07-21</td><td class='l'>극단 등락 +30.0%</td><td>4,876.00</td><td>6,339.00</td><td>7,608.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>두산중공업 <small>034020</small></td><td>2021-06-07</td><td class='l'>튀었다 복귀 +27.5% → -20.8%</td><td>24,226.00</td><td>30,886.00</td><td>24,468.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>SK <small>034730</small></td><td>2020-03-20</td><td class='l'>튀었다 복귀 +13.6% → -11.1%</td><td>107,000.00</td><td>121,500.00</td><td>108,000.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>하나금융지주 <small>086790</small></td><td>2020-03-20</td><td class='l'>튀었다 복귀 +11.3% → -10.7%</td><td>18,550.00</td><td>20,650.00</td><td>18,450.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>우리금융지주 <small>316140</small></td><td>2020-03-20</td><td class='l'>튀었다 복귀 +13.4% → -11.8%</td><td>6,560.00</td><td>7,440.00</td><td>6,560.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>ADBE <small>ADBE</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +17.7% → -14.7%</td><td>285.00</td><td>335.50</td><td>286.03</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>AMD <small>AMD</small></td><td>2016-04-22</td><td class='l'>극단 등락 +52.3%</td><td>2.62</td><td>3.99</td><td>3.45</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>AMD <small>AMD</small></td><td>2017-05-16</td><td class='l'>튀었다 복귀 +11.6% → -12.2%</td><td>11.42</td><td>12.75</td><td>11.20</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>AMD <small>AMD</small></td><td>2018-12-03</td><td class='l'>튀었다 복귀 +11.3% → -10.9%</td><td>21.30</td><td>23.71</td><td>21.12</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>AMD <small>AMD</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +12.5% → -11.8%</td><td>39.01</td><td>43.90</td><td>38.71</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>BKNG <small>BKNG</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -11.2% → +11.0%</td><td>57.70</td><td>51.22</td><td>56.85</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>BKNG <small>BKNG</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +11.0% → -9.3%</td><td>51.22</td><td>56.85</td><td>51.59</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>HON <small>HON</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +10.8% → -9.5%</td><td>133.30</td><td>147.69</td><td>133.71</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>INTC <small>INTC</small></td><td>2026-06-05</td><td class='l'>튀었다 복귀 -11.3% → +11.2%</td><td>111.78</td><td>99.17</td><td>110.27</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>MELI <small>MELI</small></td><td>2018-12-24</td><td class='l'>튀었다 복귀 -10.1% → +9.4%</td><td>286.56</td><td>257.52</td><td>281.81</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>PEP <small>PEP</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -11.1% → +10.5%</td><td>129.75</td><td>115.34</td><td>127.45</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>PEP <small>PEP</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +10.5% → -11.3%</td><td>115.34</td><td>127.45</td><td>113.09</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>PEP <small>PEP</small></td><td>2020-03-16</td><td class='l'>튀었다 복귀 -11.3% → +12.9%</td><td>127.45</td><td>113.09</td><td>127.72</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>QCOM <small>QCOM</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -10.2% → +13.1%</td><td>74.62</td><td>67.02</td><td>75.81</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>TMUS <small>TMUS</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -11.2% → +11.2%</td><td>86.45</td><td>76.76</td><td>85.39</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>TMUS <small>TMUS</small></td><td>2020-03-13</td><td class='l'>튀었다 복귀 +11.2% → -10.4%</td><td>76.76</td><td>85.39</td><td>76.53</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>KODEX 보험 <small>140700</small></td><td>2026-03-04</td><td class='l'>튀었다 복귀 -10.0% → +9.0%</td><td>15,762.00</td><td>14,180.00</td><td>15,454.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>LS머트리얼즈 <small>417200</small></td><td>2023-12-13</td><td class='l'>극단 등락 +30.0%</td><td>24,000.00</td><td>31,200.00</td><td>29,850.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>LS머트리얼즈 <small>417200</small></td><td>2026-06-26</td><td class='l'>튀었다 복귀 -10.0% → +11.9%</td><td>14,930.00</td><td>13,430.00</td><td>15,030.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>필립스 66 <small>PSX</small></td><td>2020-03-12</td><td class='l'>튀었다 복귀 -15.9% → +17.2%</td><td>55.15</td><td>46.40</td><td>54.36</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>타이드워터 <small>TDW</small></td><td>2016-02-02</td><td class='l'>튀었다 복귀 -12.3% → +11.7%</td><td>162.90</td><td>142.90</td><td>159.68</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>타이드워터 <small>TDW</small></td><td>2016-10-24</td><td class='l'>극단 등락 -44.1%</td><td>96.45</td><td>53.87</td><td>54.84</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>타이드워터 <small>TDW</small></td><td>2017-06-22</td><td class='l'>튀었다 복귀 +12.3% → -11.0%</td><td>26.13</td><td>29.35</td><td>26.13</td><td class='unk'>확인 불가</td><td>자료 없음</td></tr>
+<tr><td class='l'>삼성화재 <small>000810</small></td><td>2025-12-11</td><td class='l'>튀었다 복귀 +28.3% → -22.3%</td><td>491,000.00</td><td>630,000.00</td><td>489,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>LG <small>003550</small></td><td>2021-05-26</td><td class='l'>같은 종가 19일 연속</td><td>119,500.00</td><td>119,500.00</td><td>108,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>포스코케미칼 <small>003670</small></td><td>2015-04-30</td><td class='l'>같은 종가 12일 연속</td><td>12,464.00</td><td>12,464.00</td><td>11,782.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>포스코케미칼 <small>003670</small></td><td>2026-10-06</td><td class='l'>튀었다 복귀 +11.9% → -9.0%</td><td>186,800.00</td><td>209,000.00</td><td>190,100.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성전자 <small>005930</small></td><td>2026-03-04</td><td class='l'>튀었다 복귀 -11.7% → +11.3%</td><td>195,100.00</td><td>172,200.00</td><td>191,600.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성전자우 <small>005935</small></td><td>2026-03-04</td><td class='l'>튀었다 복귀 -11.1% → +12.0%</td><td>129,200.00</td><td>114,800.00</td><td>128,600.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성전기 <small>009150</small></td><td>2020-03-19</td><td class='l'>튀었다 복귀 -11.6% → +12.5%</td><td>96,900.00</td><td>85,700.00</td><td>96,400.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성전기 <small>009150</small></td><td>2026-03-04</td><td class='l'>튀었다 복귀 -11.4% → +10.8%</td><td>409,000.00</td><td>362,500.00</td><td>401,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성전기 <small>009150</small></td><td>2026-07-15</td><td class='l'>튀었다 복귀 +12.1% → -9.6%</td><td>1,260,000.00</td><td>1,413,000.00</td><td>1,277,000.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>한국조선해양 <small>009540</small></td><td>2017-05-08</td><td class='l'>같은 종가 26일 연속</td><td>149,889.00</td><td>149,889.00</td><td>172,324.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>고려아연 <small>010130</small></td><td>2026-08-06</td><td class='l'>튀었다 복귀 +12.7% → -10.4%</td><td>1,095,000.00</td><td>1,234,000.00</td><td>1,106,000.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>고려아연 <small>010130</small></td><td>2026-08-07</td><td class='l'>튀었다 복귀 -10.4% → +11.7%</td><td>1,234,000.00</td><td>1,106,000.00</td><td>1,235,000.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>S-Oil <small>010950</small></td><td>2018-05-16</td><td class='l'>같은 종가 7일 연속</td><td>106,000.00</td><td>106,000.00</td><td>107,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>HMM <small>011200</small></td><td>2016-05-04</td><td class='l'>같은 종가 12일 연속</td><td>12,889.00</td><td>12,889.00</td><td>12,398.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>HMM <small>011200</small></td><td>2018-02-01</td><td class='l'>같은 종가 13일 연속</td><td>4,620.00</td><td>4,620.00</td><td>4,800.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>SK텔레콤 <small>017670</small></td><td>2021-11-26</td><td class='l'>같은 종가 25일 연속</td><td>53,400.00</td><td>53,400.00</td><td>57,900.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>SK텔레콤 <small>017670</small></td><td>2026-03-04</td><td class='l'>튀었다 복귀 -10.1% → +10.8%</td><td>78,200.00</td><td>70,300.00</td><td>77,900.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>한온시스템 <small>018880</small></td><td>2016-02-15</td><td class='l'>같은 종가 15일 연속</td><td>9,760.00</td><td>9,760.00</td><td>9,481.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>한온시스템 <small>018880</small></td><td>2026-05-06</td><td class='l'>튀었다 복귀 +11.5% → -9.4%</td><td>4,850.00</td><td>5,410.00</td><td>4,900.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>KT&G <small>033780</small></td><td>2024-10-10</td><td class='l'>튀었다 복귀 +12.9% → -12.6%</td><td>103,500.00</td><td>116,900.00</td><td>102,200.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>LG전자 <small>066570</small></td><td>2026-05-15</td><td class='l'>튀었다 복귀 +10.8% → -9.8%</td><td>217,000.00</td><td>240,500.00</td><td>217,000.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>아모레퍼시픽 <small>090430</small></td><td>2015-05-07</td><td class='l'>같은 종가 11일 연속</td><td>388,500.00</td><td>388,500.00</td><td>376,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성바이오로직스 <small>207940</small></td><td>2018-12-10</td><td class='l'>같은 종가 19일 연속</td><td>482,790.00</td><td>482,790.00</td><td>568,667.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>삼성바이오로직스 <small>207940</small></td><td>2025-11-21</td><td class='l'>같은 종가 18일 연속</td><td>1,783,167.00</td><td>1,783,167.00</td><td>1,775,228.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>넷마블 <small>251270</small></td><td>2023-09-12</td><td class='l'>튀었다 복귀 +14.4% → -12.0%</td><td>46,250.00</td><td>52,900.00</td><td>46,550.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>SK바이오팜 <small>326030</small></td><td>2020-07-06</td><td class='l'>극단 등락 +30.0%</td><td>165,000.00</td><td>214,500.00</td><td>216,500.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+<tr><td class='l'>SK아이이테크놀로지 <small>361610</small></td><td>2023-04-19</td><td class='l'>튀었다 복귀 +10.5% → -8.6%</td><td>81,900.00</td><td>90,500.00</td><td>82,700.00</td><td class='unk'>확인 불가</td><td>ValueError</td></tr>
+</table>
