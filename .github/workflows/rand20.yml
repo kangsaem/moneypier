@@ -1,10 +1,17 @@
 name: rand20-test
 
-# 무작위 20종목 × 최근 10년 안 무작위 5년(random_cmp.py RC_WINDOW=random) — 시장별 30번, 끝나면 종합(rand_summary.py)
+# 무작위 20종목 × 최근 10년 안 무작위 5년(random_cmp.py RC_WINDOW=random), 끝나면 종합(rand_summary.py)
+# 번호 범위를 입력으로 받아, GitHub 한 묶음 한도(256개) 때문에 두 묶음으로 나눠 차례로 실행(동시 15개 — 사이트 배포·리포트 자리 남김)
 # 리포트·실전 기록과 무관, 리포트 재실행 없음
 on:
   workflow_dispatch:
     inputs:
+      kospi:
+        description: "코스피 번호 범위(예: 1-30, 비우면 안 함)"
+        default: "1-30"
+      nasdaq:
+        description: "나스닥 번호 범위(예: 1-30, 비우면 안 함)"
+        default: "1-30"
       memo:
         description: "메모"
         default: ""
@@ -13,15 +20,47 @@ permissions:
   contents: write
 
 jobs:
-  run:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      p1: ${{ steps.p.outputs.p1 }}
+      p2: ${{ steps.p.outputs.p2 }}
+      has2: ${{ steps.p.outputs.has2 }}
+    steps:
+      - id: p
+        env:
+          KS: ${{ inputs.kospi }}
+          NQ: ${{ inputs.nasdaq }}
+        run: |
+          python3 - <<'EOF'
+          import json, os
+          def rng(t):
+              t = (t or "").strip()
+              if not t:
+                  return []
+              a, _, b = t.partition("-")
+              return list(range(int(a), int(b or a) + 1))
+          ks = [{"market": "kospi", "seed": s} for s in rng(os.environ["KS"])]
+          nq = [{"market": "nasdaq", "seed": s} for s in rng(os.environ["NQ"])]
+          allj = []                                   # 두 시장이 함께 진행되게 번갈아 섞음
+          for i in range(max(len(ks), len(nq))):
+              allj += ks[i:i + 1] + nq[i:i + 1]
+          p1, p2 = allj[:256], allj[256:512]
+          with open(os.environ["GITHUB_OUTPUT"], "a") as f:
+              f.write(f"p1={json.dumps({'include': p1})}\n")
+              f.write(f"p2={json.dumps({'include': p2 or [{'market': 'none', 'seed': 0}]})}\n")
+              f.write(f"has2={'yes' if p2 else 'no'}\n")
+          print(len(p1), len(p2))
+          EOF
+
+  run1:
+    needs: plan
     runs-on: ubuntu-latest
     timeout-minutes: 240
     strategy:
       fail-fast: false
       max-parallel: 15     # 계정 동시 실행 20개 중 5개는 사이트 배포·리포트용으로 남김
-      matrix:
-        market: [kospi, nasdaq]
-        seed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
+      matrix: ${{ fromJSON(needs.plan.outputs.p1) }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
@@ -56,8 +95,51 @@ jobs:
           done
           exit 1
 
+  run2:
+    needs: [plan, run1]
+    if: ${{ always() && needs.plan.outputs.has2 == 'yes' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 15
+      matrix: ${{ fromJSON(needs.plan.outputs.p2) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pip install "nasdaq-100-ticker-history @ git+https://github.com/jmccarrell/n100tickers"
+      - name: 시험
+        run: python random_cmp.py
+        env:
+          RC_MARKET: ${{ matrix.market }}
+          RC_SEED: ${{ matrix.seed }}
+          RC_N: "20"
+          RC_WINDOW: random
+          RC_PREFIX: rand20
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/rand20_" > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in $(seq 1 25); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "무작위 20종목 시험 (${{ matrix.market }} ${{ matrix.seed }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $(( (RANDOM % 20) + i * 3 ))
+          done
+          exit 1
+
   summary:
-    needs: run
+    needs: [run1, run2]
     if: always()
     runs-on: ubuntu-latest
     steps:
