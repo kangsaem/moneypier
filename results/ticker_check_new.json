@@ -1,0 +1,133 @@
+{
+"us": {
+"ELV": {
+"old": 60,
+"now": 5
+},
+"BALL": {
+"old": 60,
+"now": 5
+},
+"COR": {
+"old": 60,
+"now": 5
+},
+"FBIN": {
+"old": 60,
+"now": 5
+},
+"CPAY": {
+"old": 60,
+"now": 5
+},
+"GEN": {
+"old": 60,
+"now": 5
+},
+"DOC": {
+"old": 60,
+"now": 5
+},
+"RVTY": {
+"old": 60,
+"now": 5
+},
+"EG": {
+"old": 60,
+"now": 5
+},
+"WTW": {
+"old": 60,
+"now": 5
+},
+"DINO": {
+"old": 60,
+"now": 5
+},
+"WBD": {
+"old": 0,
+"now": 1
+},
+"GAP": {
+"old": 60,
+"now": 5
+},
+"META": {
+"old": 60,
+"now": 5
+},
+"BBWI": {
+"old": 60,
+"now": 5
+},
+"FISV": {
+"old": 60,
+"now": 5
+},
+"FI": {
+"old": 0,
+"now": 0
+},
+"PSKY": {
+"old": 60,
+"now": 5
+},
+"PARA": {
+"old": 10,
+"now": 5
+},
+"BNY": {
+"old": 60,
+"now": 5
+},
+"BK": {
+"old": 0,
+"now": 0
+},
+"MRSH": {
+"old": 60,
+"now": 5
+},
+"MMC": {
+"old": 0,
+"now": 0
+},
+"DAY": {
+"old": 0,
+"now": 0
+},
+"CTRA": {
+"old": 0,
+"now": 0
+},
+"IQV": {
+"old": 60,
+"now": 5
+},
+"SPGI": {
+"old": 60,
+"now": 5
+},
+"LB": {
+"old": 0,
+"now": 5
+},
+"INFO": {
+"old": 0,
+"now": 5
+},
+"Q": {
+"old": 0,
+"now": 5
+},
+"SBNY": {
+"old": 0,
+"now": 5
+},
+"FB": {
+"old": 0,
+"now": 5
+}
+},
+"kr": {}
+}
