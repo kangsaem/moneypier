@@ -41,6 +41,45 @@ if WIN == "fixed":
 NTH = (1, 5, 10, 15, 20, 25)
 
 
+def marcap_prices(codes, y0, y1):
+    """옛 국내 시세(2026-10-12): FDR이 오래된 기간(2007 등)을 못 주는 종목용. FinanceData/marcap 연도별 자료(상장폐지 종목 포함)에서
+    시가·고가·저가·종가·거래량. 원래 가격이라 액면분할(상장주식수가 r배 + 종가가 약 1/r배인 날)을 찾아 이전 가격을 ÷r 보정"""
+    import tempfile
+    import requests
+    want, parts = set(codes), []
+    for y in range(y0, y1 + 1):
+        try:
+            r = requests.get(b.MARCAP_URL.format(y=y), timeout=180)
+            r.raise_for_status()
+            with tempfile.NamedTemporaryFile(suffix=".parquet") as f:
+                f.write(r.content)
+                f.flush()
+                d = pd.read_parquet(f.name, columns=["Date", "Code", "Open", "High", "Low", "Close", "Volume", "Stocks"])
+            d["Code"] = d["Code"].astype(str).str.zfill(6)
+            parts.append(d[d["Code"].isin(want)])
+        except Exception as e:
+            print(f"marcap {y} 실패: {e}")
+    if not parts:
+        return {}
+    a = pd.concat(parts)
+    a["Date"] = pd.to_datetime(a["Date"])
+    out = {}
+    for c, g in a.groupby("Code"):
+        g = g.sort_values("Date").set_index("Date")
+        g = g[g["Close"] > 0]
+        if len(g) < 2:
+            continue
+        sr = g["Stocks"] / g["Stocks"].shift(1)
+        pr = g["Close"] / g["Close"].shift(1)
+        adj = pd.Series(1.0, index=g.index)
+        for t in g.index[((sr >= 1.5) | (sr <= 0.67)) & ((pr * sr - 1).abs() < 0.2)]:   # 분할·병합일
+            adj[adj.index < t] *= 1.0 / sr[t]
+        df = g[["Open", "High", "Low", "Close"]].mul(adj, axis=0)
+        df["Volume"] = g["Volume"] / adj
+        out[c] = df
+    return out
+
+
 def window(ix, rnd):
     """시작일(지수 거래일): last = 끝에서 1260번째 날 / random = 10년 전 이후 거래일 중 무작위(끝이 오늘을 넘지 않게)"""
     global END
@@ -104,7 +143,21 @@ def main():
     cand, note, start = pick()
     if END is not None:                 # 무작위 기간: 끝날 뒤 시세를 잘라 그날까지로만 신호 계산(미래 정보 없음)
         _load = m.load_prices
-        m.load_prices = lambda code: (lambda df: df[df.index <= END])(_load(code))
+        old = {}
+        if MK == "kospi" and WIN == "fixed":   # 옛 기간: FDR 시세가 시작 1년여 전까지 안 닿으면 marcap 시세로(2026-10-12)
+            old = marcap_prices([t["code"] for t in cand], start.year - 2, END.year)
+
+        def _ld(code):
+            try:
+                df = _load(code)
+            except Exception:
+                df = pd.DataFrame()
+            df = df[df.index <= END] if len(df) else df
+            if code in old and (not len(df) or df.index[0] > start - pd.Timedelta(days=400)):
+                df = old[code][old[code].index <= END]
+                df.attrs["src"] = "marcap"
+            return df
+        m.load_prices = _ld
     for t in cand:
         b.bench_for(t["code"])
     res = dict(b.run_all(cand))

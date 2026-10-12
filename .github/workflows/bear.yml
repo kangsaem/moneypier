@@ -20,6 +20,9 @@ on:
       par:
         description: "동시 실행 수"
         default: "4"
+      prefix:
+        description: "결과 이름 앞부분"
+        default: "bear"
 
 permissions:
   contents: write
@@ -49,13 +52,13 @@ jobs:
           RC_N: ${{ inputs.n }}
           RC_WINDOW: fixed
           RC_START: ${{ matrix.start }}
-          RC_PREFIX: bear
+          RC_PREFIX: ${{ inputs.prefix }}
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
           mkdir -p /tmp/new
-          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/bear_" > /tmp/list || true
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/${{ inputs.prefix }}_" > /tmp/list || true
           [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
           tar cf /tmp/new/r.tar -T /tmp/list
           for i in $(seq 1 25); do
