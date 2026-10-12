@@ -1,11 +1,16 @@
 name: data-check
 
-# 시세 출처 교차 검증(data_check.py): 리포트 출처 vs 네이버·야후·Stooq·FDR — 종가·거래량·날짜·신호 차이 (약 20~40분)
+# 시세 점검: anomaly = 이상치(data_anomaly.py, 약 10~20분) / cross = 출처 교차 검증(data_check.py): 리포트 출처 vs 네이버·야후·Stooq·FDR — 종가·거래량·날짜·신호 차이 (약 20~40분)
 # 결과는 results/data_check_<실행시각>.html·json(최신본 data_check.html)으로 커밋. 리포트는 다시 돌리지 않음
 # (장중에 daily-report를 돌리면 미완성 봉으로 신호 기록이 남으므로 — 다음 예약 실행 때 docs/로 함께 올라감).
 on:
   workflow_dispatch:
     inputs:
+      mode:
+        description: "cross = 출처 교차 비교 / anomaly = 이상치 점검(내 종목 + 백테스트 종목)"
+        type: choice
+        options: [anomaly, cross]
+        default: anomaly
       days:
         description: "신호 비교 기간(거래일, 252 ≈ 1년)"
         default: "252"
@@ -27,8 +32,11 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: 검증
-        run: DC_VERSION=$(TZ=Asia/Seoul date +%Y%m%d-%H%M) python data_check.py
+        run: |
+          V=$(TZ=Asia/Seoul date +%Y%m%d-%H%M)
+          if [ "${{ inputs.mode }}" = "cross" ]; then DC_VERSION=$V python data_check.py; else DA_VERSION=$V python data_anomaly.py; fi
         env:
+          DA_MEMO: ${{ inputs.memo }}
           DC_DAYS: ${{ inputs.days }}
           DC_MEMO: ${{ inputs.memo }}
           TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
@@ -45,7 +53,7 @@ jobs:
             git reset -q --hard origin/${{ github.ref_name }}
             tar xf /tmp/new/r.tar
             git add results/
-            git commit -q -m "시세 출처 검증 ${{ inputs.memo }}" || exit 0
+            git commit -q -m "시세 점검(${{ inputs.mode }}) ${{ inputs.memo }}" || exit 0
             git push -q origin HEAD:${{ github.ref_name }} && exit 0
             sleep $((i * 7))
           done
