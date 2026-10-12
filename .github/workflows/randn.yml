@@ -1,0 +1,58 @@
+name: randn-test
+
+# 종목 수별 무작위 시험(2026-10-12): 같은 번호 = 같은 기간·같은 종목 순서, 종목 수만 10·20·30·50 — V1(실전 규칙) vs 그냥 보유 vs 적립, 평균 현금 비중
+# random_cmp.py RC_WINDOW=random(최근 10년 안 무작위 5년). 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      seeds:
+        description: "번호 목록(JSON)"
+        default: '[1]'
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      max-parallel: 4
+      matrix:
+        n: [10, 20, 30, 50]
+        market: [kospi, nasdaq]
+        seed: ${{ fromJSON(inputs.seeds) }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - run: pip install "nasdaq-100-ticker-history @ git+https://github.com/jmccarrell/n100tickers"
+      - name: 시험
+        run: python random_cmp.py
+        env:
+          RC_MARKET: ${{ matrix.market }}
+          RC_SEED: ${{ matrix.seed }}
+          RC_N: ${{ matrix.n }}
+          RC_WINDOW: random
+          RC_PREFIX: randn${{ matrix.n }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep "results/randn" > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in $(seq 1 25); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "종목 수별 시험 (${{ matrix.n }} ${{ matrix.market }} ${{ matrix.seed }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $(( (RANDOM % 20) + i * 3 ))
+          done
+          exit 1
