@@ -144,7 +144,7 @@ def main():
     if END is not None:                 # 무작위 기간: 끝날 뒤 시세를 잘라 그날까지로만 신호 계산(미래 정보 없음)
         _load = m.load_prices
         old = {}
-        if MK == "kospi" and WIN == "fixed":   # 옛 기간: FDR 시세가 시작 1년여 전까지 안 닿으면 marcap 시세로(2026-10-12)
+        if MK == "kospi" and WIN == "fixed":   # 옛 기간: marcap 일별 시세(상폐 포함, 분할 보정)를 받아 둠
             old = marcap_prices([t["code"] for t in cand], start.year - 2, END.year)
 
         def _ld(code):
@@ -153,7 +153,7 @@ def main():
             except Exception:
                 df = pd.DataFrame()
             df = df[df.index <= END] if len(df) else df
-            if code in old and (not len(df) or df.index[0] > start - pd.Timedelta(days=400)):
+            if code in old and len(old[code]) > 300:      # 코스피 과거 구간은 marcap 시세로 통일(FDR 옛 시세에 2014~2015년 보정 안 된 점프가 있어서, 2026-10-12)
                 df = old[code][old[code].index <= END]
                 df.attrs["src"] = "marcap"
             return df
