@@ -20,6 +20,7 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
+      max-parallel: 15     # 계정 동시 실행 20개 중 5개는 사이트 배포·리포트용으로 남김
       matrix:
         market: ${{ fromJSON(inputs.markets) }}
         seed: [1, 2, 3, 4, 5]

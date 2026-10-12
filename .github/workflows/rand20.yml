@@ -18,6 +18,7 @@ jobs:
     timeout-minutes: 240
     strategy:
       fail-fast: false
+      max-parallel: 15     # 계정 동시 실행 20개 중 5개는 사이트 배포·리포트용으로 남김
       matrix:
         market: [kospi, nasdaq]
         seed: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30]
