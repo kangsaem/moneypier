@@ -787,6 +787,26 @@ def _index_close(fdr_code, yf_code):
     return s
 
 
+# 지수 상태(지금 상태만 · 예측 아님, 2026-10-12): 하락 중 > 바닥 다짐 > 상승추세 > 상승 중 쉬어감 순서로 하나. 해당 없으면 None(횡보)
+# 머니파이 anIndexState 와 같음. 지수는 종가만 넣어 계산(고가·저가 없이)
+INDEX_STATES = {"down": ("하락 중", "dn"), "base": ("바닥 다짐", "n"), "up": ("상승추세", "up"), "rest": ("상승 중 쉬어감", "n")}
+
+
+def index_state(r):
+    sg, dy, wk, mo = r["sig"], r["day"], r["week"], r["month"]
+    if sg.get("falling") and wk.get("ok") and not wk.get("above"):
+        why = (f"5일 {r['ret5']:+.1f}%" if r["ret5"] <= FALL_PCT else "20일 신저가") + " · 주봉 역배열"
+        return {"key": "down", "why": why}
+    if r.get("bottom_near") or sg.get("buy") in ("관심", "눌림", "보류"):
+        why = f"바닥 단계 {r['bottom']}/3" if r.get("bottom_near") else f"싼 조건 {len(sg.get('buy_c') or [])}개 · 반등 신호 전"
+        return {"key": "base", "why": why}
+    if wk.get("ok") and wk.get("above") and mo.get("ok") and mo.get("above") and r.get("w10") and r["close"] > r["w10"]:
+        if dy.get("ok") and dy.get("above"):
+            return {"key": "up", "why": "일·주·월 정배열 · 10주선 위"}
+        return {"key": "rest", "why": "주·월 정배열 · 일봉만 역배열"}
+    return None
+
+
 def _index_info(name, s):
     disp = (s / s.rolling(50).mean() * 100).dropna()
     d = None
@@ -795,7 +815,18 @@ def _index_info(name, s):
         d = {"cur": cur, "max": mx, "min": mn, "up": cur / mx, "down": cur / mn}
     return {"name": name, "close": float(s.iloc[-1]), "chg": float((s.iloc[-1] / s.iloc[-2] - 1) * 100),
             "date": s.index[-1], "chart": chart_data(s), "disp": d, "rsi": float(rsi(s).iloc[-1]),
-            "from_high": float((s.iloc[-1] / s.tail(250).max() - 1) * 100)}       # 52주 최고 종가 대비 %(폭락장 판정)
+            "from_high": float((s.iloc[-1] / s.tail(250).max() - 1) * 100),       # 52주 최고 종가 대비 %(폭락장 판정)
+            "state": _safe_index_state(s, name)}
+
+
+def _safe_index_state(s, name):
+    try:
+        st = index_state(analyze_df(pd.DataFrame({"Close": s}), name, name, light=True))
+        if st:
+            st["name"], st["cls"] = INDEX_STATES[st["key"]]
+        return st
+    except Exception:
+        return None
 
 
 CREDIT_YEARS = 5      # 금융투자협회 통계를 몇 년치 받을지(백분위의 '과거' 범위)
