@@ -11,6 +11,9 @@ on:
       trail:
         description: "추적 손절 폭(0.25 = 최고가 대비 −25%)"
         default: "0.25"
+      set:
+        description: "trail(추적 손절) | entry(산 가격 기준 손절 8·15·25%, 계속/3개월만)"
+        default: "trail"
 
 permissions:
   contents: write
@@ -37,6 +40,7 @@ jobs:
           HC_SEEDS: ${{ matrix.seeds }}
           HC_TRAIL: ${{ inputs.trail }}
           HC_OUT: ${{ matrix.out }}
+          HC_SET: ${{ inputs.set }}
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
