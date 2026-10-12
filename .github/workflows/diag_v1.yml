@@ -1,0 +1,52 @@
+name: diag-v1
+
+# V1 계좌 점검(diag_v1.py) — 리포트·실전 기록과 무관한 별도 시험, 리포트 재실행 없음
+# 리포트를 다시 돌리지 않음(장중에 돌려도 신호 기록에 영향 없음). 세 대상을 동시에 실행(대략 30~90분).
+on:
+  workflow_dispatch:
+    inputs:
+      memo:
+        description: "메모"
+        default: ""
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        universe: [tickers, kospi]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 시험
+        run: python diag_v1.py
+        env:
+          DG_UNIVERSE: ${{ matrix.universe }}
+          IS_MEMO: ${{ inputs.memo }}
+          TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          git status --porcelain --untracked-files=all results/ | awk '{print $NF}' | grep diag_v1 > /tmp/list || true
+          [ -s /tmp/list ] || { echo "새 결과 없음"; exit 0; }
+          tar cf /tmp/new/r.tar -T /tmp/list
+          for i in 1 2 3 4 5 6; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            tar xf /tmp/new/r.tar
+            git add results/
+            git commit -q -m "V1 계좌 점검 (${{ matrix.universe }}) ${{ inputs.memo }}" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 9))
+          done
+          exit 1
