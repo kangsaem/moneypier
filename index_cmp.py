@@ -49,11 +49,22 @@ def load(fdr_code, yf_code):
 
 
 RULES = ["hold", "cut50", "cut30", "B1", "B2"] + [f"{c}{r}" for c in ("C1", "C2", "C3", "D") for r in ("R1", "R2", "R3")]
+# IC_SET=cut(2026-10-13): 현금화를 거르는 변형 — c5·c10 = 200일선 아래 5·10거래일 연속일 때만, d10 = 그날 지수가 252일 최고가 대비 -10% 이하일 때만
+SET = os.environ.get("IC_SET", "")
+if SET == "cut":
+    RULES = ["hold"] + [f"cut{p}{v}" for p in (30, 50) for v in ("", "c5", "c10", "d10", "c5d10")]
+PK = None
 
 
 def sim(P, below, peak_dd, i0, i1, rule):
     """P 가격 배열, below[i] = 200일선 아래, i0~i1 구간. 원래 시드 1 → 내 평가액 경로, 투입 기록"""
-    cut = {"cut50": 0.5, "cut30": 0.3}.get(rule, 0.5 if rule[0] == "D" else 0.0)
+    import re as _re
+    mc = _re.fullmatch(r"cut(\d+)(?:c(\d+))?(?:d(\d+))?", rule)
+    if mc:
+        cut, conf, depth = int(mc.group(1)) / 100, int(mc.group(2) or 1), int(mc.group(3) or 0) / 100
+    else:
+        cut, conf, depth = (0.5 if rule[0] == "D" else 0.0), 1, 0.0
+    brun, fired = 0, False
     base_u = (1 - BUY) / P[i0]          # 내 돈으로 산 단위
     cash = 0.0
     x_u, x_loan, x_t, x_px, x_l0, x_g = 0.0, 0.0, None, None, 0.0, 0.0     # 추가분 단위·남은 빌린 원금·투입일·투입가·처음 원금·누적 손익
@@ -115,8 +126,17 @@ def sim(P, below, peak_dd, i0, i1, rule):
                     withdraw(i, 1.0 / 3 if d == 126 else 0.5)      # 1/3씩(남은 것의 1/3 → 1/2 → 전부)
         # 3) 오늘 종가로 신호 → 내일 체결
         b, pb = below[i], below[i - 1]
+        if mc:                                               # 현금화: 200일선 아래 conf일 연속 + (depth면) 252일 최고가 대비 -depth 이하일 때 한 번
+            brun = brun + 1 if b else 0
+            if not b:
+                fired = False
+            if b and not fired and not reduced and brun >= conf and (depth == 0 or p / PK[i] - 1 <= -depth):
+                pend.append("cut")
+                fired = True
+            if not b and pb and reduced:
+                pend.append("rebuy")
         if b and not pb:                                     # 깨짐
-            if rule in ("cut50", "cut30") or rule[0] == "D":
+            if rule[0] == "D":
                 pend.append("cut")
             if rule in ("B1", "B2"):
                 pend.append("inject")
@@ -124,7 +144,7 @@ def sim(P, below, peak_dd, i0, i1, rule):
                 pend.append("out")
             armed, up_days = False, 0
         if not b and pb:                                     # 다시 위로
-            if rule in ("cut50", "cut30") or rule[0] == "D":
+            if rule[0] == "D":
                 pend.append("rebuy")
             if rule == "B1" and x_u > 0:
                 pend.append("out")
@@ -183,7 +203,7 @@ def episodes(P, below, dates):
 
 
 def main():
-    global MA
+    global MA, PK
     res = {"idx": {}}
     series = {}
     for key, nm, fc, yc in IDX:
@@ -192,6 +212,7 @@ def main():
         P = s.to_numpy(dtype=float)
         dates = s.index
         MA = pd.Series(P).rolling(200).mean().to_numpy()
+        PK = pd.Series(P).rolling(252, min_periods=1).max().to_numpy()
         below = np.nan_to_num(P < MA, nan=False).astype(bool)
         below[:200] = False
         # 깨진 에피소드의 직전 고점 대비 최저(회복 시점에 알 수 있는 값): 다시 위로 오는 날 기준
@@ -231,10 +252,13 @@ def main():
                       "full_inj_fail": sum(g < 0 for g in full[r]["inj"]), "full_inj_mean": mean(full[r]["inj"]) * 100 if full[r]["inj"] else None}
         res["idx"][key] = {"name": nm, "from": str(dates[0].date()), "to": str(dates[-1].date()), "n_win": len(starts),
                            "below_pct": float(below[200:].mean() * 100), "episodes": ep, "agg": agg}
-        for r in ("hold", "cut50", "B1", "B2", "C1R2", "C2R2", "C3R2", "DR2"):
+        for r in (RULES if SET == "cut" else ("hold", "cut50", "B1", "B2", "C1R2", "C2R2", "C3R2", "DR2")):
             a = agg[r]
             print(f"  {r:6s} 5년 평균 {a['mean']:+.0f} 중앙 {a['med']:+.0f} 하위10 {a['p10']:+.0f} 최악 {a['worst']:+.0f} MDD {a['mdd']:.0f} | 전체 {a['full']:+.0f} MDD {a['full_mdd']:.0f} 투입 {a['full_inj']}(실패 {a['full_inj_fail']})")
     os.makedirs("results", exist_ok=True)
+    if SET == "cut":
+        json.dump(res, open("results/index_cut.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
+        return
     json.dump(res, open("results/index_cmp.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
     # 덤: 이미 돌린 과거 구간 시험 기간의 지수 수익
     iw = {}
