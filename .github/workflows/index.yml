@@ -1,0 +1,36 @@
+name: index-test
+
+# 지수 200일선 시험(index_cmp.py): S&P500·나스닥100·코스피, 보유 vs 현금 줄이기 vs 깨질 때/다시 오를 때 추가 투입. 리포트 재실행 없음
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 시험
+        run: python index_cmp.py
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          cp results/index_cmp.* results/index_windows.json /tmp/
+          for i in $(seq 1 10); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            cp /tmp/index_cmp.* /tmp/index_windows.json results/
+            git add results/index_cmp.* results/index_windows.json
+            git commit -q -m "지수 200일선 시험 결과" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
