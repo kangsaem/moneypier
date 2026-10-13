@@ -235,7 +235,7 @@ def main():
             a = agg[r]
             print(f"  {r:6s} 5년 평균 {a['mean']:+.0f} 중앙 {a['med']:+.0f} 하위10 {a['p10']:+.0f} 최악 {a['worst']:+.0f} MDD {a['mdd']:.0f} | 전체 {a['full']:+.0f} MDD {a['full_mdd']:.0f} 투입 {a['full_inj']}(실패 {a['full_inj_fail']})")
     os.makedirs("results", exist_ok=True)
-    json.dump(res, open("results/index_cmp.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0)
+    json.dump(res, open("results/index_cmp.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
     # 덤: 이미 돌린 과거 구간 시험 기간의 지수 수익
     iw = {}
     for pat, key in (("sp1_*.json", "spx"), ("bear4_*.json", "kospi"), ("bear3_*.json", "kospi"), ("rand20_kospi_*.json", "kospi")):
@@ -252,7 +252,7 @@ def main():
             if len(x) > 2:
                 v = x.to_numpy()
                 iw[w + "|" + key] = {"roc": float((v[-1] / v[0] - 1) * 100), "mdd": float(((v / np.maximum.accumulate(v)) - 1).min() * 100)}
-    json.dump(iw, open("results/index_windows.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0)
+    json.dump(iw, open("results/index_windows.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
     # 간단한 표
     h = ["<!doctype html><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>index_cmp</title>",
          "<style>body{font:13px/1.5 -apple-system,'Noto Sans KR',sans-serif;margin:12px;background:#1E1F22;color:#E8ECF3}table{border-collapse:collapse;margin:6px 0 14px}"
