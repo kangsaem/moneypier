@@ -1,9 +1,24 @@
 # 머니파이 데일리 리포트 — 인수인계 메모
 
+## ★ 실전 비교 데이터 — 어디서 확인하나 (가장 중요, 2026-10-14 정리)
+V1 규칙을 실제로 뜬 신호대로 따랐을 때 vs 내 종목 그냥 보유 vs 코스피 vs 나스닥. 백테스트가 아니라 실전 기록이라 결과를 미리 아는 효과가 없음.
+- **보는 곳(화면):** https://kangsaem.github.io/moneypier/live.html — 그래프(V1 실전 · 내 종목 그냥 보유 · 코스피 · 나스닥) + 연도별 결산 표 + 신호 추적(#trk).
+  리포트(https://kangsaem.github.io/moneypier/) 아래 링크로도 들어감. 옛 주소 history.html → live.html#trk로 이동.
+- **숫자 원본:** https://kangsaem.github.io/moneypier/live.json (그래프·결산·매매 목록 데이터) / history_all.json (모든 신호 기록 합본).
+  Pages 산출물이라 저장소에는 없음(docs/는 실행 때 만들어짐).
+- **공식 장부(저장소):** `history/<KST 날짜>_<kr|us>.json` — 리포트 실행마다 GitHub Actions가 커밋. 이게 없어지면 비교도 없음.
+- **계산 코드:** `live.py` (portfolio.simulate_alloc held=(150,10,2) = 백테스트 '최종규칙 2회'와 같은 함수). 시작 2026-10-12(LIVE_START), 현금 100%에서 시작.
+  매수 = 매수·바닥/눌림/추세 새로 켜짐(국장 당일·미장 다음 날 종가), 매도 = 매도·전량 또는 손절(평균가 −8% 이틀 연속), 목록에서 빠지면 마지막 기록일 종가에 전량 매도.
+- **자동 흐름:** 휴대폰 머니파이 돋보기 → 종목이 다르면 '추가 n / 빠짐 m [확인]' → tickers.json 올림(종목 바꿀 때만) →
+  daily-report(평일 15:31 국장 · 화~토 07:10 미장)가 종가를 직접 받아 history/ 커밋 → live.html·live.json 갱신. 종목이 그대로면 할 일 없음.
+- **한계:** 지수는 배당 제외 가격 지수, 세금·환율 미반영. 20거래일 이상 쌓여야(2026-11 초~) 의미 있는 비교, 몇 달은 지나야 판단.
+- **데이터 품질 주의(2026-10-14 확인):** ① GitHub 예약 지연으로 10-13 15:31 실행 누락 · ② 파이썬 리포트엔 장중 봉 거르기가 없음 —
+  10-13 23:28 실행에서 미국 종목이 장중 가격(asof 10-13)으로 기록됨(다음 미장 실행이 같은 봉을 덮어쓰면 해소). 해결 계획은 맨 아래 '다음 대화 시작점' 대기 ①·③.
+
 ## 무엇을 하는 프로젝트인가
 - 저장소: `kangsaem/moneypier` (루트에 파일 업로드, 워크플로는 `.github/workflows/daily.yml`)
 - 내 보유종목(머니파이 localStorage)을 `tickers.json`으로 동기화(북마클릿) → GitHub Actions가 하루 2번
-  (KST 평일 16:30, 화~토 07:10) `build_page.py` 실행 → GitHub Pages(`https://kangsaem.github.io/moneypier/`)에 리포트 게시.
+  (KST 평일 15:31, 화~토 07:10) `build_page.py` 실행 → GitHub Pages(`https://kangsaem.github.io/moneypier/`)에 리포트 게시.
 - 텔레그램: 코드는 남아 있지만 후순위(아래 7번). Secrets(`TELEGRAM_TOKEN`, `TELEGRAM_CHAT_ID=547869092`)가 없으면 그냥 건너뜀.
 - 머니파이 앱(index.html)은 아직 건드리지 않음. 규칙을 다듬은 뒤 "분석" 탭으로 옮김(아래 7번).
 
@@ -858,3 +873,19 @@
 - 대기:
   ① 매일 리포트 예약 지연 → Cloudflare Worker 예약으로 daily.yml 실행(16:17 기록, 사용자 토큰 필요) — 사용자: 2026-10-14 낮에 진행.
   ② 붕괴 사례: 회복 표시가 뜨면 보관 줄 이슈 이름 채우기, 이슈 빈칸 2건(1996-05-21·2014-10-01), 기억 기준 이슈 11건 확인(요청 시), 회복 아이콘 모양(지금 초록 동그라미 체크).
+
+## 다음 대화 시작점 (2026-10-14 02:30) — 콜사인 '머니파이 이어서'
+- 이번 대화: 실전 비교 데이터 위치를 맨 위 '★ 실전 비교 데이터'에 정리. 기록 쌓임 확인(history/ 10-10~10-13 6개 파일, 종목 26→29, 휴대폰 동기화 커밋 정상).
+  무료 요금제 검토: 동기화(머니파이 토큰으로 직접 PUT)·종가 받기·기록·live.html 계산은 모두 GitHub Actions라 Claude 요금제와 무관. Claude는 해석·코드 수정 때만 필요.
+- 대기:
+  ① Cloudflare Worker 예약 — **코드·설정 안내 준비 완료, 설정은 아직 안 함(사용자: 나중에).** `cloudflare/README.md` 순서대로:
+     GitHub 세분화 토큰(moneypier만, Actions 읽기·쓰기) → Worker에 `cloudflare/worker.js` 붙여넣기 → 비밀값 GH_TOKEN(선택 RUN_KEY) → Cron `31 6 * * 1-5`·`10 22 * * 1-5`(UTC).
+     worker.js는 가짜 GitHub 응답으로 시험 완료(dispatch 주소·ref main·키 검사). 정시 실행 확인 뒤 daily.yml `schedule:` 삭제
+     (남기면 텔레그램 중복 + concurrency cancel-in-progress로 정시 실행이 늦은 실행에 취소될 수 있음).
+  ② 붕괴 사례: 위 2026-10-13 21:15 대기 ② 그대로.
+  ③ 장중 봉·빠진 날 처리(사용자 제안, 추천안 B — "ㄱㄱ" 전, 아직 코딩 안 함):
+     - 장중이면 전날 종가까지만: 국장 = 그날 KST 15:40 전 실행이면 오늘 봉 제거, 미장 = 뉴욕 16:00 전이면 오늘 봉 제거(America/New_York으로 서머타임 자동).
+       제거 후 기록은 전날과 같은 봉 → 같은 종목·같은 asof는 마지막 하나만 쓰므로 중복 무해.
+     - 빠진 거래일 자동 채우기: 지수 일봉 날짜(국장 KS11·미장 S&P500)와 history/ asof 대조, 매 실행 때 최근 10거래일 확인 →
+       그날까지 시세만 잘라 신호 재계산(백테스트와 같은 방식), 종목은 그날 기준 tickers.json(git 이력), 기록에 "backfill": true 표시.
+     - 안 채우면: 그날 새로 켜진 신호를 하루 늦게 잡음(다음 날 종가 체결).

@@ -1,0 +1,7 @@
+# 명령줄(wrangler)로 배포할 때만 사용. 대시보드에서 만들면 필요 없음.
+name = "moneypier-cron"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+[triggers]
+crons = ["31 6 * * 1-5", "10 22 * * 1-5"]  # UTC = 한국시간 평일 15:31 / 화~토 07:10
