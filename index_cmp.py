@@ -269,4 +269,13 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    import builtins
+    import traceback
+    _p = builtins.print
+    builtins.print = lambda *a, **k: _p("::notice::" + " ".join(str(x) for x in a))   # 로그 대신 알림으로(로그 열기가 막혀 있어서)
+    try:
+        main()
+    except Exception:
+        for ln in traceback.format_exc().splitlines()[-8:]:
+            _p("::error::" + ln)
+        raise
