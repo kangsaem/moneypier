@@ -59,6 +59,9 @@ if SET == "kq":
              + [f"C{c}R{r}" for c in (1, 2, 3) for r in (1, 2, 3)]
              + [f"cut{p}{v}+C{c}R3" for p in (30, 50) for v in ("c5", "d10") for c in (2, 3)])
     IDX = [x for x in IDX if x[0] in ("kospi", "kosdaq")]
+# IC_SET=chips(2026-10-13): 머니파이 지수 칩대로 따른 결과 — 현금 n%(칩 조건) + 200일선 회복 때 되사기, + 깊은 회복 추가 매수(다시 깨지면 회수)
+if SET == "chips":
+    RULES = ["hold", "C2R3"] + [f"{c}{x}" for c in ("cut30d10", "cut50d10", "cut50c10", "cut50c5") for x in ("", "+C2R3")]
 PK = None
 
 
@@ -263,11 +266,11 @@ def main():
                       "full_inj_fail": sum(g < 0 for g in full[r]["inj"]), "full_inj_mean": mean(full[r]["inj"]) * 100 if full[r]["inj"] else None}
         res["idx"][key] = {"name": nm, "from": str(dates[0].date()), "to": str(dates[-1].date()), "n_win": len(starts),
                            "below_pct": float(below[200:].mean() * 100), "episodes": ep, "agg": agg}
-        for r in (RULES if SET in ("cut", "kq") else ("hold", "cut50", "B1", "B2", "C1R2", "C2R2", "C3R2", "DR2")):
+        for r in (RULES if SET in ("cut", "kq", "chips") else ("hold", "cut50", "B1", "B2", "C1R2", "C2R2", "C3R2", "DR2")):
             a = agg[r]
             print(f"  {r:6s} 5년 평균 {a['mean']:+.0f} 중앙 {a['med']:+.0f} 하위10 {a['p10']:+.0f} 최악 {a['worst']:+.0f} MDD {a['mdd']:.0f} | 전체 {a['full']:+.0f} MDD {a['full_mdd']:.0f} 투입 {a['full_inj']}(실패 {a['full_inj_fail']})")
     os.makedirs("results", exist_ok=True)
-    if SET in ("cut", "kq"):
+    if SET in ("cut", "kq", "chips"):
         json.dump(res, open(f"results/index_{SET}.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
         return
     json.dump(res, open("results/index_cmp.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
