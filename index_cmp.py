@@ -30,7 +30,7 @@ import market_report as m
 
 BUY, SELL = 0.0005, 0.0025
 m.START = "1988-01-01"
-IDX = [("spx", "S&P500", "US500", "^GSPC"), ("ndx", "나스닥100", "NDX", "^NDX"), ("kospi", "코스피", "KS11", "^KS11")]
+IDX = [("spx", "S&P500", "US500", "^GSPC"), ("ndx", "나스닥100", "NDX", "^NDX"), ("kospi", "코스피", "KS11", "^KS11"), ("kosdaq", "코스닥", "KQ11", "^KQ11")]
 WIN = 1260
 
 
