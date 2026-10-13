@@ -457,7 +457,7 @@ def metrics_html(r, side, lv):
 REV_SIDE = {"buyb": "buy", "buy": "buy", "up": "add", "sell": "sell", "caution": "sell", "hold": "buy", "wait": "buy", "waitdn": "buy"}
 REV_CLS = {"buyb": "buy strong", "buy": "buy strong", "up": "buy strong", "sell": "sell strong", "caution": "warn", "hold": "hold-ok",
            "wait": "waitc", "waitdn": "downc"}
-REV_NOTE = {"sell": "과열 + (꺾임·추세 약함이면 상대강도↓, 추세 강함이면 거래량 폭증) → 전량 매도 (손절 -8%와 함께)",
+REV_NOTE = {"sell": "과열 + (꺾임·추세 약함이면 상대강도↓, 추세 강함이면 거래량 폭증) → 산 이유 재검토(자동 매도 아님)",
             "buyb": "매수·눌림 + 근거 2개 이상(싼 조건 3개 모두 · 장기 추세 상승 · 바닥근접) — 깊이 빠졌다 돌아서는 자리. 백테스트상 1개월 반등은 강했지만 3개월 뒤엔 우위 없음",
             "buy": "싼 조건 2개 이상 + 반등 신호(또는 아직 하락 중이지만 장기 추세 상승)",
             "up": "오르는 추세 속 20일선 눌림 뒤 반등 · 과열 아님",
@@ -787,7 +787,7 @@ guard("신호 기록 저장", lambda: history.save(history.record(results, msig,
 guard("신호 기록 페이지", history.build, results)
 import live
 guard("V1 실전 기록", live.build, results)          # 2026-10-12부터 신호대로 따라 한 가상 계좌 → docs/live.html
-page = page.replace("매도·전량", "경보")    # 2026-10-13 화면 이름만 '경보'(기록·추적 내부 이름은 그대로)
+page = page.replace("매도·전량", "재검토").replace("경보", "재검토")    # 2026-10-13 화면 이름만 '재검토'(옛 매도·전량 → 경보 → 재검토, 기록·추적 내부 이름은 그대로)
 with open("docs/index.html", "w", encoding="utf-8") as f:
     f.write(page)
 print("docs/index.html 생성 완료")
@@ -814,13 +814,13 @@ def action_text():
                 buy.append(f"· {r['name']} {price(r)} ({kind}){loc}")
     head = f"[{'미장' if IS_US else '국장'} {kst:%m/%d}]"
     if not buy and not sell:
-        return f"{head} 매수·매도 없음"
-    L = [f"{head} 매수 {len(buy)} · 매도 {len(sell)}"]
+        return f"{head} 매수·재검토 없음"
+    L = [f"{head} 매수 {len(buy)} · 재검토 {len(sell)}"]
     if buy:
         L += ["매수"] + buy
     if sell:
-        L += ["매도"] + sell
-    L.append("→ " + ("LOC 예약(종가+8%) · 매도는 다음 날 종가" if IS_US else "시간외 종가 15:40 전 주문"))
+        L += ["재검토(산 이유 점검)"] + sell
+    L.append("→ " + ("매수 LOC 예약(종가+8%)" if IS_US else "매수 = 시간외 종가 15:40 전 주문"))
     return "\n".join(L)
 
 
