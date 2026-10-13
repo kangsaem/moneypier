@@ -1,0 +1,36 @@
+name: yahoo-probe
+
+# 야후 일봉 응답 확인(2026-10-13): 마지막 봉 날짜·종가, currentTradingPeriod — lab-bt/머니파이 미국 시세 점검용. 저장소 변경 없음
+on:
+  workflow_dispatch:
+    inputs:
+      syms:
+        description: "심볼(쉼표)"
+        default: "AAPL,MSFT,^NDX,^GSPC"
+
+jobs:
+  probe:
+    runs-on: ubuntu-latest
+    steps:
+      - env:
+          SYMS: ${{ inputs.syms }}
+        run: |
+          python3 - <<'PY'
+          import json, os, time, urllib.request, datetime as D
+          now = int(time.time())
+          print("now UTC", D.datetime.utcfromtimestamp(now))
+          for s in os.environ["SYMS"].split(","):
+              u = f"https://query1.finance.yahoo.com/v8/finance/chart/{urllib.parse.quote(s) if False else s.replace('^','%5E')}?period1={now-86400*15}&period2={now}&interval=1d&events=div%2Csplits"
+              req = urllib.request.Request(u, headers={"User-Agent": "Mozilla/5.0"})
+              try:
+                  j = json.load(urllib.request.urlopen(req, timeout=20))
+              except Exception as e:
+                  print(s, "실패", e); continue
+              r = j["chart"]["result"][0]; m = r["meta"]; off = m.get("gmtoffset", 0)
+              tp = m.get("currentTradingPeriod", {}).get("regular", {})
+              print("==", s, "regularMarketTime", D.datetime.utcfromtimestamp(m.get("regularMarketTime", 0)), "price", m.get("regularMarketPrice"))
+              print("   tp.regular", {k: str(D.datetime.utcfromtimestamp(v)) if isinstance(v, int) and k in ("start", "end") else v for k, v in tp.items()})
+              q = r["indicators"]["quote"][0]
+              for t, c in list(zip(r["timestamp"], q["close"]))[-4:]:
+                  print("  ", D.datetime.utcfromtimestamp(t), "local", D.datetime.utcfromtimestamp(t + off).date(), c, "removed?" , (now < tp.get("end", 0) and t >= tp.get("start", 1e12)))
+          PY
