@@ -53,18 +53,26 @@ RULES = ["hold", "cut50", "cut30", "B1", "B2"] + [f"{c}{r}" for c in ("C1", "C2"
 SET = os.environ.get("IC_SET", "")
 if SET == "cut":
     RULES = ["hold"] + [f"cut{p}{v}" for p in (30, 50) for v in ("", "c5", "c10", "d10", "c5d10")]
+# IC_SET=kq(2026-10-13): 코스피·코스닥만, 현금 30·40·50 × 거르기 × 다시 사는 때(q = 200일선 위 10일 연속 또는 +3%일 때) + 보유 중 투입(C) + 현금화+투입 조합
+if SET == "kq":
+    RULES = (["hold", "B1", "B2"] + [f"cut{p}{v}{q}" for p in (30, 40, 50) for v in ("", "c5", "c10", "d10", "c5d10") for q in ("", "q")]
+             + [f"C{c}R{r}" for c in (1, 2, 3) for r in (1, 2, 3)]
+             + [f"cut{p}{v}+C{c}R3" for p in (30, 50) for v in ("c5", "d10") for c in (2, 3)])
+    IDX = [x for x in IDX if x[0] in ("kospi", "kosdaq")]
 PK = None
 
 
 def sim(P, below, peak_dd, i0, i1, rule):
     """P 가격 배열, below[i] = 200일선 아래, i0~i1 구간. 원래 시드 1 → 내 평가액 경로, 투입 기록"""
     import re as _re
-    mc = _re.fullmatch(r"cut(\d+)(?:c(\d+))?(?:d(\d+))?", rule)
+    parts = rule.split("+")
+    mc = _re.fullmatch(r"cut(\d+)(?:c(\d+))?(?:d(\d+))?(q?)", parts[0])
+    ir = next((x for x in parts if x[0] == "C"), "") or (rule if rule[0] == "D" else "")    # 투입 규칙(C·D)
     if mc:
-        cut, conf, depth = int(mc.group(1)) / 100, int(mc.group(2) or 1), int(mc.group(3) or 0) / 100
+        cut, conf, depth, rq = int(mc.group(1)) / 100, int(mc.group(2) or 1), int(mc.group(3) or 0) / 100, bool(mc.group(4))
     else:
-        cut, conf, depth = (0.5 if rule[0] == "D" else 0.0), 1, 0.0
-    brun, fired = 0, False
+        cut, conf, depth, rq = (0.5 if rule[0] == "D" else 0.0), 1, 0.0, False
+    brun, fired, arun, rb_pend = 0, False, 0, False
     base_u = (1 - BUY) / P[i0]          # 내 돈으로 산 단위
     cash = 0.0
     x_u, x_loan, x_t, x_px, x_l0, x_g = 0.0, 0.0, None, None, 0.0, 0.0     # 추가분 단위·남은 빌린 원금·투입일·투입가·처음 원금·누적 손익
@@ -104,6 +112,7 @@ def sim(P, below, peak_dd, i0, i1, rule):
             elif act == "rebuy" and reduced:
                 base_u += cash * (1 - BUY) / p
                 cash, reduced = 0.0, False
+                rb_pend = False
             elif act == "inject" and x_u <= 0:
                 E = base_u * p + cash
                 if E > 0:
@@ -117,9 +126,9 @@ def sim(P, below, peak_dd, i0, i1, rule):
             d = i - x_t
             if rule == "B2" and (d >= 252 or p <= x_px * 0.8):
                 pend.append("out")
-            elif rule.endswith("R1") and d >= 252:
+            elif ir.endswith("R1") and d >= 252:
                 pend.append("out")
-            elif rule.endswith("R2") and d in (126, 252, 378):
+            elif ir.endswith("R2") and d in (126, 252, 378):
                 if d == 378:
                     pend.append("out")
                 else:
@@ -133,14 +142,16 @@ def sim(P, below, peak_dd, i0, i1, rule):
             if b and not fired and not reduced and brun >= conf and (depth == 0 or p / PK[i] - 1 <= -depth):
                 pend.append("cut")
                 fired = True
-            if not b and pb and reduced:
+            arun = 0 if b else arun + 1
+            if reduced and not b and not rb_pend and ((not rq and pb) or (rq and (arun >= 10 or p >= MA[i] * 1.03))):
                 pend.append("rebuy")
+                rb_pend = True
         if b and not pb:                                     # 깨짐
             if rule[0] == "D":
                 pend.append("cut")
             if rule in ("B1", "B2"):
                 pend.append("inject")
-            if rule[0] in "CD" and x_u > 0:
+            if ir and x_u > 0:
                 pend.append("out")
             armed, up_days = False, 0
         if not b and pb:                                     # 다시 위로
@@ -149,16 +160,16 @@ def sim(P, below, peak_dd, i0, i1, rule):
             if rule == "B1" and x_u > 0:
                 pend.append("out")
             dd_ok = peak_dd[i] <= -0.15
-            if rule.startswith("C1"):
+            if ir.startswith("C1"):
                 pend.append("inject")
-            elif rule.startswith("C2") or rule[0] == "D":
+            elif ir.startswith("C2") or ir.startswith("D"):
                 if dd_ok:
                     pend.append("inject")
-            elif rule.startswith("C3"):
+            elif ir.startswith("C3"):
                 armed, up_days = True, 0
-        if rule.startswith("C3") and armed and not b:
+        if ir.startswith("C3") and armed and not b:
             up_days += 1
-        if rule.startswith("C3") and armed and not b and x_u <= 0 and (up_days >= 10 or p >= MA[i] * 1.03):
+        if ir.startswith("C3") and armed and not b and x_u <= 0 and (up_days >= 10 or p >= MA[i] * 1.03):
             pend.append("inject")
             armed = False
         own.append(base_u * p + cash + (x_u * p - x_loan if x_u > 0 else 0.0))
@@ -252,12 +263,12 @@ def main():
                       "full_inj_fail": sum(g < 0 for g in full[r]["inj"]), "full_inj_mean": mean(full[r]["inj"]) * 100 if full[r]["inj"] else None}
         res["idx"][key] = {"name": nm, "from": str(dates[0].date()), "to": str(dates[-1].date()), "n_win": len(starts),
                            "below_pct": float(below[200:].mean() * 100), "episodes": ep, "agg": agg}
-        for r in (RULES if SET == "cut" else ("hold", "cut50", "B1", "B2", "C1R2", "C2R2", "C3R2", "DR2")):
+        for r in (RULES if SET in ("cut", "kq") else ("hold", "cut50", "B1", "B2", "C1R2", "C2R2", "C3R2", "DR2")):
             a = agg[r]
             print(f"  {r:6s} 5년 평균 {a['mean']:+.0f} 중앙 {a['med']:+.0f} 하위10 {a['p10']:+.0f} 최악 {a['worst']:+.0f} MDD {a['mdd']:.0f} | 전체 {a['full']:+.0f} MDD {a['full_mdd']:.0f} 투입 {a['full_inj']}(실패 {a['full_inj_fail']})")
     os.makedirs("results", exist_ok=True)
-    if SET == "cut":
-        json.dump(res, open("results/index_cut.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
+    if SET in ("cut", "kq"):
+        json.dump(res, open(f"results/index_{SET}.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
         return
     json.dump(res, open("results/index_cmp.json", "w", encoding="utf-8"), ensure_ascii=False, indent=0, default=lambda o: o.item() if hasattr(o, "item") else str(o))
     # 덤: 이미 돌린 과거 구간 시험 기간의 지수 수익
