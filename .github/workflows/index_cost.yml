@@ -1,0 +1,36 @@
+name: index-cost
+
+# 지수 칩 규칙 세후 시험(index_cost.py): 세금·이자·배당 · 나눠서 다시 사기 · 투입별 기록. 리포트 재실행 없음
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 시험
+        run: python index_cost.py
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/ix && cp results/index_cost.* /tmp/ix/
+          for i in $(seq 1 10); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            cp /tmp/ix/* results/
+            git add results/index_cost.*
+            git commit -q -m "지수 칩 세후 시험 결과" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
