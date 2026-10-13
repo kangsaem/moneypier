@@ -16,7 +16,9 @@ jobs:
           SYMS: ${{ inputs.syms }}
         run: |
           python3 - <<'PY'
-          import json, os, time, urllib.request, datetime as D
+          import json, os, time, urllib.request, datetime as D, builtins
+          _p = builtins.print
+          def print(*a): _p("::notice::" + " ".join(str(x) for x in a))
           now = int(time.time())
           print("now UTC", D.datetime.utcfromtimestamp(now))
           for s in os.environ["SYMS"].split(","):
