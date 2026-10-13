@@ -690,3 +690,4 @@
 - 10:35 미국 종목 마지막 종가 누락 수정(moneypiee): 야후가 마지막 날 일봉 종가를 null로 줄 때가 있음(ELMT 10-12, meta.regularMarketPrice엔 20.52). anFetchYahoo가 null 봉을 건너뛰어 10-09에서 끝났음.
   → 마지막 타임스탬프 종가가 비어 있고 meta.regularMarketTime이 같은 날이면 meta 가격(고가·저가·거래량 포함)으로 채움. 장중이면 기존 규칙대로 미완성 봉 제거. lab-bt도 같은 엔진이라 같이 고쳐짐.
   진단용 yahoo-probe.yml(moneypier, 입력 syms, 결과는 알림(annotation)으로 — 로그 직접 열기는 막혀 있음) 추가.
+  추가(f8e0543): 시세 캐시에 버전(AN_BARS_V = 2) — 장 마감 뒤 받은 캐시는 다음 마감까지 다시 안 받아서 수정 전 캐시(10-12 빠짐)가 계속 쓰였음. v가 다르면 한 번 새로 받음.
