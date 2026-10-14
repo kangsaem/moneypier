@@ -1,5 +1,5 @@
 // 머니파이 데일리 리포트 예약 실행 (Cloudflare Worker, 2026-10-14)
-// cron(UTC): "1 11 * * MON-FRI" = 평일 20:01 KST 국장(2026-10-14~, 20:00 확정 일봉) / "10 22 * * MON-FRI" = 화~토 07:10 KST 미장
+// cron(UTC): "5 11 * * MON-FRI" = 평일 20:05 KST 국장(2026-10-14~, 20:00 확정 일봉) / "10 22 * * MON-FRI" = 화~토 07:10 KST 미장
 // 주의: Cloudflare 요일 숫자는 1 = 일요일(1-5 = 일~목). 숫자 대신 MON-FRI를 쓸 것
 // 할 일: GitHub Actions daily.yml을 workflow_dispatch로 실행 요청. 실패하면 한 번 더, 그래도 실패면 텔레그램 알림.
 // 비밀값(Settings → Variables and Secrets, 종류 Secret):
@@ -56,7 +56,7 @@ export default {
   },
   // 브라우저로 주소를 열면 상태만 보여 줌(실행하지 않음)
   async fetch() {
-    return new Response("moneypie-cron: 평일 20:01(국장) · 화~토 07:10(미장) KST에 리포트 실행 요청", {
+    return new Response("moneypie-cron: 평일 20:05(국장) · 화~토 07:10(미장) KST에 리포트 실행 요청", {
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });
   },
