@@ -26,13 +26,17 @@ def guard(label, fn, *args, default=""):
 
 # ---- 국장 종가 확정(2026-10-14 사용자 규칙) ----
 # 증권사 공식 일봉 종가 = 20:00(애프터마켓 마감) 확정 → 국장 판정은 20:00 이후 네이버 일봉으로.
-# 15:30~19:59 국장 실행 = 잠정(신호 기록·텔레그램 없음). 20:00 이후 네이버 오늘 봉이 없으면 10분마다 23:50까지 재시도,
-# 끝내 없으면 '네이버 종가 못 받음'(history/naver_missing.json 기록, 텔레그램 알림, 그날 신호 기록 없음). 다음 날 일봉에 들어오면 자동으로 채워짐.
+# 15:30~19:59 국장 실행 = 잠정(신호 기록·텔레그램 없음). 20:01 실행(Worker)에서 네이버 오늘 봉이 없으면 1시간마다 재시도(한 실행 안에서 최대 약 5시간 20분 —
+# Actions 한도 6시간, 뒤에 백테스트 포함), 끝내 없으면 '네이버 종가 못 받음'(history/naver_missing.json 기록, 텔레그램 알림, 그날 신호 기록 없음).
+# 다음 날 일봉에 들어오면 자동으로 채워짐. 자정을 넘겨 성공해도 기록 날짜는 시작한 날(TARGET_DATE).
 _k0 = datetime.now(timezone.utc) + timedelta(hours=9)
 _hm0 = _k0.hour * 100 + _k0.minute
 KR_RUN = not (500 <= _hm0 < 1530)
 KR_PROVISIONAL = KR_RUN and 1530 <= _hm0 < 2000
 NAVER_MISS = None          # 못 받은 날짜(문자열) 또는 None
+TARGET_DATE = (_k0 - timedelta(days=1) if _hm0 < 500 else _k0).strftime("%Y-%m-%d")   # 국장 기준 거래일(자정~05시 실행은 전날)
+WAIT_MAX = 320 * 60        # 네이버 오늘 봉 기다리는 최대 시간(초)
+WAIT_STEP = 60 * 60        # 재시도 간격(초)
 NAVER_NOTE = []            # 텔레그램에 붙일 네이버 종가 관련 줄
 _NH = {"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/126 Safari/537.36"}
 MISS_FILE = "history/naver_missing.json"
@@ -55,7 +59,7 @@ def _kr_traded_today():
         at = (j.get("datas") or [{}])[0].get("localTradedAt", "")
         if not at:
             return None
-        return at[:10] == (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d")
+        return at[:10] == TARGET_DATE
     except Exception as e:
         print("국장 개장 확인 실패:", e)
         return None
@@ -79,9 +83,10 @@ def naver_close_check():
     global NAVER_MISS
     import time
     k = datetime.now(timezone.utc) + timedelta(hours=9)
-    today = k.strftime("%Y-%m-%d")
+    today = TARGET_DATE
     miss = _miss_load()
-    if k.weekday() < 5 and _kr_traded_today() is not False:
+    t0 = time.time()
+    if datetime.strptime(today, "%Y-%m-%d").weekday() < 5 and _kr_traded_today() is not False:
         while True:
             try:
                 ok = today in _naver_last_dates()
@@ -91,12 +96,11 @@ def naver_close_check():
             if ok:
                 print("네이버 오늘 종가 확인:", today)
                 break
-            k = datetime.now(timezone.utc) + timedelta(hours=9)
-            if k.hour * 100 + k.minute >= 2350:
+            if time.time() - t0 + WAIT_STEP > WAIT_MAX:
                 NAVER_MISS = today
                 break
-            print("네이버 오늘 봉 없음 → 10분 뒤 다시")
-            time.sleep(600)
+            print("네이버 오늘 봉 없음 → 1시간 뒤 다시")
+            time.sleep(WAIT_STEP)
     # 지난 실패일이 이제 일봉에 들어왔는지(다음 날에라도 채워지면 해결)
     try:
         have = set(_naver_last_dates(days=40)) if miss else set()
@@ -877,7 +881,8 @@ guard("시장 자료 내보내기", _market_json)
 # 신호 기록: 오늘 칸을 history/에 저장(daily.yml이 커밋) + 지난 기록으로 docs/history.html
 import history
 if IS_US or not (KR_PROVISIONAL or NAVER_MISS):          # 국장 잠정(15:30~19:59)·네이버 종가 못 받은 날은 기록 안 함(2026-10-14)
-    guard("신호 기록 저장", lambda: history.save(history.record(results, msig, "us" if IS_US else "kr")))
+    guard("신호 기록 저장", lambda: history.save(dict(history.record(results, msig, "us" if IS_US else "kr"),
+                                                        **({} if IS_US else {"date": TARGET_DATE}))))   # 국장 = 시작한 거래일 날짜
 guard("신호 기록 페이지", history.build, results)
 import live
 guard("V1 실전 기록", live.build, results)          # 2026-10-12부터 신호대로 따라 한 가상 계좌 → docs/live.html
@@ -906,7 +911,7 @@ def action_text():
                 kind = {"buyb": "바닥", "buy": "눌림", "up": "추세"}[k]
                 loc = f" · LOC {r['close'] * 1.08:,.2f}" if IS_US else ""
                 buy.append(f"· {r['name']} {price(r)} ({kind}){loc}")
-    head = f"[{'미장' if IS_US else '국장'} {kst:%m/%d}]"
+    head = f"[미장 {kst:%m/%d}]" if IS_US else f"[국장 {TARGET_DATE[5:7]}/{TARGET_DATE[8:]}]"   # 국장 = 거래일(자정 넘겨 성공해도)
     if not buy and not sell:
         return f"{head} 매수·재검토 없음"
     L = [f"{head} 매수 {len(buy)} · 재검토 {len(sell)}"]
@@ -939,7 +944,7 @@ def market_open_today():
     if b is None or len(b) == 0:
         return None
     last = b.index[-1].date()
-    want = datetime.now(ZoneInfo("America/New_York" if IS_US else "Asia/Seoul")).date()
+    want = datetime.now(ZoneInfo("America/New_York")).date() if IS_US else datetime.strptime(TARGET_DATE, "%Y-%m-%d").date()
     print(f"휴장일 확인: 지수 마지막 봉 {last}, 오늘 장 날짜 {want}")
     return last == want
 
@@ -947,7 +952,7 @@ def market_open_today():
 if token and chat_id and not IS_US and KR_PROVISIONAL:
     print("텔레그램 건너뜀: 국장 잠정 실행(20:00 전)")
 elif token and chat_id and NAVER_MISS:
-    tg_send(f"[국장 {kst:%m/%d}] " + "\n".join(NAVER_NOTE))
+    tg_send(f"[국장 {TARGET_DATE[5:7]}/{TARGET_DATE[8:]}] " + "\n".join(NAVER_NOTE))
 elif token and chat_id and guard("휴장일 확인", market_open_today, default=None) is False:
     print("텔레그램 건너뜀: 오늘은 장이 열리지 않았거나 늦은 실행(지수 마지막 봉 ≠ 오늘)")
 elif token and chat_id:
