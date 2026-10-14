@@ -23,11 +23,11 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          mkdir -p /tmp/kx && cp results/ix* /tmp/kx/
+          mkdir -p /tmp/kx && cp -r results/ix* /tmp/kx/
           for i in $(seq 1 10); do
             git fetch -q origin ${{ github.ref_name }}
             git reset -q --hard origin/${{ github.ref_name }}
-            cp /tmp/kx/* results/
+            cp -r /tmp/kx/* results/
             git add results/ix*
             git commit -q -m "indexergo 확인 [skip ci]" || exit 0
             git push -q origin HEAD:${{ github.ref_name }} && exit 0
