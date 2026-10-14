@@ -1,0 +1,36 @@
+name: k200-hold
+
+# 코스피 200일선 붕괴 국면 — 안정 기준 40·50·60일 비교(k200_hold.py) → results/k200_hold.txt
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 계산
+        run: python k200_hold.py
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/kx && cp results/k200_hold.txt /tmp/kx/
+          for i in $(seq 1 10); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            cp /tmp/kx/* results/
+            git add results/k200_hold.txt
+            git commit -q -m "코스피 200일선 안정 기준 비교 [skip ci]" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
