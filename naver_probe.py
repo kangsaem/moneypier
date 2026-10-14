@@ -25,6 +25,14 @@ for code in ("373220", "005930"):
         print("--- siseJson 마지막 4줄\n", "\n".join(l for l in t.strip().splitlines() if l.strip())[-400:])
     except Exception as e:
         print("siseJson 실패", e)
+    for ys in (code + ".KS",):
+        try:
+            j = requests.get(f"https://query1.finance.yahoo.com/v8/finance/chart/{ys}?range=5d&interval=1d", headers=H, timeout=20).json()
+            res = j["chart"]["result"][0]; m = res["meta"]
+            print("--- yahoo", ys, "regularMarketPrice", m.get("regularMarketPrice"), "time", m.get("regularMarketTime"),
+                  "closes", res["indicators"]["quote"][0]["close"], "ts", res["timestamp"])
+        except Exception as e:
+            print("yahoo 실패", e)
     try:
         import FinanceDataReader as fdr
         print("--- FDR\n", fdr.DataReader(code, "2026-10-08").tail(4))
