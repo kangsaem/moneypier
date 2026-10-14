@@ -7,13 +7,13 @@
   60주선 = 주봉 종가 60주 평균(이번 주는 그날 종가). 도달 = 이탈일부터 안정 전까지 일봉 저가 ≤ 그날 60주선인 첫날, 이탈일 종가가 이미 아래면 '이미 아래'.
   지수회복 = 안정일(포함) 이후 처음 종가 ≥ 이탈 전날 종가인 날, 일수는 이탈일 = 1일.
 그래프 창: 이탈 전날 ~ max(지수회복일, 안정일 + 39거래일)(아직이면 마지막 날).
-  지수회복까지 21거래일 미만이면 '이탈 전날~안정일'이 가운데 오도록 앞을 채움(채운 앞쪽 = 회색 구간).
+  핵심 구간(이탈 전날 ~ max(지수회복일, 안정일+39))이 63거래일 미만이면 63거래일 창으로, 핵심 구간을 가운데 두고 좌우를 같은 길이로 채움(화면에서 어둡게 덮음).
   이평 계산용으로 창 앞 PRE 거래일을 같이 넣음(60주선 ≈ 300거래일).
 """
 import json, os, sys
 import pandas as pd
 
-H, PRE, MONTH = 40, 330, 21
+H, PRE, SHORT = 40, 330, 63
 CASE_FROM = "1996-01-01"
 COVID = ("2020-02-20", "2020-03-31")                      # 코로나19 급락 구간(국면이 겹치면 이슈에 '+ 코로나19')
 IDX = {  # key: (이름, FDR 코드, 야후 심볼, 데이터 시작)
@@ -125,18 +125,25 @@ def build(key):
             R = n - 1
         else:
             R = min(n - 1, max(r if r is not None else n - 1, u + H - 1))
-        Lw, gray = p, None
-        if rec_n is not None and rec_n < MONTH and u is not None:
-            Lw = max(0, p + u - R)                              # (p+u)/2 가 창 가운데
+        core_end = R
+        Lw, gray = p, []
+        core = R - p + 1                                         # 핵심 구간 = 이탈 전날 ~ max(지수회복일, 안정일+39)
+        if u is not None and core < SHORT:                      # 63거래일(3달) 미만이면 63거래일 창, 핵심 구간을 가운데 두고 좌우 같은 길이로 채움(어둡게 덮음)
+            padl = (SHORT - core) // 2
+            padr = SHORT - core - padl
+            Lw, R2 = max(0, p - padl), min(n - 1, R + padr)
             if Lw < p:
-                gray = [Lw, p - 1]
+                gray.append([Lw, p - 1])
+            if R2 > R:
+                gray.append([R + 1, R2])
+            R = R2
         S = max(0, Lw - PRE)
         nxt = eps[k + 1]["b"] if k + 1 < len(eps) else None
-        span_end = R
+        span_end = core_end                                     # 코로나 겹침은 핵심 구간 기준
         covid = D[b] <= COVID[1] and D[span_end] >= COVID[0]
         g = {"d": [x.replace("-", "") for x in D[S:R + 1]], "c": [round(x, 2) for x in C[S:R + 1]],
              "from": Lw - S, "brk": b - S, "stab": (u - S) if u is not None else None, "rec": (r - S) if r is not None else None,
-             "gray": [gray[0] - S, gray[1] - S] if gray else None}
+             "gray": [[a - S, b - S] for a, b in gray] or None}
         out.append({
             "date": D[b], "chg": round((C[b] / C[p] - 1) * 100, 2), "prevGap": round((C[p] / M[p] - 1) * 100, 2),
             "drop": round(drop, 2), "dropDays": mi - b,
