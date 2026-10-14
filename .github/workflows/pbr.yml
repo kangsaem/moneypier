@@ -18,7 +18,7 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt pykrx
       - name: 계산
-        run: python pbr_test.py
+        run: python pbr_test.py > results/pbr_test.log 2>&1 || (tail -50 results/pbr_test.log; true)
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
