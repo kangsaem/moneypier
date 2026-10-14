@@ -153,6 +153,10 @@ def build(key):
             "fails": ep["fails"], "rec": D[r] if r is not None else None, "recN": rec_n,
             "next": D[nxt] if nxt is not None else None, "covid": covid, "open": u is None, "g": g,
         })
+    os.makedirs("results", exist_ok=True)
+    # 다른 지수 겹쳐 보기용 전체 일봉(2026-10-14): 날짜(yyyymmdd)·종가
+    json.dump({"key": key, "made": D[-1], "d": [x.replace("-", "") for x in D], "c": [round(x, 2) for x in C]},
+              open(f"results/crash200_series_{key}.json", "w"), separators=(",", ":"))
     res = {"key": key, "name": IDX[key][0], "made": D[-1], "from": D[0], "hold": H, "cases": out}
     os.makedirs("results", exist_ok=True)
     json.dump(res, open(f"results/crash200_{key}.json", "w"), ensure_ascii=False, separators=(",", ":"))
