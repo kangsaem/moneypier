@@ -1,6 +1,6 @@
 /home/runner/work/moneypier/moneypier/naver_probe.py:4: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
   kst = dt.datetime.utcnow() + dt.timedelta(hours=9)
-KST 2026-10-14 17:03:15
+KST 2026-10-14 17:16:13
 
 ===== 373220
 --- polling realtime 200
@@ -20,19 +20,19 @@ KST 2026-10-14 17:03:15
     "closePriceSendTime": "1630",
     "nameKor": "코스피",
     "nameEng": "KOSPI",
+    "name": "KOSPI",
     "nationCode": "KOR",
     "nationName": "대한민국",
-    "stockType": "domestic",
-    "name": "KOSPI"
+    "stockType": "domestic"
    },
-   "closePrice": "419,000",
-   "compareToPreviousClosePrice": "9,000",
+   "closePrice": "418,500",
+   "compareToPreviousClosePrice": "8,500",
    "compareToPreviousPrice": {
     "code": "2",
     "text": "상승",
     "name": "RISING"
    },
-   "fluctuationsRatio": "2.20",
+   "fluctuationsRatio": "2.07",
    "tradeStopType": {
     "code": "1",
     "text": "운영.Trading",
@@ -44,15 +44,15 @@ KST 2026-10-14 17:03:15
    "openPrice": "410,500",
    "highPrice": "428,000",
    "lowPrice": "409,000",
-   "accumulatedTradingVolume": "664,117",
-   "accumulatedTradingValue": "2,800억",
+   "accumulatedTradingVolume": "664,558",
+   "accumulatedTradingValue": "2,802억",
    "marketStatus": "OPEN",
    "marketStatusDetailType": "open",
-   "localTradedAt": "2026-10-14T17:03:16.526865+09:00",
+   "localTradedAt": "2026-10-14T17:16:14.264695+09:00",
    "overMarketPriceInfo": {
     "tradingSessionType": "AFTER_MARKET",
     "overMarketStatus": "OPEN",
-    "overPrice": "419,000",
+    "overPrice": "418,500",
     "openPrice": "413,000",
     "highPrice": "428,000",
     "lowPrice": "406,500",
@@ -61,9 +61,9 @@ KST 2026-10-14 17:03:15
      "text": "상승",
      "name": "RISING"
     },
-    "compareToPreviousClosePrice": "9,000",
-    "fluctuationsRatio": "2.20",
-    "localTradedAt": "2026-10-14T17:03:16.526885+09:00",
+    "compareToPreviousClosePrice": "8,500",
+    "fluctuationsRatio": "2.07",
+    "localTradedAt": "2026-10-14T17:16:14.264714+09:00",
     "tradeStopType": {
      "code": "1",
      "text": "운영.Trading",
@@ -72,43 +72,43 @@ KST 2026-10-14 17:03:15
     "tradableStatus": "tradable",
     "tradableStatusCode": "ok",
     "tradableStatusUpdatedAt": "2026-10-14T07:10:19.682+09:00",
-    "accumulatedTradingVolume": "299,598",
-    "accumulatedTradingValue": "1,257억",
-    "accumulatedTradingVolumeRaw": "299598",
-    "accumulatedTradingValueRaw": "125710000000"
+    "accumulatedTradingVolume": "300,351",
+    "accumulatedTradingValue": "1,260억",
+    "accumulatedTradingVolumeRaw": "300351",
+    "accumulatedTradingValueRaw": "126025000000"
    },
    "integratedPriceInfo": {
     "openPrice": "413,000",
     "highPrice": "428,000",
     "lowPrice": "406,500",
-    "accumulatedTradingVolume": "963,715",
-    "accumulatedTradingValue": "4,057억",
-    "accumulatedTradingVolumeRaw": "963715",
-    "accumulatedTradingValueRaw": "405741000000"
+    "accumulatedTradingVolume": "964,909",
+    "accumulatedTradingValue": "4,062억",
+    "accumulatedTradingVolumeRaw": "964909",
+    "accumulatedTradingValueRaw": "406241000000"
    },
    "isinCode": "KR7373220003",
    "myDataCode": null,
    "stockEndUrl": null,
-   "symbolCode": "373220",
    "currencyType": {
     "code": "KRW",
     "text": "Republic of Korea won",
     "name": "KRW"
    },
+   "symbolCode": "373220",
    "marketSessionType": "afterMarket",
-   "closePriceRaw": "419000",
-   "compareToPreviousClosePriceRaw": "9000",
-   "fluctuationsRatioRaw": "2.20",
+   "marketValueFull": "97,929,000,000,000",
+   "marketValueFullRaw": "97929000000000",
+   "closePriceRaw": "418500",
+   "compareToPreviousClosePriceRaw": "8500",
+   "fluctuationsRatioRaw": "2.07",
    "openPriceRaw": "410500",
    "highPriceRaw": "428000",
    "lowPriceRaw": "409000",
-   "accumulatedTradingVolumeRaw": "664117",
-   "accumulatedTradingValueRaw": "280031000000",
-   "marketValueFull": "98,046,000,000,000",
-   "marketValueFullRaw": "98046000000000"
+   "accumulatedTradingVolumeRaw": "664558",
+   "accumulatedTradingValueRaw": "280216000000"
   }
  ],
- "time": "20261014170316"
+ "time": "20261014171614"
 }
 --- m.stock basic 200
 {
@@ -119,17 +119,17 @@ KST 2026-10-14 17:03:15
  "itemLogoUrl": "https://ssl.pstatic.net/imgstock/fn/real/logo/stock/Stock373220.svg",
  "itemLogoPngUrl": "https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock373220.png",
  "sosok": "0",
- "closePrice": "419,000",
- "compareToPreviousClosePrice": "9,000",
+ "closePrice": "418,500",
+ "compareToPreviousClosePrice": "8,500",
  "compareToPreviousPrice": {
   "code": "2",
   "text": "상승",
   "name": "RISING"
  },
- "fluctuationsRatio": "2.20",
+ "fluctuationsRatio": "2.07",
  "marketStatus": "OPEN",
  "marketStatusDetailType": "open",
- "localTradedAt": "2026-10-14T17:02:19+09:00",
+ "localTradedAt": "2026-10-14T17:15:21+09:00",
  "tradeStopType": {
   "code": "1",
   "text": "운영.Trading",
@@ -155,17 +155,17 @@ KST 2026-10-14 17:03:15
  },
  "stockExchangeName": "KOSPI",
  "imageCharts": {
+  "areaYear": "https://financial-vn.pstatic.net/chart/mobile/area/year/373220_end.png",
+  "areaYearThree": "https://financial-vn.pstatic.net/chart/mobile/area/year3/373220_end.png",
+  "day": "https://financial-vn.pstatic.net/chart/mobile/day/krx/373220_end.png",
   "transparent": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/373220_transparent.png",
   "candleDay": "https://financial-vn.pstatic.net/chart/mobile/candle/day/373220_end.png",
-  "day": "https://financial-vn.pstatic.net/chart/mobile/day/krx/373220_end.png",
-  "candleMonth": "https://financial-vn.pstatic.net/chart/mobile/candle/month/373220_end.png",
-  "candleWeek": "https://financial-vn.pstatic.net/chart/mobile/candle/week/373220_end.png",
-  "day_up": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/373220_end_up.png",
-  "areaYearThree": "https://financial-vn.pstatic.net/chart/mobile/area/year3/373220_end.png",
   "areaMonthThree": "https://financial-vn.pstatic.net/chart/mobile/area/month3/373220_end.png",
+  "day_up": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/373220_end_up.png",
   "day_up_tablet": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/373220_end_up_tablet.png",
-  "areaYear": "https://financial-vn.pstatic.net/chart/mobile/area/year/373220_end.png",
-  "areaYearTen": "https://financial-vn.pstatic.net/chart/mobile/area/year10/373220_end.png"
+  "candleWeek": "https://financial-vn.pstatic.net/chart/mobile/candle/week/373220_end.png",
+  "areaYearTen": "https://financial-vn.pstatic.net/chart/mobile/area/year10/373220_end.png",
+  "candleMonth": "https://financial-vn.pstatic.net/chart/mobile/candle/month/373220_end.png"
  },
  "imageChartUrlInfo": {
   "line": {
@@ -209,15 +209,15 @@ KST 2026-10-14 17:03:15
  "overMarketPriceInfo": {
   "tradingSessionType": "AFTER_MARKET",
   "overMarketStatus": "OPEN",
-  "overPrice": "419,000",
+  "overPrice": "418,500",
   "compareToPreviousPrice": {
    "code": "2",
    "text": "상승",
    "name": "RISING"
   },
-  "compareToPreviousClosePrice": "9,000",
-  "fluctuationsRatio": "2.20",
-  "localTradedAt": "2026-10-14T17:03:17.331+09:00",
+  "compareToPreviousClosePrice": "8,500",
+  "fluctuationsRatio": "2.07",
+  "localTradedAt": "2026-10-14T17:16:15.341+09:00",
   "tradeStopType": {
    "code": "1",
    "text": "운영.Trading",
@@ -274,17 +274,17 @@ KST 2026-10-14 17:03:15
   {
    "code": "accumulatedTradingVolume",
    "key": "거래량",
-   "value": "963,690"
+   "value": "964,890"
   },
   {
    "code": "accumulatedTradingValue",
    "key": "대금",
-   "value": "4,057억"
+   "value": "4,062억"
   },
   {
    "code": "marketValue",
    "key": "시총",
-   "value": "98조 460억"
+   "value": "97조 9,290억"
   },
   {
    "code": "foreignRate",
@@ -316,7 +316,7 @@ KST 2026-10-14 17:03:15
   {
    "code": "cnsPer",
    "key": "추정PER",
-   "value": "-389.04배"
+   "value": "-388.58배"
   },
   {
    "code": "cnsEps",
@@ -326,7 +326,7 @@ KST 2026-10-14 17:03:15
   {
    "code": "pbr",
    "key": "PBR",
-   "value": "4.39배",
+   "value": "4.38배",
    "valueDesc": "2026.06."
   },
   {
@@ -438,7 +438,7 @@ KST 2026-10-14 17:03:15
    "nm": "LG에너지솔루션",
    "bnm": "하나증권",
    "tit": "북미 ESS 물량 증가 지속",
-   "rcnt": "6199",
+   "rcnt": "6207",
    "wdt": "20261012"
   },
   {
@@ -447,7 +447,7 @@ KST 2026-10-14 17:03:15
    "nm": "LG에너지솔루션",
    "bnm": "유진투자증권",
    "tit": "보상금 제외해도 호실적",
-   "rcnt": "3530",
+   "rcnt": "3532",
    "wdt": "20261012"
   },
   {
@@ -456,7 +456,7 @@ KST 2026-10-14 17:03:15
    "nm": "LG에너지솔루션",
    "bnm": "신한투자증권",
    "tit": "LG에너지솔루션 3Q26 잠정실적 발표",
-   "rcnt": "4222",
+   "rcnt": "4224",
    "wdt": "20261012"
   },
   {
@@ -465,7 +465,7 @@ KST 2026-10-14 17:03:15
    "nm": "LG에너지솔루션",
    "bnm": "iM증권",
    "tit": "3Q26 일회성 요인 제외하더라도 호실적",
-   "rcnt": "2622",
+   "rcnt": "2624",
    "wdt": "20261012"
   },
   {
@@ -474,7 +474,7 @@ KST 2026-10-14 17:03:15
    "nm": "LG에너지솔루션",
    "bnm": "IBK투자증권",
    "tit": "3Q26 잠정 실적 코멘트",
-   "rcnt": "2503",
+   "rcnt": "2505",
    "wdt": "20261012"
   }
  ],
@@ -487,17 +487,17 @@ KST 2026-10-14 17:03:15
    "reutersCode": "006400",
    "stockName": "삼성SDI",
    "sosok": "0",
-   "closePrice": "588,000",
-   "compareToPreviousClosePrice": "28,000",
+   "closePrice": "590,000",
+   "compareToPreviousClosePrice": "30,000",
    "compareToPreviousPrice": {
     "code": "2",
     "text": "상승",
     "name": "RISING"
    },
-   "fluctuationsRatio": "5.00",
+   "fluctuationsRatio": "5.36",
    "accumulatedTradingVolume": "-",
    "accumulatedTradingValue": "-",
-   "marketValue": "47,384,291",
+   "marketValue": "47,545,462",
    "nav": "N/A",
    "threeMonthEarningRate": "N/A",
    "stockExchangeType": {
@@ -525,7 +525,7 @@ KST 2026-10-14 17:03:15
    "reutersCode": "247540",
    "stockName": "에코프로비엠",
    "sosok": "1",
-   
+ 
 --- siseJson 마지막 4줄
  , 372000, 357500, 369000, 210285, 5.62],
 ["20261006", 372000, 391000, 367500, 388500, 443944, 5.64],
@@ -533,15 +533,16 @@ KST 2026-10-14 17:03:15
 ["20261008", 401000, 418000, 397000, 403000, 919337, 5.7],
 ["20261012", 410000, 423000, 391500, 396500, 546288, 5.68],
 ["20261013", 392000, 413000, 377000, 412500, 635242, 5.61],
-["20261014", 410500, 428000, 409000, 419000, 664110, 5.61]
+["20261014", 410500, 428000, 409000, 418500, 664558, 5.61]
 ]
+--- yahoo 373220.KS regularMarketPrice 422000.0 time 1791959418 closes [391000.0, 401000.0, 398000.0, 410000.0, 422000.0] ts [1791331200, 1791417600, 1791763200, 1791849600, 1791936000]
 --- FDR
                Open    High     Low   Close  Volume    Change
 Date                                                        
 2026-10-08  401000  418000  397000  403000  919337  0.041344
 2026-10-12  410000  423000  391500  396500  546288 -0.016129
 2026-10-13  392000  413000  377000  412500  635242  0.040353
-2026-10-14  410500  428000  409000  419000  664110  0.015758
+2026-10-14  410500  428000  409000  418500  664558  0.014545
 
 ===== 005930
 --- polling realtime 200
@@ -561,19 +562,19 @@ Date
     "closePriceSendTime": "1630",
     "nameKor": "코스피",
     "nameEng": "KOSPI",
+    "name": "KOSPI",
     "nationCode": "KOR",
     "nationName": "대한민국",
-    "stockType": "domestic",
-    "name": "KOSPI"
+    "stockType": "domestic"
    },
-   "closePrice": "233,500",
-   "compareToPreviousClosePrice": "1,500",
+   "closePrice": "235,000",
+   "compareToPreviousClosePrice": "3,000",
    "compareToPreviousPrice": {
     "code": "2",
     "text": "상승",
     "name": "RISING"
    },
-   "fluctuationsRatio": "0.65",
+   "fluctuationsRatio": "1.29",
    "tradeStopType": {
     "code": "1",
     "text": "운영.Trading",
@@ -585,15 +586,15 @@ Date
    "openPrice": "233,500",
    "highPrice": "241,500",
    "lowPrice": "230,000",
-   "accumulatedTradingVolume": "16,958,473",
-   "accumulatedTradingValue": "3조 9,980억",
+   "accumulatedTradingVolume": "17,010,207",
+   "accumulatedTradingValue": "4조 102억",
    "marketStatus": "OPEN",
    "marketStatusDetailType": "open",
-   "localTradedAt": "2026-10-14T17:03:20.942553+09:00",
+   "localTradedAt": "2026-10-14T17:16:20.037891+09:00",
    "overMarketPriceInfo": {
     "tradingSessionType": "AFTER_MARKET",
     "overMarketStatus": "OPEN",
-    "overPrice": "234,000",
+    "overPrice": "235,000",
     "openPrice": "238,000",
     "highPrice": "241,500",
     "lowPrice": "230,000",
@@ -602,9 +603,9 @@ Date
      "text": "상승",
      "name": "RISING"
     },
-    "compareToPreviousClosePrice": "2,000",
-    "fluctuationsRatio": "0.86",
-    "localTradedAt": "2026-10-14T17:03:20.942570+09:00",
+    "compareToPreviousClosePrice": "3,000",
+    "fluctuationsRatio": "1.29",
+    "localTradedAt": "2026-10-14T17:16:20.037913+09:00",
     "tradeStopType": {
      "code": "1",
      "text": "운영.Trading",
@@ -613,19 +614,19 @@ Date
     "tradableStatus": "tradable",
     "tradableStatusCode": "ok",
     "tradableStatusUpdatedAt": "2026-10-14T07:10:13.196+09:00",
-    "accumulatedTradingVolume": "9,082,084",
-    "accumulatedTradingValue": "2조 1,456억",
-    "accumulatedTradingVolumeRaw": "9082084",
-    "accumulatedTradingValueRaw": "2145648000000"
+    "accumulatedTradingVolume": "9,196,293",
+    "accumulatedTradingValue": "2조 1,724억",
+    "accumulatedTradingVolumeRaw": "9196293",
+    "accumulatedTradingValueRaw": "2172405000000"
    },
    "integratedPriceInfo": {
     "openPrice": "238,000",
     "highPrice": "241,500",
     "lowPrice": "230,000",
-    "accumulatedTradingVolume": "26,040,557",
-    "accumulatedTradingValue": "6조 1,437억",
-    "accumulatedTradingVolumeRaw": "26040557",
-    "accumulatedTradingValueRaw": "6143682000000"
+    "accumulatedTradingVolume": "26,206,500",
+    "accumulatedTradingValue": "6조 1,826억",
+    "accumulatedTradingVolumeRaw": "26206500",
+    "accumulatedTradingValueRaw": "6182556000000"
    },
    "isinCode": "KR7005930003",
    "myDataCode": null,
@@ -637,19 +638,19 @@ Date
     "name": "KRW"
    },
    "marketSessionType": "afterMarket",
-   "closePriceRaw": "233500",
-   "compareToPreviousClosePriceRaw": "1500",
-   "fluctuationsRatioRaw": "0.65",
+   "closePriceRaw": "235000",
+   "compareToPreviousClosePriceRaw": "3000",
+   "fluctuationsRatioRaw": "1.29",
    "openPriceRaw": "233500",
    "highPriceRaw": "241500",
    "lowPriceRaw": "230000",
-   "accumulatedTradingVolumeRaw": "16958473",
-   "accumulatedTradingValueRaw": "3998034000000",
-   "marketValueFull": "1,365,106,054,968,000",
-   "marketValueFullRaw": "1365106054968000"
+   "accumulatedTradingVolumeRaw": "17010207",
+   "accumulatedTradingValueRaw": "4010151000000",
+   "marketValueFull": "1,373,875,472,880,000",
+   "marketValueFullRaw": "1373875472880000"
   }
  ],
- "time": "20261014170320"
+ "time": "20261014171620"
 }
 --- m.stock basic 200
 {
@@ -660,17 +661,17 @@ Date
  "itemLogoUrl": "https://ssl.pstatic.net/imgstock/fn/real/logo/stock/Stock005930.svg",
  "itemLogoPngUrl": "https://ssl.pstatic.net/imgstock/fn/real/logo/png/stock/Stock005930.png",
  "sosok": "0",
- "closePrice": "234,000",
- "compareToPreviousClosePrice": "2,000",
+ "closePrice": "235,000",
+ "compareToPreviousClosePrice": "3,000",
  "compareToPreviousPrice": {
   "code": "2",
   "text": "상승",
   "name": "RISING"
  },
- "fluctuationsRatio": "0.86",
+ "fluctuationsRatio": "1.29",
  "marketStatus": "OPEN",
  "marketStatusDetailType": "open",
- "localTradedAt": "2026-10-14T17:02:21+09:00",
+ "localTradedAt": "2026-10-14T17:16:17+09:00",
  "tradeStopType": {
   "code": "1",
   "text": "운영.Trading",
@@ -696,17 +697,17 @@ Date
  },
  "stockExchangeName": "KOSPI",
  "imageCharts": {
-  "day_up_tablet": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/005930_end_up_tablet.png",
-  "areaYearThree": "https://financial-vn.pstatic.net/chart/mobile/area/year3/005930_end.png",
   "candleWeek": "https://financial-vn.pstatic.net/chart/mobile/candle/week/005930_end.png",
   "areaMonthThree": "https://financial-vn.pstatic.net/chart/mobile/area/month3/005930_end.png",
+  "areaYear": "https://financial-vn.pstatic.net/chart/mobile/area/year/005930_end.png",
+  "day_up_tablet": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/005930_end_up_tablet.png",
   "transparent": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/005930_transparent.png",
   "candleDay": "https://financial-vn.pstatic.net/chart/mobile/candle/day/005930_end.png",
-  "candleMonth": "https://financial-vn.pstatic.net/chart/mobile/candle/month/005930_end.png",
-  "areaYear": "https://financial-vn.pstatic.net/chart/mobile/area/year/005930_end.png",
   "areaYearTen": "https://financial-vn.pstatic.net/chart/mobile/area/year10/005930_end.png",
   "day_up": "https://financial-vn.pstatic.net/chart/mobile/mini/krx/005930_end_up.png",
-  "day": "https://financial-vn.pstatic.net/chart/mobile/day/krx/005930_end.png"
+  "day": "https://financial-vn.pstatic.net/chart/mobile/day/krx/005930_end.png",
+  "areaYearThree": "https://financial-vn.pstatic.net/chart/mobile/area/year3/005930_end.png",
+  "candleMonth": "https://financial-vn.pstatic.net/chart/mobile/candle/month/005930_end.png"
  },
  "imageChartUrlInfo": {
   "line": {
@@ -750,15 +751,15 @@ Date
  "overMarketPriceInfo": {
   "tradingSessionType": "AFTER_MARKET",
   "overMarketStatus": "OPEN",
-  "overPrice": "233,500",
+  "overPrice": "235,000",
   "compareToPreviousPrice": {
    "code": "2",
    "text": "상승",
    "name": "RISING"
   },
-  "compareToPreviousClosePrice": "1,500",
-  "fluctuationsRatio": "0.65",
-  "localTradedAt": "2026-10-14T17:03:21.498+09:00",
+  "compareToPreviousClosePrice": "3,000",
+  "fluctuationsRatio": "1.29",
+  "localTradedAt": "2026-10-14T17:16:20.764+09:00",
   "tradeStopType": {
    "code": "1",
    "text": "운영.Trading",
@@ -815,17 +816,17 @@ Date
   {
    "code": "accumulatedTradingVolume",
    "key": "거래량",
-   "value": "26,039,477"
+   "value": "26,205,477"
   },
   {
    "code": "accumulatedTradingValue",
    "key": "대금",
-   "value": "6조 1,434억"
+   "value": "6조 1,823억"
   },
   {
    "code": "marketValue",
    "key": "시총",
-   "value": "1,368조 292억"
+   "value": "1,370조 9,523억"
   },
   {
    "code": "foreignRate",
@@ -845,7 +846,7 @@ Date
   {
    "code": "per",
    "key": "PER",
-   "value": "10.50배",
+   "value": "10.52배",
    "valueDesc": "2026.06."
   },
   {
@@ -857,7 +858,7 @@ Date
   {
    "code": "cnsPer",
    "key": "추정PER",
-   "value": "5.14배"
+   "value": "5.15배"
   },
   {
    "code": "cnsEps",
@@ -867,7 +868,7 @@ Date
   {
    "code": "pbr",
    "key": "PBR",
-   "value": "2.72배",
+   "value": "2.73배",
    "valueDesc": "2026.06."
   },
   {
@@ -981,7 +982,7 @@ Date
    "nm": "삼성전자",
    "bnm": "DS투자증권",
    "tit": "사상 최초 DRAM 분기 매출 100조원 상회",
-   "rcnt": "17054",
+   "rcnt": "17088",
    "wdt": "20261012"
   },
   {
@@ -990,7 +991,7 @@ Date
    "nm": "삼성전자",
    "bnm": "하나증권",
    "tit": "강한 DRAM 가격. LPDDR 공급 부족 심화",
-   "rcnt": "11112",
+   "rcnt": "11127",
    "wdt": "20261012"
   },
   {
@@ -999,7 +1000,7 @@ Date
    "nm": "삼성전자",
    "bnm": "유진투자증권",
    "tit": "눈높이를 높이는 구간",
-   "rcnt": "9233",
+   "rcnt": "9246",
    "wdt": "20261012"
   },
   {
@@ -1008,7 +1009,7 @@ Date
    "nm": "삼성전자",
    "bnm": "IBK투자증권",
    "tit": "환율도 메모리 호황을 막진 못했다",
-   "rcnt": "8532",
+   "rcnt": "8544",
    "wdt": "20261012"
   },
   {
@@ -1017,7 +1018,7 @@ Date
    "nm": "삼성전자",
    "bnm": "키움증권",
    "tit": "4Q26 영업이익 116조원 전망",
-   "rcnt": "8636",
+   "rcnt": "8647",
    "wdt": "20261012"
   }
  ],
@@ -1030,17 +1031,17 @@ Date
    "reutersCode": "000660",
    "stockName": "SK하이닉스",
    "sosok": "0",
-   "closePrice": "1,425,000",
-   "compareToPreviousClosePrice": "-18,000",
+   "closePrice": "1,435,000",
+   "compareToPreviousClosePrice": "-8,000",
    "compareToPreviousPrice": {
     "code": "5",
     "text": "하락",
     "name": "FALLING"
    },
-   "fluctuationsRatio": "-1.25",
+   "fluctuationsRatio": "-0.55",
    "accumulatedTradingVolume": "-",
    "accumulatedTradingValue": "-",
-   "marketValue": "1,040,951,620",
+   "marketValue": "1,048,256,543",
    "nav": "N/A",
    "threeMonthEarningRate": "N/A",
    "stockExchangeType": {
@@ -1062,7 +1063,7 @@ Date
    "newPcUrl": "https://stock.naver.com/domestic/stock/000660"
   },
   {
-   "stockType": "domestic
+   "stockType": "domesti
 --- siseJson 마지막 4줄
  000, 11501250, 46.41],
 ["20261006", 278500, 279000, 270000, 273000, 12913819, 46.37],
@@ -1070,12 +1071,13 @@ Date
 ["20261008", 269500, 270000, 262000, 263000, 21259056, 46.35],
 ["20261012", 260000, 262500, 249000, 251000, 19771955, 46.3],
 ["20261013", 241500, 244000, 228000, 234000, 26790913, 46.18],
-["20261014", 233500, 241500, 230000, 234000, 16957719, 46.18]
+["20261014", 233500, 241500, 230000, 234500, 17009928, 46.18]
 ]
+--- yahoo 005930.KS regularMarketPrice 232000.0 time 1791959413 closes [268500.0, 262000.0, 250500.0, 232000.0, 232000.0] ts [1791331200, 1791417600, 1791763200, 1791849600, 1791936000]
 --- FDR
                Open    High     Low   Close    Volume    Change
 Date                                                          
 2026-10-08  269500  270000  262000  263000  21259056 -0.022305
 2026-10-12  260000  262500  249000  251000  19771955 -0.045627
 2026-10-13  241500  244000  228000  234000  26790913 -0.067729
-2026-10-14  233500  241500  230000  234000  16957719  0.000000
+2026-10-14  233500  241500  230000  234500  17009928  0.002137
