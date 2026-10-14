@@ -1,0 +1,35 @@
+name: naver-probe
+
+# 네이버 실시간·일봉 응답 구조 확인(naver_probe.py) → results/naver_probe.txt (리포트와 무관)
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 확인
+        run: python naver_probe.py > /tmp/naver_probe.txt 2>&1 || true
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          for i in $(seq 1 8); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            mkdir -p results && cp /tmp/naver_probe.txt results/
+            git add results/naver_probe.txt
+            git commit -q -m "네이버 응답 확인 [skip ci]" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
