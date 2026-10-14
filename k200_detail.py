@@ -2,8 +2,8 @@
 
 머니파이 kospi200.html 의 22개 국면(첫 이탈일)마다:
   - 이탈 전날 종가, 200일선 안정일(= 회복: 200일선 위 40거래일 유지 첫 돌파일)·그날 종가·이탈 전날 대비 %
-  - 지수회복일(= 이탈일 뒤 처음으로 종가가 이탈 전날 종가 이상인 날)
-  - 그래프 일봉: 이탈 전날 260거래일 앞(이평 계산용)부터 끝 날(안정일·지수회복일 중 늦은 날, 아직이면 마지막 날)까지
+  - 지수회복일(= 안정일 포함 그 이후 처음으로 종가가 이탈 전날 종가 이상인 날, 거래일 수는 안정일부터 · 2026-10-14 변경)
+  - 그래프 일봉: 이탈 전날 260거래일 앞(이평 계산용)부터 지수회복일(아직이면 마지막 날)까지
 결과: results/kospi200_detail.json (머니파이 저장소에 복사해 씀)
 안정일 정의는 두 가지(돌파일 포함 40일 / 돌파일 다음 40일)를 모두 계산해 페이지 표와 맞는 쪽을 보고함.
 """
@@ -62,17 +62,16 @@ def main():
         ux = stab_day(D, C, M, d, False)
         check.append(f"{dt}: 페이지 {PAGE_REC[dt]} / 포함 {D[ui] if ui is not None else '-'} / 다음 {D[ux] if ux is not None else '-'}")
         u = ui if ui is not None and D[ui] == PAGE_REC[dt] else (ux if ux is not None and D[ux] == PAGE_REC[dt] else ui)
-        r = next((k for k in range(d + 1, len(C)) if C[k] >= pc), None)
-        end = max([x for x in (u, r) if x is not None], default=len(C) - 1)
-        if u is None or r is None:
-            end = len(C) - 1                                # 둘 중 하나라도 아직이면 마지막 날까지
+        # 지수회복(2026-10-14 사용자 정의 변경): 안정일 포함 그 이후 처음으로 종가가 이탈 전날 종가 이상인 날, 거래일 수는 안정일부터
+        r = next((k for k in range(u, len(C)) if C[k] >= pc), None) if u is not None else None
+        end = r if r is not None else len(C) - 1           # 그래프 = 이탈 전날 → 지수회복일(아직이면 마지막 날)
         st = max(0, p - PRE)
         out[dt] = {
             "prev": D[p], "prevClose": round(pc, 2),
             "stab": D[u] if u is not None else None, "stabDays": (u - d) if u is not None else None,
             "stabClose": round(C[u], 2) if u is not None else None,
             "stabPct": round((C[u] / pc - 1) * 100, 2) if u is not None else None,
-            "rec": D[r] if r is not None else None, "recDays": (r - d) if r is not None else None,
+            "rec": D[r] if r is not None else None, "recDays": (r - u) if r is not None else None,
             "recClose": round(C[r], 2) if r is not None else None,
             "from": D[p], "to": D[end],
             "d": [x.replace("-", "") for x in D[st:end + 1]], "c": [round(x, 2) for x in C[st:end + 1]],
