@@ -909,13 +909,14 @@ def action_text():
     for r in mine:
         keys = m.display_keys(r.get("review") or {})
         vr = r.get("vr") or {}
+        rng = lambda v: "" if (v and v["lo_open"] and (v["hi_open"] or v["key"] == "sell")) else f" · 유효 {m.range_text(v)}"   # 범위 제한 없음 = 표시 안 함
         if "sell" in keys:
-            sell.append(f"· {r['name']} {price(r)} · 유효 {m.range_text(vr.get('sell'))}")
+            sell.append(f"· {r['name']} {price(r)}{rng(vr.get('sell'))}")
         else:
             k = next((k for k in m.BUY_KEYS if k in keys), None)
             if k:
                 kind = {"buyb": "바닥", "buy": "눌림", "up": "추세"}[k]
-                buy.append(f"· {r['name']} {price(r)} ({kind}) · 유효 {m.range_text(vr.get(k))}")   # 유효 범위(2026-10-15, LOC 안내 삭제)
+                buy.append(f"· {r['name']} {price(r)} ({kind}){rng(vr.get(k))}")   # 유효 범위(2026-10-15, LOC 안내 삭제)
     head = f"[미장 {kst:%m/%d}]" if IS_US else f"[국장 {TARGET_DATE[5:7]}/{TARGET_DATE[8:]}]"   # 국장 = 거래일(자정 넘겨 성공해도)
     if not buy and not sell:
         return f"{head} 매수·재검토 없음"
