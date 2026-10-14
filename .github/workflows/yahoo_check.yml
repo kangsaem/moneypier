@@ -1,0 +1,37 @@
+name: yahoo-check
+
+# 야후 국장 일봉 품질 시험(yahoo_check.py) → results/yahoo_check.txt·json
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 확인
+        run: python yahoo_check.py > /tmp/yc.log 2>&1 || (tail -30 /tmp/yc.log; true)
+        env:
+          TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          for i in $(seq 1 8); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            mkdir -p results && cp /tmp/yc.log results/yahoo_check.log; true
+            git add results/yahoo_check.*
+            git commit -q -m "야후 품질 시험 [skip ci]" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1
