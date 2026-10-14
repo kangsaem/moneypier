@@ -836,5 +836,20 @@ def tg_send(text):
             print("텔레그램 전송 실패:", type(e).__name__, e)
 
 
-if token and chat_id:
+def market_open_today():
+    """휴장일 거르기(2026-10-14): 지수 마지막 봉 날짜가 오늘 장 날짜와 같은지.
+    국장 = KST 오늘, 미장 = 뉴욕 오늘(07:10 KST 실행 = 뉴욕 전날 저녁). 지수를 못 받으면 None(보내는 쪽으로)"""
+    from zoneinfo import ZoneInfo
+    b = m.bench_close("AAPL" if IS_US else "005930")
+    if b is None or len(b) == 0:
+        return None
+    last = b.index[-1].date()
+    want = datetime.now(ZoneInfo("America/New_York" if IS_US else "Asia/Seoul")).date()
+    print(f"휴장일 확인: 지수 마지막 봉 {last}, 오늘 장 날짜 {want}")
+    return last == want
+
+
+if token and chat_id and guard("휴장일 확인", market_open_today, default=None) is False:
+    print("텔레그램 건너뜀: 오늘은 장이 열리지 않았거나 늦은 실행(지수 마지막 봉 ≠ 오늘)")
+elif token and chat_id:
     tg_send(guard("텔레그램 매수·매도", action_text, default=f"{TITLE} {stamp} (매수·매도 요약 실패 — 리포트 확인)"))   # 매수·매도만 짧게(2026-10-12)
