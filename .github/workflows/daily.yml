@@ -6,6 +6,11 @@ on:
   push:
     paths: ["tickers.json"]   # 북마클릿으로 종목이 갱신되면 즉시 실행
   workflow_dispatch:          # 수동 실행 버튼
+    inputs:
+      force_tg:
+        description: "같은 날 이미 보냈어도 텔레그램 다시 보내기"
+        type: boolean
+        default: false
 
 permissions:
   contents: write    # 신호 기록(history/) 커밋
@@ -34,6 +39,7 @@ jobs:
           TICKERS_JSON: ${{ secrets.TICKERS_JSON }}        # (선택) 종목을 비공개로 쓰고 싶을 때
           TELEGRAM_TOKEN: ${{ secrets.TELEGRAM_TOKEN }}    # (선택) 텔레그램 알림
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          FORCE_TG: ${{ inputs.force_tg }}
       - name: 신호 기록 저장 (history/ 커밋 — 실패해도 리포트는 배포)
         continue-on-error: true
         run: |

@@ -880,6 +880,11 @@ def _market_json():
 guard("시장 자료 내보내기", _market_json)
 # 신호 기록: 오늘 칸을 history/에 저장(daily.yml이 커밋) + 지난 기록으로 docs/history.html
 import history
+# 중복 발송 막기(2026-10-15): 같은 거래일·같은 리포트 기록이 이미 있으면(앞선 정식 실행이 저장함) 이번 실행은 텔레그램 안 보냄.
+# 수동 실행에서 force_tg=true면 보냄. (2026-10-14 밤 Worker가 5분마다 실행 요청 → 같은 메시지 반복 발송)
+_rec_date = (datetime.now(timezone.utc) + timedelta(hours=9)).strftime("%Y-%m-%d") if IS_US else TARGET_DATE
+ALREADY_SENT = os.path.exists(os.path.join(os.environ.get("HISTORY_DIR", "history"), f"{_rec_date}_{'us' if IS_US else 'kr'}.json"))
+FORCE_TG = os.environ.get("FORCE_TG", "").lower() in ("1", "true", "yes")
 if IS_US or not (KR_PROVISIONAL or NAVER_MISS):          # 국장 잠정(15:30~19:59)·네이버 종가 못 받은 날은 기록 안 함(2026-10-14)
     guard("신호 기록 저장", lambda: history.save(dict(history.record(results, msig, "us" if IS_US else "kr"),
                                                         **({} if IS_US else {"date": TARGET_DATE}))))   # 국장 = 시작한 거래일 날짜
@@ -951,6 +956,8 @@ def market_open_today():
 
 if token and chat_id and not IS_US and KR_PROVISIONAL:
     print("텔레그램 건너뜀: 국장 잠정 실행(20:00 전)")
+elif token and chat_id and ALREADY_SENT and not FORCE_TG:
+    print(f"텔레그램 건너뜀: {_rec_date} {'미장' if IS_US else '국장'} 판정을 이미 보냄(같은 거래일 기록 있음, 다시 보내려면 force_tg)")
 elif token and chat_id and NAVER_MISS:
     tg_send(f"[국장 {TARGET_DATE[5:7]}/{TARGET_DATE[8:]}] " + "\n".join(NAVER_NOTE))
 elif token and chat_id and guard("휴장일 확인", market_open_today, default=None) is False:
