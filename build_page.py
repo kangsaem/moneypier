@@ -904,18 +904,18 @@ chat_id = os.environ.get("TELEGRAM_CHAT_ID")
 def action_text():
     """텔레그램: 매수·매도만 짧게(시간외 종가 주문 시간이 촉박해서). 국장 리포트 = 국내 종목, 미장 리포트 = 해외 종목"""
     mine = [r for r in results if m.is_kr(r["code"]) != IS_US]
-    price = (lambda r: f"${r['close']:,.2f}") if IS_US else (lambda r: f"{r['close']:,.0f}원")
+    price = (lambda r: m.fmt_px(r['close'])) if IS_US else (lambda r: f"{r['close']:,.0f}원")   # 해외 = 화폐 기호 없음(2026-10-15)
     buy, sell = [], []
     for r in mine:
         keys = m.display_keys(r.get("review") or {})
+        vr = r.get("vr") or {}
         if "sell" in keys:
-            sell.append(f"· {r['name']} {price(r)}")
+            sell.append(f"· {r['name']} {price(r)} · 유효 {m.range_text(vr.get('sell'))}")
         else:
             k = next((k for k in m.BUY_KEYS if k in keys), None)
             if k:
                 kind = {"buyb": "바닥", "buy": "눌림", "up": "추세"}[k]
-                loc = f" · LOC {r['close'] * 1.08:,.2f}" if IS_US else ""
-                buy.append(f"· {r['name']} {price(r)} ({kind}){loc}")
+                buy.append(f"· {r['name']} {price(r)} ({kind}) · 유효 {m.range_text(vr.get(k))}")   # 유효 범위(2026-10-15, LOC 안내 삭제)
     head = f"[미장 {kst:%m/%d}]" if IS_US else f"[국장 {TARGET_DATE[5:7]}/{TARGET_DATE[8:]}]"   # 국장 = 거래일(자정 넘겨 성공해도)
     if not buy and not sell:
         return f"{head} 매수·재검토 없음"
@@ -924,7 +924,7 @@ def action_text():
         L += ["매수"] + buy
     if sell:
         L += ["재검토(산 이유 점검)"] + sell
-    L.append("→ " + ("매수 LOC 예약(종가+8%)" if IS_US else "다음 거래일 장중 참고(돋보기로 유효 여부 확인)"))
+    L.append("→ 유효 = 다음 거래일 종가가 이 범위면 신호 유지(장중 참고)")
     return "\n".join(L)
 
 

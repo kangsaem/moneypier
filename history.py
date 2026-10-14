@@ -32,7 +32,11 @@ def record(results, msig, session, now=None):
                   for k, nm, _ in m.REVIEW if rv.get(k)]
         items.append({"code": r["code"], "name": r["name"], "asof": f"{r['last']:%Y-%m-%d}", "close": round(r["close"], 4),
                       "rsi": round(r["rsi"], 1), "disp": round(r["disp"]["cur"], 1) if r.get("disp") else None,
-                      "rs60": None if r.get("rs60") is None else round(r["rs60"], 1), "groups": groups})
+                      "rs60": None if r.get("rs60") is None else round(r["rs60"], 1), "groups": groups,
+                      # 신호 유효 가격 범위(2026-10-15): {칸: {lo, hi, lo_open, hi_open}} — 다음 거래일 종가가 이 안이면 신호 유지
+                      "rng": {k: (None if v is None else {"lo": round(v["lo"], 4), "hi": round(v["hi"], 4),
+                                                           "lo_open": v["lo_open"], "hi_open": v["hi_open"]})
+                              for k, v in (r.get("vr") or {}).items()}})
     mk = {k: {"score": g["score"], "total": len(g["items"]), "label": g["label"]} for k, g in (msig or {}).items()
           if isinstance(g, dict) and "items" in g}
     return {"format": FORMAT, "logic": "v1", "date": f"{kst:%Y-%m-%d}", "session": session, "time": f"{kst:%Y-%m-%d %H:%M}",

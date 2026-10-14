@@ -193,6 +193,13 @@ def analyze(code, name):
     except Exception:
         r["rs60"] = None
     r["review"] = review(r)
+    r["vr"] = {}                                         # 신호 유효 가격 범위(2026-10-15)
+    for k in display_keys(r["review"]):
+        if k in RANGE_KEYS:
+            try:
+                r["vr"][k] = valid_range(df, k)
+            except Exception as e:
+                print("범위 계산 실패:", name, k, type(e).__name__, e)
     return r
 
 
@@ -256,6 +263,112 @@ def analyze_df(df, code, name, light=False):
     r["top_near"] = bool(r["top"] and ti.get("high") and r["close"] >= ti["high"] * (1 - NEAR_TOP / 100))
     r["sig"] = stock_signals(r)
     return r
+
+
+# ---------------------------------------------------------------- 신호 유효 가격 범위 (2026-10-15, 머니파이 anValidRange 와 같은 계산)
+# 마지막 확정 종가까지의 일봉에 '다음 거래일 종가 = P' 한 봉을 붙여 다시 계산했을 때 그 신호가 유지되는 P의 구간.
+#  재검토(sell) = 과열 조건 2개 이상 유지 / 매수·바닥·눌림 = 과열 조건 2개 미만 + (월봉 정배열 또는 P > 10개월선) /
+#  매수·추세(up) = 추세 5가지 유지(주봉 정배열·20일선 위·20일선 상승·5개월선 위·과열 아님).
+# 기준 종가 ±30% 안(국장 가격제한폭), 2% 간격으로 넓히고 경계는 0.2%까지 이분 탐색.
+VR_LIM, VR_STEP, VR_TOL = 0.30, 0.02, 0.002
+RANGE_KEYS = ("sell", "buyb", "buy", "up")
+
+
+def _trend_ok(r):
+    ch, d = r["chart"], r.get("disp")
+    cl, m20, mm5 = ch["close"], ch["ma20"], ch["m5"]
+    if len(cl) < 10 or any(v is None for v in m20[-6:]):
+        return False
+    return bool(r["week"]["ok"] and r["week"]["above"] and cl[-1] >= m20[-1] and m20[-1] > m20[-6]
+                and (mm5[-1] is None or cl[-1] >= mm5[-1])
+                and r["rsi"] < r["sig"]["rsi_hi"] and (not d or d["cur"] / d["max"] * 100 < ADD_DISP_MAX))
+
+
+def _next_biz_day(d):
+    d = pd.Timestamp(d) + pd.Timedelta(days=1)
+    while d.weekday() >= 5:
+        d += pd.Timedelta(days=1)
+    return d
+
+
+def _range_ok(df, key, p, nd):
+    row = {col: (p if col in ("Close", "High", "Low", "Open") else float("nan")) for col in df.columns}
+    d2 = pd.concat([df, pd.DataFrame([row], index=pd.DatetimeIndex([nd]))])
+    r = analyze_df(d2, "vr", "vr", light=True)
+    hot = len(r["sig"]["sell_c"]) >= 2
+    if key == "sell":
+        return hot
+    if key == "up":
+        return _trend_ok(r)
+    m10 = r["chart"]["m10"][-1]
+    mo = r["month"]
+    return (not hot) and bool((mo["ok"] and mo["above"]) or (m10 is not None and p > m10))
+
+
+def valid_range(df, key):
+    """반환 {'lo','hi','lo_open','hi_open','base','key','asof'} 또는 None(±30% 안에 유효한 가격 없음)"""
+    df = df[df["Close"].notna()]
+    if len(df) < 60:
+        return None
+    base = float(df["Close"].iloc[-1])
+    nd = _next_biz_day(df.index[-1])
+    memo = {}
+
+    def ok(x):
+        x = round(x, 6)
+        if x not in memo:
+            memo[x] = _range_ok(df, key, base * (1 + x), nd)
+        return memo[x]
+
+    a = 0.0 if ok(0.0) else None
+    k = 1
+    while a is None and k <= round(VR_LIM / 0.01):
+        if ok(k * 0.01):
+            a = k * 0.01
+        elif ok(-k * 0.01):
+            a = -k * 0.01
+        k += 1
+    if a is None:
+        return None
+
+    def edge(dirn):
+        good, bad = a, None
+        while bad is None:
+            x = max(-VR_LIM, min(VR_LIM, good + dirn * VR_STEP))
+            if x == good:
+                return good, True
+            if ok(x):
+                good = x
+            else:
+                bad = x
+        while abs(bad - good) > VR_TOL:
+            m = (good + bad) / 2
+            if ok(m):
+                good = m
+            else:
+                bad = m
+        return good, False
+
+    lo, lo_open = edge(-1)
+    hi, hi_open = edge(1)
+    return {"lo": base * (1 + lo), "hi": base * (1 + hi), "lo_open": lo_open, "hi_open": hi_open,
+            "base": base, "key": key, "asof": f"{df.index[-1]:%Y-%m-%d}"}
+
+
+def fmt_px(x):
+    """머니파이 anPrice 와 같음: 1000 이상 정수 콤마, 미만 소수 둘째 자리(화폐 기호 없음)"""
+    return f"{x:,.0f}" if x >= 1000 else f"{x:,.2f}"
+
+
+def range_text(v):
+    """'412,000~430,500' / '412,000 이상' / '430,500 이하' / '범위 없음' (머니파이 anRangeTxt 와 같음)"""
+    if not v:
+        return "범위 없음"
+    if v["key"] == "sell" or v["hi_open"]:
+        return "범위 제한 없음" if v["lo_open"] else f"{fmt_px(v['lo'])} 이상"
+    if v["lo_open"]:
+        return f"{fmt_px(v['hi'])} 이하"
+    return f"{fmt_px(v['lo'])}~{fmt_px(v['hi'])}"
 
 
 # ---------------------------------------------------------------- 종목 목록 (리포트·백테스트 공용)
