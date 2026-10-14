@@ -1,9 +1,9 @@
 """
 V1 실전 가상계좌: 2026-10-12부터 리포트가 매일 남기는 신호 기록(history/*.json)만으로 v1 규칙을 그대로 따라 한 가상 계좌.
 백테스트와 달리 '그날 뜬 신호'만 쓰므로 결과를 미리 아는 효과가 없다.
-  - 매수: 매수·바닥 / 매수·눌림 / 매수·추세 신호가 새로 켜지면 — 국장 신호일 종가(시간외 종가), 미장 다음 날 종가(LOC)
+  - 매수: 매수·바닥 / 매수·눌림 / 매수·추세 신호가 새로 켜지면 — 국장·미장 모두 신호 다음 거래일 종가(2026-10-14~: 국장 판정 = 20:00 확정 일봉, 매매 = 다음 날 장중)
   - 금액: 종목당 상한 = 계좌 평가액 × min(10%, 150 ÷ 보유 종목 수(안 가진 종목이면 +1)), 신호 한 번에 상한의 1/2 (2회 분할)
-  - 매도: 매도·전량 신호(국장 당일·미장 다음 날 종가) 또는 손절(평균 매수가 대비 종가 -8% 이하가 이틀 연속) → 전량
+  - 매도: 매도·전량 신호(다음 거래일 종가) 또는 손절(평균 매수가 대비 종가 -8% 이하가 이틀 연속) → 전량
   - 비교: 내 종목 그냥 보유(시작일·매년 첫 거래일에 그때 종목을 똑같이 나눠 삼) / 코스피 / 나스닥
 계산은 portfolio.simulate_alloc(백테스트의 '최종규칙 2회'와 같은 함수). 결과: docs/live.html + docs/live.json
 """
@@ -97,8 +97,7 @@ def compute(results, recs=None, idx=None):
         own = s.index[s.index >= start]
         cats = pd.Series({d: sig[c].get(d) for d in own}, dtype=object)
         cats = cats.ffill(limit=3)                                 # 기록이 빠진 날(실패 등)은 전날 칸 유지(최대 3일)
-        if not m.is_kr(c):                                         # 미장: 신호 다음 날 종가에 체결 → 자기 거래일 기준 하루 늦춰 '당일 체결'로 계산
-            cats = cats.shift(1)
+        cats = cats.shift(1)                                       # 신호 다음 거래일 종가에 체결(국장도 2026-10-14부터 — 20:00 확정 일봉으로 판정, 다음 날 장중 매매)
         cats = cats.reindex(cats.index.union(dates)).ffill(limit=5).reindex(dates)   # 다른 시장만 쉬는 날은 칸 유지
         cats = cats.apply(lambda x: x if isinstance(x, set) else set())
         for st, en in gp.get(c, []):                               # 목록에서 빠짐 = 팔고 뺀 것 → 마지막 기록일 종가에 전량 매도
@@ -156,7 +155,7 @@ STOP = 8
 
 def track(recs, results):
     """매수(바닥·눌림·추세) → 매도·전량 또는 손절까지 / 매도·전량 → 다음 매수 신호까지. 매수 추적 중 매수 신호가 또 뜨면 같은 추적.
-    신호가 = 국장 신호일 종가, 미장 다음 날 종가. 손절 = 신호가 대비 종가 -8% 이하가 다음 날도 이어지면 그날 종가."""
+    신호가 = 신호 다음 거래일 종가(국장·미장). 손절 = 신호가 대비 종가 -8% 이하가 다음 날도 이어지면 그날 종가."""
     recs = sorted(recs, key=lambda r: r.get("time", ""))
     per = {}
     for rec in recs:
@@ -180,7 +179,7 @@ def track(recs, results):
         gone = any(en is None for _, en in gp.get(code, []))            # 지금 목록에서 빠져 있음
         end_date = x["last"] if gone else dates[-1]
         kr = m.is_kr(code)
-        ex = (lambda i: i) if kr else (lambda i: i + 1)
+        ex = lambda i: i + 1                                        # 국장·미장 모두 다음 거래일 종가(2026-10-14)
         first = next((d for d in sd if x["sig"][d]["cat"] != "none"), None)
         if not first:
             continue
@@ -322,7 +321,7 @@ draw();
 <h3>끝난 것 <small id="ndone"></small></h3><div class="card"><table id="tdone"></table></div>
 <button class="more" id="tmore">더 보기 (+20)</button>
 <p class="note">매수 추적 = 매수 신호부터 매도·전량 또는 손절까지(매수 신호가 또 뜨면 같은 추적) / 매도 추적 = 매도·전량부터 다음 매수 신호까지 /
-성공 = 매수는 끝날 때 수익, 매도는 판 뒤 다시 살 때 더 쌈 / 실패 = 신호로 끝났는데 반대 결과(손절은 따로 셈) / 신호가 = 신호대로 샀다면(팔았다면): 국장 신호일 종가 · 미장 다음 날 종가 /
+성공 = 매수는 끝날 때 수익, 매도는 판 뒤 다시 살 때 더 쌈 / 실패 = 신호로 끝났는데 반대 결과(손절은 따로 셈) / 신호가 = 신호대로 샀다면(팔았다면): 신호 다음 거래일 종가 /
 손절 = 신호가 대비 종가 -{STOP}% 이하가 다음 날도 이어지면 그날 종가 / 성공률은 끝난 것만 /
 위 가상 계좌는 2회 분할로 평단이 섞이고 한도에 걸리면 안 사므로 같은 종목도 수익이 조금 다를 수 있음 / 기존 보유분(신호 전에 산 것)의 손절은 계좌 평단으로 직접 확인{(' / 계산 오류: ' + E(track_err)) if track_err else ''}</p>
 <script>
@@ -406,7 +405,7 @@ h3 {{ font-size:.92rem; margin:14px 0 5px; }} h3 small {{ color:var(--mut); font
 </style></head><body>
 <h1>V1 실전 기록</h1>
 <div class="t">{E(START)}부터 매일 리포트의 신호대로 v1 규칙을 따른 가상 계좌 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
-<p class="note">백테스트가 아니라 그날 뜬 신호만으로 계산(결과를 미리 아는 효과 없음). 매수: 매수·바닥/눌림/추세 — 국장 신호일 종가, 미장 다음 날 종가 ·
+<p class="note">백테스트가 아니라 그날 뜬 신호만으로 계산(결과를 미리 아는 효과 없음). 매수: 매수·바닥/눌림/추세 — 신호 다음 거래일 종가 ·
 종목당 상한 = 평가액 × min(10%, 150 ÷ 보유 종목 수), 신호 한 번에 상한의 절반(2회 분할) · 매도: 매도·전량 또는 손절 -8%(종가 이틀) → 전량 · 거래비용 포함 · 지수는 배당 제외 ·
 '내 종목 그냥 보유' = 시작일과 매년 첫 거래일에 그때 종목을 똑같이 나눠 사서 들고만 있음. 선 이름을 누르면 끄고 켬.</p>
 {body}

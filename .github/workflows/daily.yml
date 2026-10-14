@@ -2,7 +2,7 @@ name: daily-report
 
 on:
   # 예약 실행은 Cloudflare Worker(cf-worker/worker.js)가 workflow_dispatch로 호출(2026-10-14~).
-  # GitHub schedule은 몇 시간씩 늦어서 삭제: 평일 15:31 KST(국장) · 화~토 07:10 KST(미장)
+  # GitHub schedule은 몇 시간씩 늦어서 삭제: 평일 20:05 KST(국장, 20:00 확정 일봉) · 화~토 07:10 KST(미장)
   push:
     paths: ["tickers.json"]   # 북마클릿으로 종목이 갱신되면 즉시 실행
   workflow_dispatch:          # 수동 실행 버튼
@@ -14,7 +14,7 @@ permissions:
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false   # 국장 실행이 네이버 종가를 기다리는 중(최대 23:50)일 수 있어 끊지 않고 대기(2026-10-14)
 
 jobs:
   build-and-deploy:
