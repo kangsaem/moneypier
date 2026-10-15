@@ -116,7 +116,8 @@ def build(key):
             w60 = {"already": True}
         else:
             hit = next((j for j in range(b, end_d) if W[j] is not None and L[j] <= W[j]), None)
-            w60 = {"days": hit - b, "date": D[hit]} if hit is not None else {"none": True}
+            w60 = ({"days": hit - b, "date": D[hit], "pc": round((W[hit] / pc - 1) * 100, 2)}   # pc = 닿은 날 60주선 vs 이탈 전날 종가(2026-10-15)
+                   if hit is not None else {"none": True})
         w60b = (C[b] / w - 1) * 100 if w else None
         r = next((j for j in range(u, n) if C[j] >= pc), None) if u is not None else None
         rec_n = (r - b + 1) if r is not None else None
