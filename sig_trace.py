@@ -19,3 +19,20 @@ for k in range(days, 0, -1):
 os.makedirs("results", exist_ok=True)
 open("results/sig_trace.txt", "w", encoding="utf-8").write("\n".join(out))
 print("\n".join(out))
+
+# 가격 시험(선택): ASOF(종가일)까지 일봉 + 다음 거래일 종가 P → 추세 조건 하나하나
+if os.environ.get("PRICES"):
+    asof = os.environ.get("ASOF")
+    d = df[df.index <= asof] if asof else df
+    nd = m._next_biz_day(d.index[-1])
+    L = [f"\n가격 시험: {d.index[-1]:%Y-%m-%d} 종가 {d['Close'].iloc[-1]:.2f} 기준, 다음 거래일({nd:%Y-%m-%d}) 종가 = P"]
+    for p in [float(x) for x in os.environ["PRICES"].split(",")]:
+        row = {c: (p if c in ("Close", "High", "Low", "Open") else float("nan")) for c in d.columns}
+        import pandas as pd
+        r = m.analyze_df(pd.concat([d, pd.DataFrame([row], index=pd.DatetimeIndex([nd]))]), sym, sym, light=True)
+        ch, dd = r["chart"], r["disp"]
+        L.append(f"P {p:.2f}: 주봉 정 {r['week']['ok'] and r['week']['above']} · 20일선 {ch['ma20'][-1]:.2f} 위 {p >= ch['ma20'][-1]} · 20일선 상승 {ch['ma20'][-1] > ch['ma20'][-6]}"
+                 f" · 5개월선 {ch['m5'][-1]:.2f} 위 {ch['m5'][-1] is None or p >= ch['m5'][-1]} · RSI {r['rsi']:.1f} < {r['sig']['rsi_hi']} {r['rsi'] < r['sig']['rsi_hi']}"
+                 f" · 50일 이격도 {dd['cur']:.2f} / 과거 최대 {dd['max']:.2f} = {dd['cur']/dd['max']*100:.1f}% < {m.ADD_DISP_MAX}% {dd['cur']/dd['max']*100 < m.ADD_DISP_MAX}"
+                 f" · 50일선 {p/dd['cur']*100:.2f} · 과열 조건 {r['sig']['sell_c']} → 추세 유지 {m._trend_ok(r)}")
+    print("\n".join(L))

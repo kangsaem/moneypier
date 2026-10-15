@@ -8,6 +8,10 @@ on:
         default: "XOM"
       days:
         default: "5"
+      asof:
+        default: ""
+      prices:
+        default: ""
 
 permissions:
   contents: write
@@ -27,6 +31,8 @@ jobs:
         env:
           SYMBOL: ${{ inputs.symbol }}
           DAYS: ${{ inputs.days }}
+          ASOF: ${{ inputs.asof }}
+          PRICES: ${{ inputs.prices }}
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
