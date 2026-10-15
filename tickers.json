@@ -134,5 +134,25 @@
  {
   "code": "CVX",
   "name": "셰브론"
+ },
+ {
+  "code": "SDRL",
+  "name": "시드릴"
+ },
+ {
+  "code": "NE",
+  "name": "노블"
+ },
+ {
+  "code": "RIG",
+  "name": "트랜스오션"
+ },
+ {
+  "code": "BTU",
+  "name": "피바디 에너지"
+ },
+ {
+  "code": "GNK",
+  "name": "젠코 시핑 & 트레이딩"
  }
 ]
