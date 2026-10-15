@@ -1,103 +1,14 @@
-/home/runner/work/moneypier/moneypier/naver_probe.py:4: DeprecationWarning: datetime.datetime.utcnow() is deprecated and scheduled for removal in a future version. Use timezone-aware objects to represent datetimes in UTC: datetime.datetime.now(datetime.UTC).
-  print("KST", (dt.datetime.utcnow() + dt.timedelta(hours=9)).strftime("%Y-%m-%d %H:%M:%S"))
-KST 2026-10-14 18:02:40
-===== KOSPI 200
-{
- "pollingInterval": 70000,
- "datas": [
-  {
-   "itemCode": "KOSPI",
-   "stockName": "코스피",
-   "stockExchangeType": {
-    "code": "KS",
-    "zoneId": "Asia/Seoul",
-    "nationType": "KOR",
-    "delayTime": 0,
-    "startTime": "0900",
-    "endTime": "1530",
-    "closePriceSendTime": "1630",
-    "nameKor": "코스피",
-    "nameEng": "KOSPI",
-    "nationCode": "KOR",
-    "nationName": "대한민국",
-    "stockType": "domestic",
-    "name": "KOSPI"
-   },
-   "closePrice": "6,008.81",
-   "compareToPreviousClosePrice": "-26.54",
-   "compareToPreviousPrice": {
-    "code": "5",
-    "text": "하락",
-    "name": "FALLING"
-   },
-   "fluctuationsRatio": "-0.44",
-   "openPrice": "6,062.08",
-   "highPrice": "6,190.65",
-   "lowPrice": "5,944.65",
-   "accumulatedTradingVolume": "350,785천주",
-   "accumulatedTradingValue": "19,928,204백만",
-   "marketStatus": "CLOSE",
-   "localTradedAt": "2026-10-14T16:15:00+09:00",
-   "symbolCode": "KOSPI",
-   "closePriceRaw": "6008.81",
-   "compareToPreviousClosePriceRaw": "-26.54",
-   "fluctuationsRatioRaw": "-0.44",
-   "openPriceRaw": "6062.08",
-   "highPriceRaw": "6190.65",
-   "lowPriceRaw": "5944.65",
-   "accumulatedTradingVolumeRaw": "350785000",
-   "accumulatedTradingValueRaw": "19928204000000"
-  }
- ],
- "time": "20261014180241"
-}
-===== KOSDAQ 200
-{
- "pollingInterval": 70000,
- "datas": [
-  {
-   "itemCode": "KOSDAQ",
-   "stockName": "코스닥",
-   "stockExchangeType": {
-    "code": "KQ",
-    "zoneId": "Asia/Seoul",
-    "nationType": "KOR",
-    "delayTime": 0,
-    "startTime": "0900",
-    "endTime": "1530",
-    "closePriceSendTime": "1630",
-    "nameKor": "코스닥",
-    "nameEng": "KOSDAQ",
-    "nationCode": "KOR",
-    "nationName": "대한민국",
-    "stockType": "domestic",
-    "name": "KOSDAQ"
-   },
-   "closePrice": "823.88",
-   "compareToPreviousClosePrice": "-13.15",
-   "compareToPreviousPrice": {
-    "code": "5",
-    "text": "하락",
-    "name": "FALLING"
-   },
-   "fluctuationsRatio": "-1.57",
-   "openPrice": "835.90",
-   "highPrice": "846.95",
-   "lowPrice": "813.49",
-   "accumulatedTradingVolume": "438,842천주",
-   "accumulatedTradingValue": "5,801,981백만",
-   "marketStatus": "CLOSE",
-   "localTradedAt": "2026-10-14T16:15:00+09:00",
-   "symbolCode": "KOSDAQ",
-   "closePriceRaw": "823.88",
-   "compareToPreviousClosePriceRaw": "-13.15",
-   "fluctuationsRatioRaw": "-1.57",
-   "openPriceRaw": "835.90",
-   "highPriceRaw": "846.95",
-   "lowPriceRaw": "813.49",
-   "accumulatedTradingVolumeRaw": "438842000",
-   "accumulatedTradingValueRaw": "5801981000000"
-  }
- ],
- "time": "20261014180241"
-}
+===== https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=20261014&sosok=&page=1 410 1499
+ Npay 증권 일자별 순매수 (단위:억원) 일자별 순매수 날짜 개인 외국인 기관계 기관 기타법인 금융투자 보험 투신 (사모) 은행 기타금융기관 연기금등 이 페이지는 더 이상 제공되지 않습니다. Npay 증권 바로가기 
+===== https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=20261014&sosok=01&page=1 410 1499
+ Npay 증권 일자별 순매수 (단위:억원) 일자별 순매수 날짜 개인 외국인 기관계 기관 기타법인 금융투자 보험 투신 (사모) 은행 기타금융기관 연기금등 이 페이지는 더 이상 제공되지 않습니다. Npay 증권 바로가기 
+===== https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=20000104&sosok=01&page=1 410 1499
+ Npay 증권 일자별 순매수 (단위:억원) 일자별 순매수 날짜 개인 외국인 기관계 기관 기타법인 금융투자 보험 투신 (사모) 은행 기타금융기관 연기금등 이 페이지는 더 이상 제공되지 않습니다. Npay 증권 바로가기 
+===== https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=19980105&sosok=01&page=1 410 1499
+ Npay 증권 일자별 순매수 (단위:억원) 일자별 순매수 날짜 개인 외국인 기관계 기관 기타법인 금융투자 보험 투신 (사모) 은행 기타금융기관 연기금등 이 페이지는 더 이상 제공되지 않습니다. Npay 증권 바로가기 
+===== https://finance.naver.com/sise/investorDealTrendDay.naver?bizdate=20261014&sosok=01&page=300 410 1499
+ Npay 증권 일자별 순매수 (단위:억원) 일자별 순매수 날짜 개인 외국인 기관계 기관 기타법인 금융투자 보험 투신 (사모) 은행 기타금융기관 연기금등 이 페이지는 더 이상 제공되지 않습니다. Npay 증권 바로가기 
+===== https://m.stock.naver.com/api/index/KOSPI/trend?pageSize=20&page=1 200 102
+{"bizdate":"20261015","personalValue":"+5,029","foreignValue":"-15,047","institutionalValue":"+8,665"}
+===== https://m.stock.naver.com/api/index/KOSPI/investorTrend?pageSize=20&page=1 404 4181
+ Npay 利�沅� ��ㅼ�대�� ������ 利�沅� 二쇱��媛� 蹂�寃쎈��嫄곕�� ������������ �����댁��瑜� 李얠�� ��� �����듬����� ��ㅼ�� �����명�� 二쇱�몄�� ��댁�� �����댁�� 媛�湲� 
