@@ -926,7 +926,6 @@ def action_text():
         L += ["매수"] + buy
     if sell:
         L += ["재검토(산 이유 점검)"] + sell
-    L.append("→ 유효 = 다음 거래일 종가가 이 범위면 신호 유지(장중 참고)")
     return "\n".join(L)
 
 
