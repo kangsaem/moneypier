@@ -1,0 +1,47 @@
+name: probe
+
+# 짧은 확인 스크립트 실행(입력 script, 예: pbr_probe.py) → results/<script 이름>.txt 커밋 (리포트와 무관, 2026-10-16)
+on:
+  workflow_dispatch:
+    inputs:
+      script:
+        description: "실행할 확인 스크립트(저장소 루트 파일 이름)"
+        required: true
+        default: "pbr_probe.py"
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 확인
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: |
+          case "$SCRIPT" in *_probe.py) ;; *) echo "확인 스크립트(*_probe.py)만 실행"; exit 1;; esac
+          python "$SCRIPT" > "/tmp/${SCRIPT%.py}.txt" 2>&1 || true
+      - name: 결과 커밋
+        env:
+          SCRIPT: ${{ inputs.script }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          f="${SCRIPT%.py}.txt"
+          for i in $(seq 1 8); do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            mkdir -p results && cp "/tmp/$f" results/
+            git add "results/$f"
+            git commit -q -m "확인 결과 $f [skip ci]" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 5))
+          done
+          exit 1

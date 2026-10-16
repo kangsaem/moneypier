@@ -892,7 +892,7 @@ if IS_US or not (KR_PROVISIONAL or NAVER_MISS):          # 국장 잠정(15:30~1
 guard("신호 기록 페이지", history.build, results)
 import live
 guard("V1 실전 기록", live.build, results)          # 2026-10-12부터 신호대로 따라 한 가상 계좌 → docs/live.html
-page = page.replace("매도·전량", "재검토").replace("경보", "재검토")    # 2026-10-13 화면 이름만 '재검토'(옛 매도·전량 → 경보 → 재검토, 기록·추적 내부 이름은 그대로)
+page = page.replace("매도·전량", "매도").replace("경보", "매도")    # 2026-10-16 화면 이름 '매도'(옛 2026-10-13 '재검토')(옛 매도·전량 → 경보 → 재검토, 기록·추적 내부 이름은 그대로)
 with open("docs/index.html", "w", encoding="utf-8") as f:
     f.write(page)
 print("docs/index.html 생성 완료")
@@ -920,12 +920,12 @@ def action_text():
                 buy.append(f"· {r['name']} {price(r)} ({kind}){rng(vr.get(k))}")   # 유효 범위(2026-10-15, LOC 안내 삭제)
     head = f"[미장 {kst:%m/%d}]" if IS_US else f"[국장 {TARGET_DATE[5:7]}/{TARGET_DATE[8:]}]"   # 국장 = 거래일(자정 넘겨 성공해도)
     if not buy and not sell:
-        return f"{head} 매수·재검토 없음"
-    L = [f"{head} 매수 {len(buy)} · 재검토 {len(sell)}"]
+        return f"{head} 매수·매도 없음"
+    L = [f"{head} 매수 {len(buy)} · 매도 {len(sell)}"]
     if buy:
         L += ["매수"] + buy
     if sell:
-        L += ["재검토(산 이유 점검)"] + sell
+        L += ["매도(산 이유 점검)"] + sell
     return "\n".join(L)
 
 

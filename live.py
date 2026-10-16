@@ -320,7 +320,7 @@ draw();
 <h3>진행 중 <small id="nopen"></small></h3><div class="card"><table id="topen"></table></div>
 <h3>끝난 것 <small id="ndone"></small></h3><div class="card"><table id="tdone"></table></div>
 <button class="more" id="tmore">더 보기 (+20)</button>
-<p class="note">매수 추적 = 매수 신호부터 매도·전량 또는 손절까지(매수 신호가 또 뜨면 같은 추적) / 매도 추적 = 매도·전량부터 다음 매수 신호까지 /
+<p class="note">매수 추적 = 매수 신호부터 매도 신호 또는 손절까지(매수 신호가 또 뜨면 같은 추적) / 매도 추적 = 매도 신호부터 다음 매수 신호까지 /
 성공 = 매수는 끝날 때 수익, 매도는 판 뒤 다시 살 때 더 쌈 / 실패 = 신호로 끝났는데 반대 결과(손절은 따로 셈) / 신호가 = 신호대로 샀다면(팔았다면): 신호 다음 거래일 종가 /
 손절 = 신호가 대비 종가 -{STOP}% 이하가 다음 날도 이어지면 그날 종가 / 성공률은 끝난 것만 /
 위 가상 계좌는 2회 분할로 평단이 섞이고 한도에 걸리면 안 사므로 같은 종목도 수익이 조금 다를 수 있음 / 기존 보유분(신호 전에 산 것)의 손절은 계좌 평단으로 직접 확인{(' / 계산 오류: ' + E(track_err)) if track_err else ''}</p>
@@ -345,7 +345,7 @@ function endTxt(t) {{
   return t.px == null ? '체결 대기' : '오늘까지';
 }}
 const row = t => `<tr><td class="l"><b>${{t.name}}</b><br><small>${{sh(t.sig)}}</small></td>
-  <td class="l"><span class="g ${{G_BUY.includes(t.g) ? 'b' : 's'}}">${{t.g}}</span><br><small>${{pr(t.px)}}</small></td>
+  <td class="l"><span class="g ${{G_BUY.includes(t.g) ? 'b' : 's'}}">${{t.g === '매도·전량' ? '매도' : t.g}}</span><br><small>${{pr(t.px)}}</small></td>
   <td><b class="${{ud(t.ret)}}">${{pc(t.ret)}}</b><br><small><span class="up">${{pc(t.hi)}}</span> / <span class="dn">${{pc(t.lo)}}</span></small></td>
   <td class="l">${{judge(t)}}<br><small>${{endTxt(t)}}${{t.days != null ? ' · ' + t.days + '일' : ''}}</small></td></tr>`;
 const head = '<tr><th class="l">종목 · 신호일</th><th class="l">신호 · 신호가</th><th>수익 · 최고/최저</th><th class="l">판정 · 끝난 날</th></tr>';
@@ -406,7 +406,7 @@ h3 {{ font-size:.92rem; margin:14px 0 5px; }} h3 small {{ color:var(--mut); font
 <h1>V1 실전 기록</h1>
 <div class="t">{E(START)}부터 매일 리포트의 신호대로 v1 규칙을 따른 가상 계좌 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
 <p class="note">백테스트가 아니라 그날 뜬 신호만으로 계산(결과를 미리 아는 효과 없음). 매수: 매수·바닥/눌림/추세 — 신호 다음 거래일 종가 ·
-종목당 상한 = 평가액 × min(10%, 150 ÷ 보유 종목 수), 신호 한 번에 상한의 절반(2회 분할) · 매도: 매도·전량 또는 손절 -8%(종가 이틀) → 전량 · 거래비용 포함 · 지수는 배당 제외 ·
+종목당 상한 = 평가액 × min(10%, 150 ÷ 보유 종목 수), 신호 한 번에 상한의 절반(2회 분할) · 매도: 매도 신호 또는 손절 -8%(종가 이틀) → 전량 · 거래비용 포함 · 지수는 배당 제외 ·
 '내 종목 그냥 보유' = 시작일과 매년 첫 거래일에 그때 종목을 똑같이 나눠 사서 들고만 있음. 선 이름을 누르면 끄고 켬.</p>
 {body}
 </body></html>"""

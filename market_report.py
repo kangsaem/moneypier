@@ -53,7 +53,24 @@ def fmt_price(x):
     return f"{x:,.0f}" if x >= 1000 else f"{x:,.2f}"
 
 
+def _drop_us_open(obj, code):
+    """미장 장중 봉 거르기(2026-10-16): 해외 종목·미국 지수는 뉴욕 16:00 전 실행이면 오늘(뉴욕 날짜) 봉을 뺌 — 마감 전 가격으로 판정·기록하지 않게.
+    국장은 build_page의 20:00 잠정 규칙이 따로 막음"""
+    if obj is None or len(obj) == 0 or is_kr(code) or ("." in str(code) and not str(code).startswith("^")):   # 국내·접미사 붙은 해외(.T 등)는 제외
+        return obj
+    from zoneinfo import ZoneInfo
+    ny = datetime.now(ZoneInfo("America/New_York"))
+    if ny.hour * 100 + ny.minute < 1600 and obj.index[-1].date() >= ny.date():
+        print(f"미장 장중 봉 제외: {code} {obj.index[-1].date()} (뉴욕 {ny:%H:%M})")
+        return obj.iloc[:-1]
+    return obj
+
+
 def load_prices(code):
+    return _drop_us_open(_load_prices(code), code)
+
+
+def _load_prices(code):
     """국내 코드는 FinanceDataReader, 해외/실패 시 yfinance로 일봉 조회"""
     base = code.split(".")[0] if code.upper().endswith((".KS", ".KQ")) else code
     try:
@@ -168,7 +185,7 @@ def bench_close(code):
     key = "kr" if is_kr(code) else "us"
     if key not in _BENCH:
         try:
-            _BENCH[key] = _index_close("KS11", "^KS11") if key == "kr" else _index_close("US500", "^GSPC")
+            _BENCH[key] = _index_close("KS11", "^KS11") if key == "kr" else _drop_us_open(_index_close("US500", "^GSPC"), "^GSPC")
         except Exception:
             _BENCH[key] = None
     return _BENCH[key]
