@@ -84,3 +84,34 @@ def follow(a, b, same_day):
 
 for a, b, same in (("kospi", "spx", True), ("kospi", "ndx", True), ("spx", "kospi", False), ("ndx", "kospi", False)):
     print(f"  {dict(KEYS)[a]} → {dict(KEYS)[b]}: {follow(a, b, same)}")
+
+print("\n④ ③과 같지만 따라간 쪽도 국면 기준(그 지수 붕괴 사례의 이탈일 · 국면 = 이탈일 ~ 200일선 안정일)")
+
+
+def tdays(k, a, b):
+    d = DATA[k][0]
+    return bisect.bisect_left(d, b) - bisect.bisect_left(d, a)
+
+
+PH = {k: [(x["date"].replace("-", ""), (x.get("stab") or "99999999").replace("-", "")) for x in DATA[k][3]] for k, _ in KEYS}
+
+
+def follow_phase(a, b, same):
+    out = []
+    for L, _ in PH[a]:
+        on = [p for p in PH[b] if (p[0] < L if same else p[0] <= L) and p[1] > L]
+        if on:
+            out.append(("already", tdays(b, on[-1][0], L)))
+            continue
+        nxt = [p for p in PH[b] if (p[0] >= L if same else p[0] > L)]
+        out.append(("after", tdays(b, L, nxt[0][0]) + (1 if same else 0) if nxt else None))
+    al = [g for t, g in out if t == "already"]
+    lg = [g for t, g in out if t == "after" and g is not None]
+    w = lambda n: sum(1 for g in lg if g <= n)
+    med = f" · 지연 중간 {st.median([g for g in lg if g <= 60]):g}거래일" if w(60) else ""
+    return (f"{len(out)}건 · 이미 국면 중 {len(al)}(20거래일 이내 시작 {sum(1 for g in al if g <= 20)} · 그 전 {sum(1 for g in al if g > 20)}) · "
+            f"5일 안 {w(5)} · 20일 안 {w(20)} · 60일 안 {w(60)} · 60일 안 없음 {len(out) - len(al) - w(60)}{med}")
+
+
+for a, b, same in (("kospi", "spx", True), ("kospi", "ndx", True), ("spx", "kospi", False), ("ndx", "kospi", False)):
+    print(f"  {dict(KEYS)[a]} → {dict(KEYS)[b]}: {follow_phase(a, b, same)}")
