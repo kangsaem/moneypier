@@ -1,0 +1,12 @@
+--- KRX dbms/MDC/STAT/standard/MDCSTAT00702: HTTP 400 · 6자
+LOGOUT
+--- KRX dbms/MDC/STAT/standard/MDCSTAT00701: HTTP 400 · 6자
+LOGOUT
+--- indexergo 화면: HTTP 403 · 5727자
+<!DOCTYPE html><html lang="en-US"><head><title>Just a moment...</title><meta http-equiv="Content-Type" content="text/html; charset=UTF-8"><meta http-equiv="X-UA-Compatible" content="IE=Edge"><meta name="robots" content="noindex,nofollow"><meta name="viewport" content="width=device-width,initial-scale=1"><meta http-equiv="content-security-policy" content="default-src &#39;none&#39;; script-src &#39
+--- 네이버 https://m.stock.naver.com/api/index/KOSPI/integration: HTTP 200 · PER/PBR 관련 글자: ['personalValue', 'upperCount']
+   pbr 주변: 없음
+--- 네이버 https://m.stock.naver.com/api/index/KOSPI/basic: HTTP 200 · PER/PBR 관련 글자: []
+   pbr 주변: 없음
+--- 네이버 https://m.stock.naver.com/api/index/KOSPI/price?pageSize=5&page=1: HTTP 200 · PER/PBR 관련 글자: []
+   pbr 주변: 없음
