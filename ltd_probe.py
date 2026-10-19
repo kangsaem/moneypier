@@ -12,6 +12,10 @@ for code, name in CODES:
         df = df[df["Close"].notna()]
         r = m.analyze_df(df, code, name, light=True)
         base, m10, mo = float(df["Close"].iloc[-1]), r["chart"]["m10"][-1], r["month"]
+        if m10 is None:
+            print(f"== {name} ({code}) {df.index[-1]:%Y-%m-%d} 종가 {base:,.0f} · 10개월선 없음 · 월봉 ok={mo.get('ok')} · RSI {r['rsi']:.1f} · "
+                  f"상장 {df.index[0]:%Y-%m-%d} ({len(df)}거래일)")
+            continue
         print(f"== {name} ({code}) {df.index[-1]:%Y-%m-%d} 종가 {base:,.0f} · 10개월선 {m10:,.0f} · 거리 {(base / m10 - 1) * 100:+.1f}% · "
               f"월봉 {'정배열' if mo.get('ok') and mo.get('above') else '역배열'} · RSI {r['rsi']:.1f} · 상장 {df.index[0]:%Y-%m-%d} ({len(df)}거래일)")
         print("   범위:", m.range_text(m.valid_range(df, "buy")))
