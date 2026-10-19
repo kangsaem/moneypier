@@ -5,7 +5,7 @@
   ② 200일선 위 X%(1·2·3) 이내인 날 → 다음 날 / 5거래일 안에 종가가 200일선 아래로 간 적 있으면 '붕괴'(돌파 후 재붕괴 포함, 날짜 단위라 겹침 많음)
   ③ 한 시장 국면 이탈 뒤 다른 시장: 그 전 거래일에 이미 아래 / 이후 5·20·60거래일 안 처음 종가 이탈 / 60일 안 없음.
      미장은 같은 날짜라도 코스피 마감 뒤 → 코스피 이탈 당일 미장 이탈 = 이후 1일. 미장 → 코스피는 다음 날부터.
-실행: python crash200_stats.py  (결과를 그대로 출력)"""
+실행: python crash200_stats.py  (결과를 그대로 출력 + results/crash200_stats.json — 붕괴 사례 페이지가 읽음, 2026-10-20)"""
 import bisect
 import json
 import statistics as st
@@ -29,11 +29,14 @@ def load(k):
 
 
 DATA = {k: load(k) for k, _ in KEYS}
+OUT = {"asof": max(DATA[k][0][-1] for k, _ in KEYS), "prev": {}, "near": {}, "follow": []}
 
 print("① 이탈 전날 종가의 200일선 대비 위치(%) — 과거 사례(진행 중 제외)")
 for k, nm in KEYS:
     cases = [x for x in DATA[k][3] if not x.get("open")]
     v = sorted((x["prevGap"], x["date"]) for x in cases)
+    OUT["prev"][k] = {"n": len(v), "min": round(v[0][0], 2), "minDate": v[0][1], "max": round(v[-1][0], 2), "maxDate": v[-1][1],
+                      "med": round(st.median(x for x, _ in v), 2)}
     print(f"  {nm}: {len(v)}건 · 최소 {v[0][0]:+.2f} ({v[0][1]}) · 최대 {v[-1][0]:+.2f} ({v[-1][1]}) · "
           f"두 번째 최대 {v[-2][0]:+.2f} ({v[-2][1]}) · 중간 {st.median(x for x, _ in v):+.2f}")
 
@@ -41,6 +44,7 @@ print("\n② 200일선 위 X% 이내인 날 → 붕괴(버팀 / 붕괴 / 붕괴 
 for k, nm in KEYS:
     d, c, ma, _ = DATA[k]
     row = []
+    OUT["near"][k] = []
     for X in (1, 2, 3):
         for H in (1, 5):
             brk = hold = 0
@@ -54,6 +58,7 @@ for k, nm in KEYS:
                     else:
                         hold += 1
             row.append(f"{X}% {'다음 날' if H == 1 else '5일 안'} {hold}/{brk} ({brk / (brk + hold) * 100:.0f}%)")
+            OUT["near"][k].append({"x": X, "h": H, "hold": hold, "brk": brk})
     print(f"  {nm}: " + " · ".join(row))
 
 print("\n③ 먼저 이탈(국면) → 다른 시장")
@@ -109,9 +114,15 @@ def follow_phase(a, b, same):
     lg = [g for t, g in out if t == "after" and g is not None]
     w = lambda n: sum(1 for g in lg if g <= n)
     med = f" · 지연 중간 {st.median([g for g in lg if g <= 60]):g}거래일" if w(60) else ""
+    OUT["follow"].append({"a": a, "b": b, "n": len(out), "already": len(al), "al20": sum(1 for g in al if g <= 20), "alOld": sum(1 for g in al if g > 20),
+                          "d5": w(5), "d20": w(20), "d60": w(60), "none": len(out) - len(al) - w(60),
+                          "med": st.median([g for g in lg if g <= 60]) if w(60) else None})
     return (f"{len(out)}건 · 이미 국면 중 {len(al)}(20거래일 이내 시작 {sum(1 for g in al if g <= 20)} · 그 전 {sum(1 for g in al if g > 20)}) · "
             f"5일 안 {w(5)} · 20일 안 {w(20)} · 60일 안 {w(60)} · 60일 안 없음 {len(out) - len(al) - w(60)}{med}")
 
 
 for a, b, same in (("kospi", "spx", True), ("kospi", "ndx", True), ("spx", "kospi", False), ("ndx", "kospi", False)):
     print(f"  {dict(KEYS)[a]} → {dict(KEYS)[b]}: {follow_phase(a, b, same)}")
+
+json.dump(OUT, open("results/crash200_stats.json", "w", encoding="utf-8"), ensure_ascii=False, indent=1)
+print("\n→ results/crash200_stats.json")

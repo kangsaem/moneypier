@@ -18,7 +18,9 @@ jobs:
           python-version: "3.12"
       - run: pip install -r requirements.txt
       - name: 계산
-        run: python crash200.py
+        run: |
+          python crash200.py
+          python crash200_stats.py   # 붕괴 통계(2026-10-20) → results/crash200_stats.json
       - name: 결과 커밋
         run: |
           git config user.name "github-actions[bot]"
