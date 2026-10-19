@@ -912,7 +912,8 @@ def action_text():
         keys = m.display_keys(r.get("review") or {})
         vr = r.get("vr") or {}
         # 범위 제한 없음 = 표시 안 함 / 범위 없음 = 매수·바닥·눌림은 '장기 추세 아래', 나머지는 표시 안 함(2026-10-20, 머니파이 주황 칩과 같음)
-        rng = lambda v, k=None: ("" if v is None and k not in ("buy", "buyb") else " · 장기 추세 아래" if v is None
+        no10 = not ((r.get("chart") or {}).get("m10") or [None])[-1]                      # 10개월선 없음 = 상장 10개월 미만(2026-10-20)
+        rng = lambda v, k=None: ("" if v is None and k not in ("buy", "buyb") else (" · 상장 10개월 미만" if no10 else " · 장기 추세 아래") if v is None
                                  else "" if (v["lo_open"] and (v["hi_open"] or v["key"] == "sell")) else f" · 유효 {m.range_text(v)}")
         if "sell" in keys:
             sell.append(f"· {r['name']} {price(r)}{rng(vr['sell']) if 'sell' in vr else ''}")
