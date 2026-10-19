@@ -1,0 +1,8 @@
+== SOL AI반도체TOP2플러스 (0167A0) 실패: TypeError unsupported format string passed to NoneType.__format__
+== KODEX AI전력핵심설비 (487240) 2026-10-19 종가 28,450 · 10개월선 36,738 · 거리 -22.6% · 월봉 역배열 · RSI 31.0 · 상장 2024-07-09 (552거래일)
+   범위: 범위 없음
+   +5%: 10개월선 위 X · 과열 0개 []
+   +10%: 10개월선 위 X · 과열 0개 []
+   +20%: 10개월선 위 X · 과열 1개 ['5일 +10.5% 급등']
+   +30%: 10개월선 위 X · 과열 1개 ['5일 +19.7% 급등']
+== RISE 삼성전자SK하이닉스채권혼합50 (0162Z0) 실패: TypeError unsupported format string passed to NoneType.__format__
