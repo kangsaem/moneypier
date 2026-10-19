@@ -151,6 +151,7 @@ def compute(results, recs=None, idx=None):
 
 # ---------------------------------------------------------------- 신호 추적 (머니파이 LAB 히스토리 anHistTrack 과 같은 방식)
 STOP = 8
+SELL_DAYS = 20   # 매도 판정(2026-10-20, 머니파이 AN_HIST_SELL_DAYS와 같음): 체결 뒤 20거래일 안 매수 신호 체결가, 없으면 20거래일째 종가 < 매도 체결가 = 성공
 
 
 def track(recs, results):
@@ -184,6 +185,7 @@ def track(recs, results):
         if not first:
             continue
         tr = None
+        sell_quiet = False                                          # 20거래일 판정으로 끝난 매도 신호가 이어지는 동안 새 매도 추적 안 만듦
 
         def finish(t, i, why):
             t.update(endI=i, end=dates[i], why=why, ret=(close[i] / t["px"] - 1) * 100)
@@ -206,8 +208,16 @@ def track(recs, results):
                     tr = None
                 continue
             s_ = x["sig"].get(dates[i])
+            if s_ and s_["cat"] != "sell":
+                sell_quiet = False
             if tr and tr["px"] is None and i == tr["entI"]:
                 tr["px"] = close[i]
+            if tr and tr["side"] == "sell" and tr["px"] and i == tr["entI"] + SELL_DAYS and not (s_ and s_["cat"] == "buy"):
+                for k in range(tr["entI"] + 1, i + 1):
+                    r = (close[k] / tr["px"] - 1) * 100
+                    tr["hi"], tr["lo"] = max(tr["hi"], r), min(tr["lo"], r)
+                finish(tr, i, "d20"); tr = None; sell_quiet = True     # 20거래일째 종가로 판정
+                continue
             if tr and tr["px"] and i > tr["entI"]:
                 r = (close[i] / tr["px"] - 1) * 100
                 tr["hi"], tr["lo"] = max(tr["hi"], r), min(tr["lo"], r)
@@ -230,9 +240,9 @@ def track(recs, results):
                     tr.update(why="wait", endI=None, end=None, ret=(close[i] / tr["px"] - 1) * 100 if tr["px"] else None)
                     out.append(tr)
                 tr = None
-            if not tr:
+            if not tr and not (s_["cat"] == "sell" and sell_quiet):
                 tr = start(s_["cat"], i, s_)
-            if tr["px"] is None and i == tr["entI"]:
+            if tr and tr["px"] is None and i == tr["entI"]:
                 tr["px"] = close[i]
         if tr:
             li = len(dates) - 1
@@ -243,7 +253,7 @@ def track(recs, results):
             out.append(tr)
     res = []
     for t in out:
-        done = t["why"] in ("sig", "stop")
+        done = t["why"] in ("sig", "stop", "d20")
         days = max(t["endI"] - t["entI"], 0) if t.get("endI") is not None and t["px"] else None
         hit = None if not done else (t["why"] != "stop" and t["ret"] > 0) if t["side"] == "buy" else t["ret"] < 0
         res.append({"side": t["side"], "name": t["name"], "code": t["code"], "sig": t["sig"], "g": t["g"],
@@ -320,8 +330,8 @@ draw();
 <h3>진행 중 <small id="nopen"></small></h3><div class="card"><table id="topen"></table></div>
 <h3>끝난 것 <small id="ndone"></small></h3><div class="card"><table id="tdone"></table></div>
 <button class="more" id="tmore">더 보기 (+20)</button>
-<p class="note">매수 추적 = 매수 신호부터 매도 신호 또는 손절까지(매수 신호가 또 뜨면 같은 추적) / 매도 추적 = 매도 신호부터 다음 매수 신호까지 /
-성공 = 매수는 끝날 때 수익, 매도는 판 뒤 다시 살 때 더 쌈 / 실패 = 신호로 끝났는데 반대 결과(손절은 따로 셈) / 신호가 = 신호대로 샀다면(팔았다면): 신호 다음 거래일 종가 /
+<p class="note">매수 추적 = 매수 신호부터 매도 신호 또는 손절까지(매수 신호가 또 뜨면 같은 추적) / 매도 추적 = 매도 신호부터 {SELL_DAYS}거래일 안 다음 매수 신호 체결까지, 없으면 {SELL_DAYS}거래일째 종가까지 /
+성공 = 매수는 끝날 때 수익, 매도는 그때 가격이 매도 체결가보다 낮음 / 실패 = 끝났는데 반대 결과(손절은 따로 셈) / 신호가 = 신호대로 샀다면(팔았다면): 신호 다음 거래일 종가 /
 손절 = 신호가 대비 종가 -{STOP}% 이하가 다음 날도 이어지면 그날 종가 / 성공률은 끝난 것만 /
 위 가상 계좌는 2회 분할로 평단이 섞이고 한도에 걸리면 안 사므로 같은 종목도 수익이 조금 다를 수 있음 / 기존 보유분(신호 전에 산 것)의 손절은 계좌 평단으로 직접 확인{(' / 계산 오류: ' + E(track_err)) if track_err else ''}</p>
 <script>
@@ -341,6 +351,7 @@ function judge(t) {{
 function endTxt(t) {{
   if (t.why === 'sig') return sh(t.end) + (t.side === 'buy' ? ' 매도' : ' 매수');
   if (t.why === 'stop') return sh(t.end) + ' 손절';
+  if (t.why === 'd20') return sh(t.end) + ' {SELL_DAYS}거래일';
   if (t.why === 'gone') return sh(t.last) + '까지';
   return t.px == null ? '체결 대기' : '오늘까지';
 }}
@@ -358,7 +369,7 @@ function rend() {{
   const avg = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : null;
   let sum = '';
   ['buy', 'sell'].filter(sd => !TS.side || TS.side === sd).forEach(sd => {{
-    const t = inPer.filter(x => x.side === sd), d = t.filter(x => x.why === 'sig' || x.why === 'stop'), h = d.filter(x => x.hit);
+    const t = inPer.filter(x => x.side === sd), d = t.filter(x => x.why === 'sig' || x.why === 'stop' || x.why === 'd20'), h = d.filter(x => x.hit);
     const st = d.filter(x => x.why === 'stop').length, op = t.filter(x => x.why === 'open' || x.why === 'wait').length, av = avg(d.map(x => x.ret));
     sum += `<div class="sum ${{sd}}"><b>${{sd === 'buy' ? '매수' : '매도'}} 신호 ${{t.length}}번</b> │ ✓ ${{h.length}}${{d.length ? ' (' + Math.round(h.length / d.length * 100) + '%)' : ''}} │ ✕ ${{d.length - h.length - st}}${{sd === 'buy' ? ' │ 손절 ' + st : ''}} │ ⏳ ${{op}}${{sd === 'buy' ? ` │ 평균 <span class="${{ud(av)}}">${{av != null ? pc(av) : '-'}}</span>` : ''}}</div>`;
   }});

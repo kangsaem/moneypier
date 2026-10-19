@@ -181,7 +181,7 @@ def _attach_marks():
             i = pos.get(f'{t["sig"][2:4]}.{t["sig"][5:7]}.{t["sig"][8:10]}')
             if i is None:
                 continue
-            done = t["why"] in ("sig", "stop")
+            done = t["why"] in ("sig", "stop", "d20")
             res = ("손절" if t["why"] == "stop" else "성공" if t["hit"] else "실패") if done else RES.get(t["why"], "")
             ret = "" if t.get("ret") is None else f' {t["ret"]:+.1f}%'
             nm = t.get("g") or ("매수" if t["side"] == "buy" else "매도·전량")
