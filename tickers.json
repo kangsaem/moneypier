@@ -174,5 +174,9 @@
  {
   "code": "WDC",
   "name": "웨스턴 디지털"
+ },
+ {
+  "code": "LEN",
+  "name": "레나 Class A"
  }
 ]
