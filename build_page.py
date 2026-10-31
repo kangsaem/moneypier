@@ -130,7 +130,9 @@ tickers = [t for t in tickers if t.get("code")]
 results, failed = [], []
 for t in tickers:
     try:
-        results.append(m.analyze(t["code"], t["name"]))
+        rr = m.analyze(t["code"], t["name"])
+        rr["watch"] = bool(t.get("watch"))          # 머니파이 관심종목(계좌에 없음) — 실전 비교는 보유 종목만(2026-10-31, live.py)
+        results.append(rr)
     except Exception as e:
         failed.append(f"{t['name']} ({t['code']}): {type(e).__name__}: {e}")
 
@@ -890,6 +892,9 @@ FORCE_TG = os.environ.get("FORCE_TG", "").lower() in ("1", "true", "yes")
 if IS_US or not (KR_PROVISIONAL or NAVER_MISS):          # 국장 잠정(15:30~19:59)·네이버 종가 못 받은 날은 기록 안 함(2026-10-14)
     guard("신호 기록 저장", lambda: history.save(dict(history.record(results, msig, "us" if IS_US else "kr"),
                                                         **({} if IS_US else {"date": TARGET_DATE}))))   # 국장 = 시작한 거래일 날짜
+if IS_US or not (KR_PROVISIONAL or NAVER_MISS):          # 빠진 날 채우기(2026-10-31): 기록을 저장하는 실행에서만
+    import backfill
+    guard("빠진 날 채우기", backfill.run, results)
 guard("신호 기록 페이지", history.build, results)
 import live
 guard("V1 실전 기록", live.build, results)          # 2026-10-12부터 신호대로 따라 한 가상 계좌 → docs/live.html

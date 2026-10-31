@@ -22,8 +22,36 @@ START = os.environ.get("LIVE_START", "2026-10-12")
 HELD = (150, 10, 2)
 BUY_G = ("매수·바닥", "매수·눌림", "매수·추세")
 SELL_G = ("매도·전량",)
-LINES = (("v1", "V1 실전"), ("hold", "내 종목 그냥 보유"), ("kospi", "코스피"), ("ndx", "나스닥"))
-COLORS = {"v1": "#e0457b", "hold": "#f29a3d", "kospi": "#3b82c4", "ndx": "#14a37f"}
+LINES = (("v1", "V1 실전"), ("hold", "내 종목 그냥 보유"), ("kospi", "코스피"), ("ndx", "나스닥"),
+         ("v1_all", "V1 실전(관심 포함)"), ("hold_all", "그냥 보유(관심 포함)"))
+COLORS = {"v1": "#e0457b", "hold": "#f29a3d", "kospi": "#3b82c4", "ndx": "#14a37f", "v1_all": "#b98aa0", "hold_all": "#c9a27a"}
+LINES_OFF = ("v1_all", "hold_all")     # 처음엔 꺼 둠(칩을 누르면 켜짐)
+
+
+# ---------------------------------------------------------------- 보유/관심 나누기(2026-10-31)
+# 머니파이 종목 목록(tickers.json)의 "watch": true = 계좌에 없는 관심종목. 기록(items)에도 "watch"가 남음(2026-10-31부터).
+# 그 전 기록은 지금 표시(watch_now)를 그대로 씀. 실전 비교의 기본 두 선(V1 실전·그냥 보유)은 보유 종목만,
+# 관심 포함 전체는 v1_all·hold_all(표·꺼 둔 선).
+def _is_watch(it, watch_now):
+    return bool(it["watch"]) if "watch" in it else it["code"] in watch_now
+
+
+def watch_runs(recs, watch_now):
+    """종목별 관심(보유 아님) 구간 {code: [(시작, 끝), ...]} — 시작 = 관심이 되기 전 마지막 보유 기록의 봉 날짜(처음부터 관심이면 None),
+    끝 = 다시 보유로 기록된 첫 봉 날짜(지금도 관심이면 None). gaps 와 같은 모양 → 같은 방식으로 '팔고 빠진 것'으로 처리"""
+    state, last_held, out = {}, {}, {}
+    for rec in sorted(recs, key=lambda r: r.get("time", "")):
+        for it in rec.get("items", []):
+            c, w = it["code"], _is_watch(it, watch_now)
+            prev = state.get(c)
+            if w and prev is not True:
+                out.setdefault(c, []).append([last_held.get(c), None])
+            if not w and prev is True:
+                out[c][-1][1] = it.get("asof")
+            if not w:
+                last_held[c] = it.get("asof")
+            state[c] = w
+    return {c: [tuple(x) for x in v] for c, v in out.items()}
 E = html.escape
 
 
@@ -63,12 +91,35 @@ def _hold_nav(px, members, dates):
     return nav
 
 
-def compute(results, recs=None, idx=None):
+def compute(results, recs=None, idx=None, watch_now=None):
+    """보유 종목만(v1·hold) + 관심 포함 전체(v1_all·hold_all). watch_now = 지금 관심종목 코드(없으면 results의 r['watch'])"""
+    if watch_now is None:
+        watch_now = {r["code"] for r in results if r.get("watch")}
+    held = _compute(results, recs, idx, watch_now, True)
+    allr = _compute(results, recs, {}, watch_now, False)
+    if held is None:
+        return allr
+    if allr:
+        for k in ("v1", "hold"):
+            if allr["dates"] == held["dates"]:
+                held["lines"][k + "_all"] = allr["lines"][k]
+                for yh, ya in zip(held["years"], allr["years"]):
+                    yh[k + "_all"] = ya.get(k)
+        held["trades_all"] = len(allr["trades"])
+    return held
+
+
+def _compute(results, recs, idx, watch_now, held_only):
     recs = recs if recs is not None else history.load_all()
     recs = [r for r in recs if r.get("date", "") >= START]
     if not recs:
         return None
     sig, names, rec_close = _signals(recs)
+    wr = watch_runs(recs, watch_now) if held_only else {}
+    if held_only:                                                  # 끝까지 한 번도 보유가 아니었던 종목(처음부터 관심, 다시 안 돌아옴)은 뺌
+        for c, runs in wr.items():
+            if runs and runs[0][0] is None and runs[0][1] is None:
+                sig.pop(c, None)
     closes = {r["code"]: r.get("_c") for r in results if r.get("_c") is not None}
     start = pd.Timestamp(START)
     # 시세: 지금 리포트의 일봉, 목록에서 빠진 종목은 기록된 종가로
@@ -90,7 +141,14 @@ def compute(results, recs=None, idx=None):
         dates = [max(before)] + dates
     dates = pd.DatetimeIndex(dates)
     # 목록에서 빠진 구간(2번 이상 연속 기록에 없음): 빠지기 전 마지막 기록일 종가에 전량 매도, 그 사이는 신호 없음, 다시 들어오면 신호대로
-    gp = history.gaps(recs)
+    gp = {c: list(v) for c, v in history.gaps(recs).items()}
+    lead = {}                                                      # 처음엔 관심이었다가 보유가 된 종목: 그 전은 신호 없음
+    for c, runs in wr.items():
+        for st, en in runs:
+            if st is None:
+                lead[c] = en
+            else:
+                gp.setdefault(c, []).append((st, en))             # 보유 → 관심 = 팔고 빠진 것과 같이(그날 종가에 전량 매도)
     gone_at = {c: {pd.Timestamp(st) for st, _ in gl} for c, gl in gp.items()}
     states = {}
     for c, s in ser.items():
@@ -100,6 +158,9 @@ def compute(results, recs=None, idx=None):
         cats = cats.shift(1)                                       # 신호 다음 거래일 종가에 체결(국장도 2026-10-14부터 — 20:00 확정 일봉으로 판정, 다음 날 장중 매매)
         cats = cats.reindex(cats.index.union(dates)).ffill(limit=5).reindex(dates)   # 다른 시장만 쉬는 날은 칸 유지
         cats = cats.apply(lambda x: x if isinstance(x, set) else set())
+        if c in lead:
+            cats = cats.copy()
+            cats.loc[cats.index < pd.Timestamp(lead[c])] = [set()] * int((cats.index < pd.Timestamp(lead[c])).sum())
         for st, en in gp.get(c, []):                               # 목록에서 빠짐 = 팔고 뺀 것 → 마지막 기록일 종가에 전량 매도
             st = pd.Timestamp(st)
             if st not in cats.index:
@@ -112,11 +173,13 @@ def compute(results, recs=None, idx=None):
     eq, trades, *_ = pf.simulate_alloc(states, dates, 0, 0, same_day=True, held=HELD)
     for t in trades:
         if t["out"] in gone_at.get(t["code"], ()):
-            t["why"] = "목록에서 빠짐"
+            t["why"] = "목록에서 빠짐" if not any(st and pd.Timestamp(st) == t["out"] for st, _ in wr.get(t["code"], [])) else "관심으로 바뀜"
     px = {c: st["close"].reindex(dates).ffill().to_numpy(dtype=float) for c, st in states.items()}
     first_rec = {}
     for rec in sorted(recs, key=lambda r: r["time"]):
-        first_rec.setdefault(rec["date"][:4], {it["code"] for it in rec.get("items", [])})
+        if rec.get("backfill"):
+            continue
+        first_rec.setdefault(rec["date"][:4], {it["code"] for it in rec.get("items", []) if not (held_only and _is_watch(it, watch_now))})
     hold = _hold_nav(px, lambda d: first_rec.get(str(d.year), set(px)), dates)
     lines = {"v1": [float(x) for x in pd.Series(eq).to_numpy()], "hold": hold}
     if idx is None:
@@ -288,7 +351,7 @@ def build(results, out="docs/live.html", recs=None, idx=None):
         keys = [k for k, _ in LINES if k in res["lines"]]
         last = {k: res["lines"][k][-1] for k in keys}
         tot = {k: None if last[k] is None else (last[k] - 1) * 100 for k in keys}
-        chips = "".join(f'<button class="c" data-k="{k}"><i style="background:{COLORS[k]}"></i>{E(names[k])} <b>{_pct(tot[k])}</b></button>' for k in keys)
+        chips = "".join(f'<button class="c{" off" if k in LINES_OFF else ""}" data-k="{k}"><i style="background:{COLORS[k]}"></i>{E(names[k])} <b>{_pct(tot[k])}</b></button>' for k in keys)
         yh = "".join(f"<th>{E(names[k])}</th>" for k in keys)
         yr = ""
         for y in reversed(res["years"]):
@@ -302,7 +365,7 @@ def build(results, out="docs/live.html", recs=None, idx=None):
 <div class="card"><table><tr><th class="l">연도</th>{yh}</tr>{yr}</table></div>
 <script>
 const D = {data};
-const off = new Set();
+const off = new Set({json.dumps([k for k in LINES_OFF])});
 function draw() {{
   const W = 600, H = 260, L = 44, R = 8, T = 10, B = 24, n = D.d.length;
   const ks = Object.keys(D.s).filter(k => !off.has(k));
@@ -418,7 +481,7 @@ h3 {{ font-size:.92rem; margin:14px 0 5px; }} h3 small {{ color:var(--mut); font
 <div class="t">{E(START)}부터 매일 리포트의 신호대로 v1 규칙을 따른 가상 계좌 · 갱신 {kst:%Y-%m-%d %H:%M} KST · <a href="./">리포트로</a></div>
 <p class="note">백테스트가 아니라 그날 뜬 신호만으로 계산(결과를 미리 아는 효과 없음). 매수: 매수·바닥/눌림/추세 — 신호 다음 거래일 종가 ·
 종목당 상한 = 평가액 × min(10%, 150 ÷ 보유 종목 수), 신호 한 번에 상한의 절반(2회 분할) · 매도: 매도 신호 또는 손절 -8%(종가 이틀) → 전량 · 거래비용 포함 · 지수는 배당 제외 ·
-'내 종목 그냥 보유' = 시작일과 매년 첫 거래일에 그때 종목을 똑같이 나눠 사서 들고만 있음. 선 이름을 누르면 끄고 켬.</p>
+'내 종목 그냥 보유' = 시작일과 매년 첫 거래일에 그때 종목을 똑같이 나눠 사서 들고만 있음. V1 실전·그냥 보유 = 계좌 보유 종목만(관심종목 제외, 2026-10-31 — 관심 포함은 '(관심 포함)' 선·표). 선 이름을 누르면 끄고 켬.</p>
 {body}
 </body></html>"""
     with open(out, "w", encoding="utf-8") as f:

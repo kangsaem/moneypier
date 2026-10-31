@@ -30,7 +30,8 @@ def record(results, msig, session, now=None):
         rv = r.get("review") or m.review(r)
         groups = [{"g": nm + ("·" + rv[k]["level"] if rv[k].get("level") else ""), "s": rv[k]["score"], "why": rv[k]["why"]}
                   for k, nm, _ in m.REVIEW if rv.get(k)]
-        items.append({"code": r["code"], "name": r["name"], "asof": f"{r['last']:%Y-%m-%d}", "close": round(r["close"], 4),
+        items.append({"code": r["code"], "name": r["name"], "watch": bool(r.get("watch")),    # watch = 관심종목(계좌에 없음, 2026-10-31)
+                      "asof": f"{r['last']:%Y-%m-%d}", "close": round(r["close"], 4),
                       "rsi": round(r["rsi"], 1), "disp": round(r["disp"]["cur"], 1) if r.get("disp") else None,
                       "rs60": None if r.get("rs60") is None else round(r["rs60"], 1), "groups": groups,
                       # 신호 유효 가격 범위(2026-10-15): {칸: {lo, hi, lo_open, hi_open}} — 다음 거래일 종가가 이 안이면 신호 유지
@@ -74,7 +75,7 @@ def gaps(recs):
         for it in rec.get("items", []):
             here[it["code"]] = it.get("asof")
         for c in last:
-            if c not in here:
+            if c not in here and not rec.get("backfill"):        # 빠진 날 채우기 기록(일부 종목만)은 '빠짐' 판단에 안 씀(2026-10-31)
                 miss[c] = miss.get(c, 0) + 1
         for c, asof in here.items():
             if miss.get(c, 0) >= GAP_MIN:
