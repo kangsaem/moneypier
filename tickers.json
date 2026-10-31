@@ -5,7 +5,8 @@
  },
  {
   "code": "379810.KS",
-  "name": "KODEX 미국나스닥100"
+  "name": "KODEX 미국나스닥100",
+  "watch": true
  },
  {
   "code": "474800.KS",
@@ -33,7 +34,8 @@
  },
  {
   "code": "438080.KS",
-  "name": "ACE 미국S&P500미국채혼합50액티브"
+  "name": "ACE 미국S&P500미국채혼합50액티브",
+  "watch": true
  },
  {
   "code": "HSHP",
@@ -61,7 +63,8 @@
  },
  {
   "code": "360750.KS",
-  "name": "TIGER 미국S&P500"
+  "name": "TIGER 미국S&P500",
+  "watch": true
  },
  {
   "code": "284430",
@@ -105,11 +108,13 @@
  },
  {
   "code": "HUN",
-  "name": "헌츠맨"
+  "name": "헌츠맨",
+  "watch": true
  },
  {
   "code": "MTRN",
-  "name": "마테리언"
+  "name": "마테리언",
+  "watch": true
  },
  {
   "code": "ELMT",
@@ -121,11 +126,13 @@
  },
  {
   "code": "CF",
-  "name": "CF 인더스트리스 홀딩스"
+  "name": "CF 인더스트리스 홀딩스",
+  "watch": true
  },
  {
   "code": "XOM",
-  "name": "엑슨모빌 홀딩스"
+  "name": "엑슨모빌 홀딩스",
+  "watch": true
  },
  {
   "code": "CVX",
@@ -133,39 +140,48 @@
  },
  {
   "code": "SDRL",
-  "name": "시드릴"
+  "name": "시드릴",
+  "watch": true
  },
  {
   "code": "NE",
-  "name": "노블"
+  "name": "노블",
+  "watch": true
  },
  {
   "code": "RIG",
-  "name": "트랜스오션"
+  "name": "트랜스오션",
+  "watch": true
  },
  {
   "code": "BTU",
-  "name": "피바디 에너지"
+  "name": "피바디 에너지",
+  "watch": true
  },
  {
   "code": "GNK",
-  "name": "젠코 시핑 & 트레이딩"
+  "name": "젠코 시핑 & 트레이딩",
+  "watch": true
  },
  {
   "code": "VLO",
-  "name": "발레로 에너지"
+  "name": "발레로 에너지",
+  "watch": true
  },
  {
   "code": "AMR",
-  "name": "알파 메탈러지컬 리소시스"
+  "name": "알파 메탈러지컬 리소시스",
+  "watch": true
  },
  {
   "code": "HCC",
-  "name": "워리어 멧 콜"
+  "name": "워리어 멧 콜",
+  "watch": true
  },
  {
   "code": "489250",
-  "name": "KODEX 미국배당다우존스"
+  "name": "KODEX 미국배당다우존스",
+  "watch": true
  },
  {
   "code": "STX",
@@ -173,27 +189,33 @@
  },
  {
   "code": "WDC",
-  "name": "웨스턴 디지털"
+  "name": "웨스턴 디지털",
+  "watch": true
  },
  {
   "code": "LEN",
-  "name": "레나 Class A"
+  "name": "레나 Class A",
+  "watch": true
  },
  {
   "code": "OXY",
-  "name": "옥시덴털 페트롤리움"
+  "name": "옥시덴털 페트롤리움",
+  "watch": true
  },
  {
   "code": "BE",
-  "name": "블룸 에너지"
+  "name": "블룸 에너지",
+  "watch": true
  },
  {
   "code": "SLB",
-  "name": "SLB"
+  "name": "SLB",
+  "watch": true
  },
  {
   "code": "NFGC",
-  "name": "뉴 파운드 골드"
+  "name": "뉴 파운드 골드",
+  "watch": true
  },
  {
   "code": "TS",
@@ -201,22 +223,27 @@
  },
  {
   "code": "HII",
-  "name": "헌팅턴 잉걸스 인더스트리즈"
+  "name": "헌팅턴 잉걸스 인더스트리즈",
+  "watch": true
  },
  {
   "code": "NOV",
-  "name": "NOV"
+  "name": "NOV",
+  "watch": true
  },
  {
   "code": "BKR",
-  "name": "베이커 휴즈"
+  "name": "베이커 휴즈",
+  "watch": true
  },
  {
   "code": "WFRD",
-  "name": "웨더포드 인터네셔널"
+  "name": "웨더포드 인터네셔널",
+  "watch": true
  },
  {
   "code": "FTI",
-  "name": "테크닙FMC"
+  "name": "테크닙FMC",
+  "watch": true
  }
 ]
