@@ -1,0 +1,819 @@
+{
+"format": 1,
+"logic": "v1",
+"date": "2026-11-03",
+"session": "kr",
+"time": "2026-11-03 20:06",
+"market": {
+"risk": {
+"score": 0,
+"total": 6,
+"label": "낮음"
+},
+"bottom": {
+"score": 2,
+"total": 5,
+"label": "바닥 형성 가능성"
+}
+},
+"items": [
+{
+"code": "0167A0",
+"name": "SOL AI반도체TOP2플러스",
+"watch": false,
+"asof": "2026-11-03",
+"close": 14410.0,
+"rsi": 40.6,
+"disp": 85.1,
+"rs60": 1.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "379810.KS",
+"name": "KODEX 미국나스닥100",
+"watch": true,
+"asof": "2026-11-03",
+"close": 24770.0,
+"rsi": 31.9,
+"disp": 93.5,
+"rs60": 1.8,
+"groups": [
+{
+"g": "매수·눌림",
+"s": 1,
+"why": [
+"반등 신호"
+]
+}
+],
+"rng": {
+"buy": {
+"lo": 26689.675,
+"hi": 28423.575,
+"lo_open": false,
+"hi_open": false
+}
+}
+},
+{
+"code": "474800.KS",
+"name": "KIWOOM 미국원유에너지기업",
+"watch": false,
+"asof": "2026-11-03",
+"close": 16185.0,
+"rsi": 50.7,
+"disp": 101.8,
+"rs60": 18.0,
+"groups": [
+{
+"g": "보유·순항",
+"s": 0,
+"why": [
+"일·주·월 정배열 — 추세 순항"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "271060.KS",
+"name": "KODEX 3대농산물선물(H)",
+"watch": false,
+"asof": "2026-11-03",
+"close": 7855.0,
+"rsi": 25.0,
+"disp": 90.5,
+"rs60": 7.1,
+"groups": [],
+"rng": {}
+},
+{
+"code": "487240",
+"name": "KODEX AI전력핵심설비",
+"watch": false,
+"asof": "2026-11-03",
+"close": 25075.0,
+"rsi": 35.4,
+"disp": 75.9,
+"rs60": -12.9,
+"groups": [],
+"rng": {}
+},
+{
+"code": "453950.KS",
+"name": "TIGER TSMC파운드리밸류체인",
+"watch": false,
+"asof": "2026-11-03",
+"close": 28730.0,
+"rsi": 35.7,
+"disp": 90.1,
+"rs60": -2.2,
+"groups": [],
+"rng": {}
+},
+{
+"code": "160580.KS",
+"name": "TIGER 구리실물",
+"watch": false,
+"asof": "2026-11-03",
+"close": 15380.0,
+"rsi": 39.1,
+"disp": 95.9,
+"rs60": 3.1,
+"groups": [],
+"rng": {}
+},
+{
+"code": "438080.KS",
+"name": "ACE 미국S&P500미국채혼합50액티브",
+"watch": true,
+"asof": "2026-11-03",
+"close": 13555.0,
+"rsi": 41.5,
+"disp": 98.3,
+"rs60": 4.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "HSHP",
+"name": "히말라야 쉬핑",
+"watch": false,
+"asof": "2026-11-02",
+"close": 15.34,
+"rsi": 32.7,
+"disp": 88.1,
+"rs60": -0.6,
+"groups": [
+{
+"g": "매수·눌림",
+"s": 2,
+"why": [
+"하락 중 · 장기 추세 상승",
+"장기 추세 상승"
+]
+}
+],
+"rng": {
+"buy": {
+"lo": 10.738,
+"hi": 19.942,
+"lo_open": true,
+"hi_open": true
+}
+}
+},
+{
+"code": "PSX",
+"name": "필립스 66",
+"watch": false,
+"asof": "2026-11-02",
+"close": 275.04,
+"rsi": 49.4,
+"disp": 103.1,
+"rs60": 37.7,
+"groups": [
+{
+"g": "보유·조정",
+"s": 0,
+"why": [
+"주·월 정배열, 일봉만 역배열 — 추세 속 쉬어가기(팔 이유 아님)"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "TDW",
+"name": "타이드워터",
+"watch": false,
+"asof": "2026-11-02",
+"close": 79.04,
+"rsi": 41.0,
+"disp": 91.0,
+"rs60": -1.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "MPC",
+"name": "매러선 페트롤리엄",
+"watch": false,
+"asof": "2026-11-02",
+"close": 430.39,
+"rsi": 45.8,
+"disp": 102.7,
+"rs60": 47.1,
+"groups": [
+{
+"g": "보유·조정",
+"s": 0,
+"why": [
+"주·월 정배열, 일봉만 역배열 — 추세 속 쉬어가기(팔 이유 아님)"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "WEAT",
+"name": "Teucrium Wheat Fund",
+"watch": false,
+"asof": "2026-11-02",
+"close": 22.28,
+"rsi": 24.5,
+"disp": 88.6,
+"rs60": -4.0,
+"groups": [
+{
+"g": "매수·눌림",
+"s": 2,
+"why": [
+"반등 신호",
+"장기 추세 상승"
+]
+}
+],
+"rng": {
+"buy": {
+"lo": 17.2949,
+"hi": 26.4297,
+"lo_open": false,
+"hi_open": false
+}
+}
+},
+{
+"code": "KURA",
+"name": "쿠라 온콜로지",
+"watch": false,
+"asof": "2026-11-02",
+"close": 9.79,
+"rsi": 43.1,
+"disp": 88.1,
+"rs60": 5.1,
+"groups": [],
+"rng": {}
+},
+{
+"code": "360750.KS",
+"name": "TIGER 미국S&P500",
+"watch": true,
+"asof": "2026-11-03",
+"close": 25010.0,
+"rsi": 36.3,
+"disp": 97.1,
+"rs60": 3.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "284430",
+"name": "KODEX 200미국채혼합50",
+"watch": false,
+"asof": "2026-11-03",
+"close": 18700.0,
+"rsi": 42.8,
+"disp": 93.7,
+"rs60": 2.9,
+"groups": [],
+"rng": {}
+},
+{
+"code": "091170",
+"name": "KODEX 은행",
+"watch": false,
+"asof": "2026-11-03",
+"close": 13925.0,
+"rsi": 33.1,
+"disp": 89.3,
+"rs60": 0.9,
+"groups": [],
+"rng": {}
+},
+{
+"code": "140700",
+"name": "KODEX 보험",
+"watch": false,
+"asof": "2026-11-03",
+"close": 18980.0,
+"rsi": 42.9,
+"disp": 93.4,
+"rs60": 16.4,
+"groups": [],
+"rng": {}
+},
+{
+"code": "228790",
+"name": "TIGER 화장품",
+"watch": false,
+"asof": "2026-11-03",
+"close": 3500.0,
+"rsi": 32.3,
+"disp": 83.2,
+"rs60": 0.6,
+"groups": [
+{
+"g": "매수·눌림",
+"s": 2,
+"why": [
+"하락 중 · 장기 추세 상승",
+"장기 추세 상승"
+]
+}
+],
+"rng": {
+"buy": {
+"lo": 2450.0,
+"hi": 4550.0,
+"lo_open": true,
+"hi_open": true
+}
+}
+},
+{
+"code": "0162Z0",
+"name": "RISE 삼성전자SK하이닉스채권혼합50",
+"watch": false,
+"asof": "2026-11-03",
+"close": 12295.0,
+"rsi": 44.8,
+"disp": 94.2,
+"rs60": 8.2,
+"groups": [],
+"rng": {}
+},
+{
+"code": "093370",
+"name": "후성",
+"watch": false,
+"asof": "2026-11-03",
+"close": 9280.0,
+"rsi": 31.1,
+"disp": 72.0,
+"rs60": 7.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "023160",
+"name": "태광",
+"watch": false,
+"asof": "2026-11-03",
+"close": 27650.0,
+"rsi": 53.6,
+"disp": 105.5,
+"rs60": 33.7,
+"groups": [],
+"rng": {}
+},
+{
+"code": "417200",
+"name": "LS머트리얼즈",
+"watch": false,
+"asof": "2026-11-03",
+"close": 10540.0,
+"rsi": 37.9,
+"disp": 82.9,
+"rs60": 3.1,
+"groups": [],
+"rng": {}
+},
+{
+"code": "096770",
+"name": "SK이노베이션",
+"watch": false,
+"asof": "2026-11-03",
+"close": 120700.0,
+"rsi": 36.5,
+"disp": 85.9,
+"rs60": 19.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "373220",
+"name": "LG에너지솔루션",
+"watch": false,
+"asof": "2026-11-03",
+"close": 343000.0,
+"rsi": 38.2,
+"disp": 92.4,
+"rs60": 15.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "HUN",
+"name": "헌츠맨",
+"watch": true,
+"asof": "2026-11-02",
+"close": 9.95,
+"rsi": 69.5,
+"disp": 110.6,
+"rs60": 1.1,
+"groups": [],
+"rng": {}
+},
+{
+"code": "MTRN",
+"name": "마테리언",
+"watch": true,
+"asof": "2026-11-02",
+"close": 216.84,
+"rsi": 36.1,
+"disp": 85.8,
+"rs60": -22.5,
+"groups": [],
+"rng": {}
+},
+{
+"code": "ELMT",
+"name": "엘멧 그룹",
+"watch": false,
+"asof": "2026-11-02",
+"close": 22.13,
+"rsi": 54.7,
+"disp": 111.8,
+"rs60": 34.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "BORR",
+"name": "보르 드릴링",
+"watch": false,
+"asof": "2026-11-02",
+"close": 3.68,
+"rsi": 37.9,
+"disp": 84.9,
+"rs60": -1.9,
+"groups": [],
+"rng": {}
+},
+{
+"code": "CF",
+"name": "CF 인더스트리스 홀딩스",
+"watch": true,
+"asof": "2026-11-02",
+"close": 120.33,
+"rsi": 51.2,
+"disp": 97.6,
+"rs60": 8.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "XOM",
+"name": "엑슨모빌 홀딩스",
+"watch": true,
+"asof": "2026-11-02",
+"close": 179.67,
+"rsi": 57.1,
+"disp": 106.9,
+"rs60": 20.2,
+"groups": [
+{
+"g": "보유·순항",
+"s": 0,
+"why": [
+"일·주·월 정배열 — 추세 순항"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "CVX",
+"name": "셰브론",
+"watch": false,
+"asof": "2026-11-02",
+"close": 227.77,
+"rsi": 58.7,
+"disp": 106.6,
+"rs60": 24.9,
+"groups": [
+{
+"g": "보유·순항",
+"s": 0,
+"why": [
+"일·주·월 정배열 — 추세 순항"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "SDRL",
+"name": "시드릴",
+"watch": true,
+"asof": "2026-11-02",
+"close": 47.73,
+"rsi": 46.9,
+"disp": 99.8,
+"rs60": 13.2,
+"groups": [],
+"rng": {}
+},
+{
+"code": "NE",
+"name": "노블",
+"watch": true,
+"asof": "2026-11-02",
+"close": 45.46,
+"rsi": 51.9,
+"disp": 102.1,
+"rs60": 14.3,
+"groups": [],
+"rng": {}
+},
+{
+"code": "RIG",
+"name": "트랜스오션",
+"watch": true,
+"asof": "2026-11-02",
+"close": 6.23,
+"rsi": 54.8,
+"disp": 108.1,
+"rs60": 21.2,
+"groups": [],
+"rng": {}
+},
+{
+"code": "BTU",
+"name": "피바디 에너지",
+"watch": true,
+"asof": "2026-11-02",
+"close": 21.05,
+"rsi": 30.5,
+"disp": 82.0,
+"rs60": -8.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "GNK",
+"name": "젠코 시핑 & 트레이딩",
+"watch": true,
+"asof": "2026-11-02",
+"close": 24.76,
+"rsi": 40.9,
+"disp": 93.6,
+"rs60": 0.5,
+"groups": [],
+"rng": {}
+},
+{
+"code": "VLO",
+"name": "발레로 에너지",
+"watch": true,
+"asof": "2026-11-02",
+"close": 381.46,
+"rsi": 39.3,
+"disp": 95.8,
+"rs60": 30.7,
+"groups": [],
+"rng": {}
+},
+{
+"code": "AMR",
+"name": "알파 메탈러지컬 리소시스",
+"watch": true,
+"asof": "2026-11-02",
+"close": 154.22,
+"rsi": 37.0,
+"disp": 82.7,
+"rs60": 4.3,
+"groups": [],
+"rng": {}
+},
+{
+"code": "HCC",
+"name": "워리어 멧 콜",
+"watch": true,
+"asof": "2026-11-02",
+"close": 82.23,
+"rsi": 38.2,
+"disp": 88.0,
+"rs60": -7.8,
+"groups": [],
+"rng": {}
+},
+{
+"code": "489250",
+"name": "KODEX 미국배당다우존스",
+"watch": true,
+"asof": "2026-11-03",
+"close": 13135.0,
+"rsi": 74.1,
+"disp": 104.0,
+"rs60": 11.9,
+"groups": [
+{
+"g": "보유·순항",
+"s": 0,
+"why": [
+"일·주·월 정배열 — 추세 순항"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "STX",
+"name": "씨게이트",
+"watch": false,
+"asof": "2026-11-02",
+"close": 593.76,
+"rsi": 32.7,
+"disp": 74.8,
+"rs60": -24.2,
+"groups": [
+{
+"g": "매수·눌림",
+"s": 2,
+"why": [
+"반등 신호",
+"장기 추세 상승"
+]
+}
+],
+"rng": {
+"buy": {
+"lo": 415.632,
+"hi": 771.888,
+"lo_open": true,
+"hi_open": true
+}
+}
+},
+{
+"code": "WDC",
+"name": "웨스턴 디지털",
+"watch": true,
+"asof": "2026-11-02",
+"close": 338.59,
+"rsi": 38.2,
+"disp": 80.8,
+"rs60": -19.3,
+"groups": [],
+"rng": {}
+},
+{
+"code": "LEN",
+"name": "레나 Class A",
+"watch": true,
+"asof": "2026-11-02",
+"close": 91.02,
+"rsi": 68.6,
+"disp": 112.1,
+"rs60": 6.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "OXY",
+"name": "옥시덴털 페트롤리움",
+"watch": true,
+"asof": "2026-11-02",
+"close": 60.72,
+"rsi": 47.2,
+"disp": 100.9,
+"rs60": 11.4,
+"groups": [
+{
+"g": "보유·조정",
+"s": 0,
+"why": [
+"주·월 정배열, 일봉만 역배열 — 추세 속 쉬어가기(팔 이유 아님)"
+]
+}
+],
+"rng": {}
+},
+{
+"code": "BE",
+"name": "블룸 에너지",
+"watch": true,
+"asof": "2026-11-02",
+"close": 196.25,
+"rsi": 37.5,
+"disp": 79.1,
+"rs60": -7.7,
+"groups": [],
+"rng": {}
+},
+{
+"code": "SLB",
+"name": "SLB",
+"watch": true,
+"asof": "2026-11-02",
+"close": 52.31,
+"rsi": 53.6,
+"disp": 99.7,
+"rs60": 6.3,
+"groups": [],
+"rng": {}
+},
+{
+"code": "NFGC",
+"name": "뉴 파운드 골드",
+"watch": true,
+"asof": "2026-11-02",
+"close": 1.49,
+"rsi": 41.0,
+"disp": 87.6,
+"rs60": -8.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "TS",
+"name": "테나리스 ADR",
+"watch": false,
+"asof": "2026-11-02",
+"close": 57.95,
+"rsi": 49.3,
+"disp": 101.9,
+"rs60": 12.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "HII",
+"name": "헌팅턴 잉걸스 인더스트리즈",
+"watch": true,
+"asof": "2026-11-02",
+"close": 313.7,
+"rsi": 72.7,
+"disp": 112.7,
+"rs60": -0.5,
+"groups": [
+{
+"g": "매도·전량",
+"s": 1,
+"why": [
+"과열 + 꺾임 + 상대강도↓(-0.5%p)"
+]
+}
+],
+"rng": {
+"sell": {
+"lo": 311.3473,
+"hi": 407.81,
+"lo_open": false,
+"hi_open": true
+}
+}
+},
+{
+"code": "NOV",
+"name": "NOV",
+"watch": true,
+"asof": "2026-11-02",
+"close": 18.68,
+"rsi": 42.6,
+"disp": 93.9,
+"rs60": -2.1,
+"groups": [],
+"rng": {}
+},
+{
+"code": "BKR",
+"name": "베이커 휴즈",
+"watch": true,
+"asof": "2026-11-02",
+"close": 53.05,
+"rsi": 40.3,
+"disp": 91.6,
+"rs60": -11.0,
+"groups": [],
+"rng": {}
+},
+{
+"code": "WFRD",
+"name": "웨더포드 인터네셔널",
+"watch": true,
+"asof": "2026-11-02",
+"close": 89.0,
+"rsi": 59.8,
+"disp": 104.6,
+"rs60": 5.3,
+"groups": [],
+"rng": {}
+},
+{
+"code": "FTI",
+"name": "테크닙FMC",
+"watch": true,
+"asof": "2026-11-02",
+"close": 66.87,
+"rsi": 41.6,
+"disp": 92.7,
+"rs60": -1.2,
+"groups": [],
+"rng": {}
+}
+]
+}
