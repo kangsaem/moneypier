@@ -245,5 +245,15 @@
   "code": "FTI",
   "name": "테크닙FMC",
   "watch": true
+ },
+ {
+  "code": "AXSM",
+  "name": "액섬 테라퓨틱스",
+  "watch": true
+ },
+ {
+  "code": "MDGL",
+  "name": "매드리갈 파마슈티컬스",
+  "watch": true
  }
 ]
