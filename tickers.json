@@ -255,5 +255,15 @@
   "code": "MDGL",
   "name": "매드리갈 파마슈티컬스",
   "watch": true
+ },
+ {
+  "code": "005930",
+  "name": "삼성전자",
+  "watch": true
+ },
+ {
+  "code": "000660",
+  "name": "SK하이닉스",
+  "watch": true
  }
 ]
