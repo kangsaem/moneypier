@@ -113,8 +113,7 @@
  },
  {
   "code": "MTRN",
-  "name": "마테리언",
-  "watch": true
+  "name": "마테리언"
  },
  {
   "code": "ELMT",
@@ -140,8 +139,7 @@
  },
  {
   "code": "SDRL",
-  "name": "시드릴",
-  "watch": true
+  "name": "시드릴"
  },
  {
   "code": "NE",
@@ -243,8 +241,7 @@
  },
  {
   "code": "FTI",
-  "name": "테크닙FMC",
-  "watch": true
+  "name": "테크닙FMC"
  },
  {
   "code": "AXSM",
