@@ -262,5 +262,10 @@
   "code": "000660",
   "name": "SK하이닉스",
   "watch": true
+ },
+ {
+  "code": "411060",
+  "name": "ACE KRX금현물",
+  "watch": true
  }
 ]
