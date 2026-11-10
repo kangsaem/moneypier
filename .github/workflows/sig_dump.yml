@@ -1,0 +1,59 @@
+name: sig-dump
+
+# 신호·시세 날짜별 덤프(sig_dump.py, 2026-11-11) — 체결 시점·손절·필터 연구용 원자료. 리포트 재실행 없음
+on:
+  workflow_dispatch:
+    inputs:
+      days:
+        description: "거래일 수"
+        default: "2520"
+
+permissions:
+  contents: write
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {u: tickers, p: "1/1"}
+          - {u: kospi, p: "1/4"}
+          - {u: kospi, p: "2/4"}
+          - {u: kospi, p: "3/4"}
+          - {u: kospi, p: "4/4"}
+          - {u: nasdaq, p: "1/4"}
+          - {u: nasdaq, p: "2/4"}
+          - {u: nasdaq, p: "3/4"}
+          - {u: nasdaq, p: "4/4"}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -r requirements.txt
+      - name: 덤프
+        run: python sig_dump.py
+        env:
+          SD_UNIVERSE: ${{ matrix.u }}
+          SD_PART: ${{ matrix.p }}
+          SD_DAYS: ${{ inputs.days }}
+          TICKERS_JSON: ${{ secrets.TICKERS_JSON }}
+      - name: 결과 커밋
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
+          mkdir -p /tmp/new
+          cp results/sigdump_*.csv.gz /tmp/new/
+          for i in 1 2 3 4 5 6 7 8; do
+            git fetch -q origin ${{ github.ref_name }}
+            git reset -q --hard origin/${{ github.ref_name }}
+            cp /tmp/new/sigdump_*.csv.gz results/
+            git add results/sigdump_*.csv.gz
+            git commit -q -m "신호 덤프 (${{ matrix.u }} ${{ matrix.p }})" || exit 0
+            git push -q origin HEAD:${{ github.ref_name }} && exit 0
+            sleep $((i * 7))
+          done
+          exit 1
