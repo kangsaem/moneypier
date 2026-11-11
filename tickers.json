@@ -266,5 +266,10 @@
   "code": "411060",
   "name": "ACE KRX금현물",
   "watch": true
+ },
+ {
+  "code": "280360",
+  "name": "롯데웰푸드",
+  "watch": true
  }
 ]
