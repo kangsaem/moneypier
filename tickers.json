@@ -276,5 +276,10 @@
   "code": "003230",
   "name": "삼양식품",
   "watch": true
+ },
+ {
+  "code": "KYTX",
+  "name": "카이버나 테라퓨틱스",
+  "watch": true
  }
 ]
